@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>My Game Website</title>
+<style>
+body{
+    font-family: Arial;
+    background:#111;
+    color:white;
+    text-align:center;
+}
+.game{
+    background:#222;
+    padding:20px;
+    margin:20px auto;
+    width:300px;
+    border-radius:10px;
+}
+a{
+    color:white;
+    text-decoration:none;
+    font-weight:bold;
+}
+button{
+    padding:10px 20px;
+    font-size:16px;
+    background:#27ae60;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎮 My Games</h1>
+
+<div class="game">
+<h2>Zombie Frontier</h2>
+<p>Fight zombies and survive waves.</p>
+<a href="zombie-frontier/">
+<button>Play Game</button>
+</a>
+</div>
+
+</body>
+</html>
