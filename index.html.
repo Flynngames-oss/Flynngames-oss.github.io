@@ -1,48 +1,445 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>My Game Website</title>
-<style>
-body{
-    font-family: Arial;
-    background:#111;
-    color:white;
-    text-align:center;
-}
-.game{
-    background:#222;
-    padding:20px;
-    margin:20px auto;
-    width:300px;
-    border-radius:10px;
-}
-a{
-    color:white;
-    text-decoration:none;
-    font-weight:bold;
-}
-button{
-    padding:10px 20px;
-    font-size:16px;
-    background:#27ae60;
-    border:none;
-    border-radius:5px;
-    cursor:pointer;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>Zombie Frontier: Smoky Skies</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #4a5a6a; font-family: 'Courier New', Courier, monospace; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 15px; height: 15px;
+            border: 2px solid #000; border-radius: 50%; transform: translate(-50%, -50%);
+            pointer-events: none; z-index: 10;
+        }
+        #sniper-scope {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: radial-gradient(circle, transparent 30%, black 70%);
+            display: none; align-items: center; justify-content: center;
+            z-index: 50; pointer-events: none;
+        }
+        .scope-line-h { width: 100%; height: 2px; background: rgba(0,0,0,0.8); position: absolute; }
+        .scope-line-v { height: 100%; width: 2px; background: rgba(0,0,0,0.8); position: absolute; }
+        #ui {
+            position: absolute; bottom: 20px; left: 20px; color: #fff;
+            text-shadow: 2px 2px #000; z-index: 10; pointer-events: none; font-weight: bold;
+        }
+        #wave-ui {
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: #ff6600; font-size: 28px; font-weight: bold; text-shadow: 2px 2px #000;
+        }
+        #boss-ui {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+            width: 300px; display: none; text-align: center; color: #ff0000; font-weight: bold;
+        }
+        #boss-hp-bar { width: 100%; height: 15px; border: 2px solid #000; background: #333; margin-top: 5px; }
+        #boss-hp-fill { width: 100%; height: 100%; background: #ff0000; }
+        #health-bar { width: 200px; height: 15px; border: 2px solid #000; background: #333; margin-top: 5px; }
+        #health-fill { width: 100%; height: 100%; background: #2ecc71; transition: 0.1s; }
+        #reload-msg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, 40px);
+            color: #f1c40f; font-weight: bold; font-size: 22px; display: none;
+            text-shadow: 2px 2px #000; z-index: 15;
+        }
+        #shop-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); display: none; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 200; color: white;
+        }
+        .shop-grid { display: flex; gap: 20px; margin-top: 20px; }
+        .shop-item { background: #2c3e50; padding: 15px; border-radius: 10px; border: 2px solid #34495e; width: 150px; text-align: center; }
+        .buy-btn { background: #27ae60; padding: 8px 15px; border: none; color: white; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .overlay {
+            position: absolute; width: 100%; height: 100%; top: 0; left: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; color: white; text-align: center;
+        }
+        #menu { background: rgba(44, 62, 80, 0.95); }
+        #death-screen { background: rgba(139, 0, 0, 0.95); display: none; }
+        #victory-screen { background: rgba(22, 160, 133, 0.95); display: none; }
+        #nuclear-vignette {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            box-shadow: inset 0 0 150px rgba(0, 255, 0, 0.4);
+            pointer-events: none; display: none; z-index: 5;
+        }
+        button.start-btn { padding: 15px 40px; font-size: 20px; background: #e67e22; color: white; border: none; cursor: pointer; margin-top: 20px; border-radius: 5px; }
+    </style>
 </head>
-
 <body>
 
-<h1>🎮 My Games</h1>
+<div id="nuclear-vignette"></div>
+<div id="reload-msg">RELOADING...</div>
 
-<div class="game">
-<h2>Zombie Frontier</h2>
-<p>Fight zombies and survive waves.</p>
-<a href="zombie-frontier/">
-<button>Play Game</button>
-</a>
+<div id="sniper-scope">
+    <div class="scope-line-h"></div>
+    <div class="scope-line-v"></div>
 </div>
 
+<div id="shop-overlay">
+    <h1>SURVIVAL SHOP</h1>
+    <p>Balance: <span style="color:#ffd700" id="shop-coins-display">0</span> Coins</p>
+    <div class="shop-grid">
+        <div class="shop-item"><h3>SMG</h3><button class="buy-btn" id="buy-smg">500c</button></div>
+        <div class="shop-item"><h3>SNIPER</h3><button class="buy-btn" id="buy-sniper">1200c</button></div>
+        <div class="shop-item"><h3>ARMOR</h3><button class="buy-btn" id="buy-armor">800c</button></div>
+    </div>
+    <p style="margin-top:20px; color:#aaa;">Press [B] to Close</p>
+</div>
+
+<div id="menu" class="overlay">
+    <h1>ZOMBIE FRONTIER</h1>
+    <p>The skies are darkening. Watch out for bombs and smoke.</p>
+    <button class="start-btn" onclick="startGame()">START MISSION</button>
+</div>
+
+<div id="death-screen" class="overlay">
+    <h1>DEFEATED</h1>
+    <button class="start-btn" onclick="resetGame()">RETRY</button>
+</div>
+
+<div id="victory-screen" class="overlay">
+    <h1 style="font-size: 60px;">MISSION ACCOMPLISHED</h1>
+    <h2 id="victory-reward" style="color: #f1c40f;">+10,000 COINS</h2>
+    <button class="start-btn" onclick="resetGame()">PLAY AGAIN</button>
+</div>
+
+<div id="wave-ui">WAVE <span id="wave-num">1</span> | <span id="timer">0:00</span></div>
+
+<div id="boss-ui">
+    <span id="boss-name">ALPHA ZOMBIE</span>
+    <div id="boss-hp-bar"><div id="boss-hp-fill"></div></div>
+</div>
+
+<div id="crosshair"></div>
+
+<div id="ui">
+    WEAPON: <span id="weapon-name">PISTOL</span><br>
+    AMMO: <span id="ammo">50</span> / 50<br>
+    COINS: <span id="coins">0</span><br>
+    ARMOR: <span id="armor-val">0</span><br>
+    HEALTH
+    <div id="health-bar"><div id="health-fill"></div></div>
+</div>
+
+<script type="module">
+    import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+
+    let health = 100, coins = parseInt(localStorage.getItem('zombie_coins')) || 0, ammo = 50, isGameOver = false, gameStarted = false;
+    let isNuclear = false, bossSpawned = false, bossHP = 0, bossMaxHP = 50, isReloading = false, isShopOpen = false;
+    let moveF = false, moveB = false, moveL = false, moveR = false;
+    let isShooting = false, isADS = false, velocityY = 0, canJump = true, lastShot = 0;
+    
+    let fireRate = 400, armorReduction = 0, currentWeaponName = "PISTOL";
+    const WEAPON_TYPES = {
+        PISTOL: { name: "PISTOL", fireRate: 400, color: 0x333333 },
+        SMG:    { name: "SMG",    fireRate: 85,  color: 0x555555 },
+        SNIPER: { name: "SNIPER", fireRate: 850, color: 0x111111 }
+    };
+
+    const playerHeight = 1.6;
+    const zombies = [], effects = [], fallingBombs = [], smokeParticles = [];
+    let boss = null, portal = null;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x4a5a6a); // Darker, moody sky
+    scene.fog = new THREE.Fog(0x4a5a6a, 20, 150);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight.position.set(10, 50, 10);
+    scene.add(sunLight);
+
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshLambertMaterial({ color: 0x3d4d3d }));
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    // HOUSE DECORATION
+    function spawnHouse(x, z) {
+        const group = new THREE.Group();
+        const base = new THREE.Mesh(new THREE.BoxGeometry(6, 5, 6), new THREE.MeshLambertMaterial({color: 0x5a4a3a}));
+        base.position.y = 2.5;
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(5, 3, 4), new THREE.MeshLambertMaterial({color: 0x2a1a0a}));
+        roof.position.y = 5.5; roof.rotation.y = Math.PI / 4;
+        group.add(base, roof);
+        group.position.set(x, 0, z);
+        scene.add(group);
+    }
+    for(let i=0; i<12; i++) spawnHouse((Math.random()-0.5)*150, (Math.random()-0.5)*150);
+
+    // SMOKE SYSTEM
+    function createSmoke(pos) {
+        for(let i=0; i<15; i++) {
+            const smoke = new THREE.Mesh(
+                new THREE.SphereGeometry(Math.random() * 0.8 + 0.4, 8, 8),
+                new THREE.MeshLambertMaterial({ color: 0x888888, transparent: true, opacity: 0.6 })
+            );
+            smoke.position.set(pos.x + (Math.random()-0.5)*2, 0.5, pos.z + (Math.random()-0.5)*2);
+            smoke.userData = { 
+                velY: Math.random() * 0.05 + 0.02, 
+                velX: (Math.random()-0.5) * 0.02,
+                life: 1.0 
+            };
+            scene.add(smoke);
+            smokeParticles.push(smoke);
+        }
+    }
+
+    // BOMB LOGIC
+    function spawnFallingBomb() {
+        if (isNuclear) return;
+        const bomb = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.2, 12), new THREE.MeshLambertMaterial({color: 0xcc0000}));
+        bomb.position.set(camera.position.x + (Math.random()-0.5)*100, 60, camera.position.z + (Math.random()-0.5)*100);
+        scene.add(bomb);
+        fallingBombs.push(bomb);
+    }
+
+    function explodeBomb(bomb) {
+        const pos = bomb.position.clone();
+        createExplosion(pos, 0xff6600); 
+        createSmoke(pos); // Create smoke on hit
+        scene.remove(bomb);
+        const idx = fallingBombs.indexOf(bomb);
+        if (idx > -1) fallingBombs.splice(idx, 1);
+
+        const range = 15;
+        for (let i = zombies.length - 1; i >= 0; i--) {
+            if (zombies[i].position.distanceTo(pos) < range) {
+                scene.remove(zombies[i]); zombies.splice(i, 1);
+                coins += 25;
+            }
+        }
+        if (boss && boss.position.distanceTo(pos) < range) {
+            bossHP -= 8;
+            updateBossUI();
+            if (bossHP <= 0) handleBossDeath();
+        }
+        if (camera.position.distanceTo(pos) < 6) { health -= 25; updateUI(); }
+        updateUI();
+    }
+
+    const gunGroup = new THREE.Group();
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.5), new THREE.MeshStandardMaterial({color: 0x222222}));
+    const muzzle = new THREE.Object3D(); muzzle.position.z = -0.3;
+    gunGroup.add(gunBody, muzzle);
+    gunGroup.position.set(0.3, -0.25, -0.4);
+    camera.add(gunGroup);
+    scene.add(camera);
+
+    window.startGame = () => {
+        document.getElementById('menu').style.display = 'none';
+        renderer.domElement.requestPointerLock();
+        gameStarted = true;
+        window.startTime = Date.now();
+        updateUI();
+    };
+
+    window.resetGame = () => { location.reload(); };
+
+    function spawnBoss(type) {
+        bossSpawned = true;
+        bossMaxHP = (type === 'ALPHA') ? 50 : 100;
+        bossHP = bossMaxHP;
+        const size = (type === 'ALPHA') ? 4 : 6;
+        const color = (type === 'ALPHA') ? 0x8b0000 : 0x00ff00;
+        boss = new THREE.Mesh(new THREE.BoxGeometry(size * 0.8, size * 1.6, size * 0.4), new THREE.MeshLambertMaterial({ color: color }));
+        boss.position.set(camera.position.x, size * 0.8, camera.position.z - 40);
+        scene.add(boss);
+        document.getElementById('boss-ui').style.display = 'block';
+        document.getElementById('boss-name').innerText = type + " ZOMBIE";
+        updateBossUI();
+    }
+
+    function updateBossUI() { document.getElementById('boss-hp-fill').style.width = (bossHP/bossMaxHP)*100 + "%"; }
+
+    function handleBossDeath() {
+        if (!isNuclear) {
+            portal = new THREE.Mesh(new THREE.TorusGeometry(3, 0.5, 16, 32), new THREE.MeshBasicMaterial({color: 0x39ff14, wireframe: true}));
+            portal.position.copy(boss.position);
+            scene.add(portal);
+        } else {
+            isGameOver = true; coins += 10000; updateUI();
+            document.exitPointerLock(); document.getElementById('victory-screen').style.display = 'flex';
+        }
+        scene.remove(boss); boss = null; document.getElementById('boss-ui').style.display = 'none';
+    }
+
+    function shoot() {
+        if (isReloading || isShopOpen || isGameOver || !gameStarted) return;
+        if (ammo <= 0) { reload(); return; }
+        if (Date.now() - lastShot < fireRate) return;
+
+        lastShot = Date.now();
+        ammo--;
+        document.getElementById('ammo').innerText = ammo;
+
+        const raycaster = new THREE.Raycaster();
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        raycaster.set(camera.position, direction);
+
+        const targets = [...zombies, ...fallingBombs];
+        if (boss) targets.push(boss);
+
+        const intersects = raycaster.intersectObjects(targets);
+
+        if (intersects.length > 0) {
+            const hit = intersects[0].object;
+            createExplosion(intersects[0].point, isNuclear ? 0x39ff14 : 0x445522);
+            
+            if (fallingBombs.includes(hit)) { explodeBomb(hit); }
+            else if (hit === boss) {
+                bossHP--; updateBossUI();
+                if (bossHP <= 0) handleBossDeath();
+            } else {
+                const idx = zombies.indexOf(hit);
+                if (idx > -1) { scene.remove(hit); zombies.splice(idx, 1); coins += 25; updateUI(); }
+            }
+        }
+
+        const tracerMat = new THREE.LineBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.3 });
+        const points = [new THREE.Vector3(), intersects.length > 0 ? intersects[0].point : camera.position.clone().add(direction.multiplyScalar(100))];
+        muzzle.getWorldPosition(points[0]);
+        const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), tracerMat);
+        scene.add(tracer);
+        setTimeout(() => scene.remove(tracer), 30);
+    }
+
+    function createExplosion(pos, color) {
+        for(let i=0; i<10; i++) {
+            const p = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({color}));
+            p.position.copy(pos);
+            p.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.4, Math.random()*0.4, (Math.random()-0.5)*0.4), life: 1 };
+            scene.add(p); effects.push(p);
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if (!gameStarted || isGameOver || (document.pointerLockElement !== renderer.domElement && !isShopOpen)) return;
+
+        if(isShooting && !isShopOpen) shoot();
+
+        // Movement Logic
+        if(!isShopOpen) {
+            const speed = isADS ? 0.07 : 0.18;
+            const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
+            const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), dir);
+            if(moveF) camera.position.addScaledVector(dir, speed);
+            if(moveB) camera.position.addScaledVector(dir, -speed);
+            if(moveL) camera.position.addScaledVector(side, speed);
+            if(moveR) camera.position.addScaledVector(side, -speed);
+            velocityY -= 0.01; camera.position.y += velocityY;
+            if(camera.position.y <= playerHeight) { camera.position.y = playerHeight; velocityY = 0; canJump = true; }
+        }
+
+        // Wave Tracking
+        let time = Math.floor((Date.now() - window.startTime) / 1000);
+        let wave = Math.floor(time / 60) + 1;
+        document.getElementById('timer').innerText = `${Math.floor(time/60)}:${(time%60).toString().padStart(2,'0')}`;
+        document.getElementById('wave-num').innerText = wave;
+
+        if (wave === 5 && !bossSpawned && !isNuclear) spawnBoss('ALPHA');
+        if (wave === 10 && !bossSpawned && isNuclear) spawnBoss('OMEGA');
+
+        // Falling Bomb Physics
+        if (Math.random() < 0.006) spawnFallingBomb();
+        fallingBombs.forEach((b, i) => {
+            b.position.y -= 0.35;
+            if (b.position.y <= 0.6) explodeBomb(b);
+        });
+
+        // Smoke Physics
+        smokeParticles.forEach((s, i) => {
+            s.position.y += s.userData.velY;
+            s.position.x += s.userData.velX;
+            s.userData.life -= 0.008;
+            s.material.opacity = s.userData.life;
+            s.scale.setScalar(1 + (1 - s.userData.life) * 2);
+            if (s.userData.life <= 0) {
+                scene.remove(s);
+                smokeParticles.splice(i, 1);
+            }
+        });
+
+        // Portal check
+        if (portal && camera.position.distanceTo(portal.position) < 3.5) {
+            isNuclear = true; bossSpawned = false; scene.remove(portal); portal = null;
+            scene.background = new THREE.Color(0x051a05); 
+            scene.fog.color = new THREE.Color(0x051a05);
+            document.getElementById('nuclear-vignette').style.display = 'block';
+        }
+
+        // Zombies
+        zombies.forEach((z, i) => {
+            z.lookAt(camera.position.x, 0.8, camera.position.z);
+            z.translateZ(isNuclear ? 0.22 : 0.12);
+            if(z.position.distanceTo(camera.position) < 1.5) { health -= 12; updateUI(); scene.remove(z); zombies.splice(i, 1); }
+        });
+
+        if (boss) {
+            boss.lookAt(camera.position.x, boss.position.y, camera.position.z);
+            boss.translateZ(0.05);
+            if(boss.position.distanceTo(camera.position) < 4) { health -= 0.8; updateUI(); }
+        }
+
+        if(Math.random() < 0.025 && zombies.length < 30) {
+            const z = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.4), new THREE.MeshLambertMaterial({color: isNuclear ? 0x39ff14 : 0x3d4d2d}));
+            z.position.set(camera.position.x + (Math.random()-0.5)*120, 0.8, camera.position.z + (Math.random()-0.5)*120);
+            scene.add(z); zombies.push(z);
+        }
+
+        effects.forEach((ef, i) => { ef.position.add(ef.userData.vel); ef.userData.life -= 0.025; if(ef.userData.life <= 0) { scene.remove(ef); effects.splice(i, 1); } });
+
+        if(health <= 0) { isGameOver = true; document.exitPointerLock(); document.getElementById('death-screen').style.display = 'flex'; }
+        renderer.render(scene, camera);
+    }
+
+    function updateUI() {
+        document.getElementById('health-fill').style.width = Math.max(0, health) + "%";
+        document.getElementById('coins').innerText = coins;
+        document.getElementById('armor-val').innerText = armorReduction;
+        document.getElementById('weapon-name').innerText = currentWeaponName;
+    }
+
+    function equipWeapon(type) { currentWeaponName = type.name; fireRate = type.fireRate; gunBody.material.color.set(type.color); exitADS(); updateUI(); }
+    function enterADS() { if (currentWeaponName !== "SNIPER" || isReloading) return; isADS = true; camera.fov = 20; camera.updateProjectionMatrix(); document.getElementById('sniper-scope').style.display = 'flex'; document.getElementById('crosshair').style.display = 'none'; gunGroup.visible = false; }
+    function exitADS() { isADS = false; camera.fov = 75; camera.updateProjectionMatrix(); document.getElementById('sniper-scope').style.display = 'none'; document.getElementById('crosshair').style.display = 'block'; gunGroup.visible = true; }
+    function reload() { if (isReloading || ammo === 50) return; isReloading = true; exitADS(); document.getElementById('reload-msg').style.display = 'block'; gunGroup.rotation.x = 0.5; setTimeout(() => { ammo = 50; isReloading = false; document.getElementById('reload-msg').style.display = 'none'; document.getElementById('ammo').innerText = ammo; gunGroup.rotation.x = 0; }, 1500); }
+    function toggleShop() { isShopOpen = !isShopOpen; document.getElementById('shop-overlay').style.display = isShopOpen ? 'flex' : 'none'; document.getElementById('shop-coins-display').innerText = coins; if (isShopOpen) document.exitPointerLock(); else renderer.domElement.requestPointerLock(); }
+
+    window.addEventListener('mousedown', (e) => { if(e.button === 0) isShooting = true; if(e.button === 2) enterADS(); });
+    window.addEventListener('mouseup', (e) => { if(e.button === 0) isShooting = false; if(e.button === 2) exitADS(); });
+    window.addEventListener('contextmenu', e => e.preventDefault());
+    window.addEventListener('keydown', (e) => {
+        if(e.code === 'KeyW') moveF = true; if(e.code === 'KeyS') moveB = true;
+        if(e.code === 'KeyA') moveL = true; if(e.code === 'KeyD') moveR = true;
+        if(e.code === 'KeyR') reload(); if(e.code === 'KeyB') toggleShop();
+        if(e.code === 'Space' && canJump) { velocityY = 0.22; canJump = false; }
+    });
+    window.addEventListener('keyup', (e) => {
+        if(e.code === 'KeyW') moveF = false; if(e.code === 'KeyS') moveB = false;
+        if(e.code === 'KeyA') moveL = false; if(e.code === 'KeyD') moveR = false;
+    });
+    window.addEventListener('mousemove', (e) => {
+        if(document.pointerLockElement === renderer.domElement) {
+            let sens = isADS ? 0.0008 : 0.003;
+            camera.rotation.order = "YXZ";
+            camera.rotation.y -= e.movementX * sens;
+            camera.rotation.x = Math.max(-1.5, Math.min(1.5, camera.rotation.x - e.movementY * sens));
+        }
+    });
+
+    document.getElementById('buy-smg').onclick = () => { if(coins >= 500) { coins -= 500; equipWeapon(WEAPON_TYPES.SMG); toggleShop(); } };
+    document.getElementById('buy-sniper').onclick = () => { if(coins >= 1200) { coins -= 1200; equipWeapon(WEAPON_TYPES.SNIPER); toggleShop(); } };
+    document.getElementById('buy-armor').onclick = () => { if(coins >= 800) { coins -= 800; armorReduction += 5; updateUI(); toggleShop(); } };
+<h2>Play My Game</h2>
+
+<iframe src="game1/index.html" width="800" height="600"></iframe>
+
+    updateUI(); animate();
+</script>
 </body>
 </html>
