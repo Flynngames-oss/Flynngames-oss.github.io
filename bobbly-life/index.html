@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bobbly Life</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ============ TITLE SCREEN ============ -->
+<div id="title">
+  <div class="logo" id="logo"></div>
+  <div class="subtitle">A wobbly, bobbly open world to play with your friends!</div>
+  <div class="card">
+    <label class="lbl">Your name</label>
+    <input id="nameInput" maxlength="14" placeholder="Bobbler">
+    <div class="row"><span>Skin</span><div class="swatches" id="swSkin"></div></div>
+    <div class="row"><span>Shirt</span><div class="swatches" id="swShirt"></div></div>
+    <div class="row"><span>Pants</span><div class="swatches" id="swPants"></div></div>
+    <button id="btnSolo" class="btn big">Play Solo</button>
+    <button id="btnHost" class="btn big blue">Host Multiplayer</button>
+    <div class="joinrow">
+      <input id="codeInput" placeholder="ROOM CODE" maxlength="5">
+      <button id="btnJoin" class="btn big green">Join</button>
+    </div>
+    <div id="titleMsg"></div>
+  </div>
+  <div class="title-controls">WASD move · Mouse look · Space jump · Shift run · Hold Left Click grab · F slap · R ragdoll · E interact / drive · Tab phone · H help</div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="money">$<span id="moneyVal">0</span></div>
+  <div id="roomInfo" class="hidden"></div>
+  <div id="jobPanel" class="hidden">
+    <div id="jobTitle"></div>
+    <div id="jobObj"></div>
+    <div id="jobTimer"></div>
+    <div class="small">Press J to quit job</div>
+  </div>
+  <div id="prompt" class="hidden"></div>
+  <div id="toasts"></div>
+  <div id="objDist" class="hidden"></div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="chat">
+    <div id="chatLog"></div>
+    <input id="chatInput" class="hidden" maxlength="100" placeholder="Say something... (Enter)">
+  </div>
+  <div id="players" class="hidden"></div>
+  <div id="clickToPlay" class="hidden">Click to play!</div>
+  <div id="hint">H = Help · Tab = Phone · T = Chat</div>
+  <div id="speedo" class="hidden"></div>
+</div>
+
+<!-- ============ PANELS ============ -->
+<div id="panel" class="hidden">
+  <div class="panel-head"><h2 id="panelTitle"></h2><button id="panelClose" class="btn small">✕</button></div>
+  <div id="panelBody"></div>
+</div>
+
+<div id="fishUI" class="hidden">
+  <div id="fishMsg">Waiting for a bite...</div>
+  <div id="fishBar"><div id="fishZone"></div><div id="fishIcon">🐟</div></div>
+  <div id="fishProgress"><div id="fishProgressFill"></div></div>
+  <div class="small">Hold SPACE (or tap) to raise the green zone and keep the fish inside! Esc to stop.</div>
+</div>
+
+<div id="help" class="hidden">
+  <h2>How to play Bobbly Life</h2>
+  <div class="helpgrid">
+    <div><b>WASD / Arrows</b> Walk</div>
+    <div><b>Shift</b> Run</div>
+    <div><b>Space</b> Jump</div>
+    <div><b>Mouse</b> Look around (click the game first)</div>
+    <div><b>Scroll</b> Zoom camera</div>
+    <div><b>Hold Left Click</b> Grab things &amp; people · release to throw</div>
+    <div><b>F</b> Slap / chop trees</div>
+    <div><b>R</b> Ragdoll (flop over!)</div>
+    <div><b>E</b> Interact / get in &amp; out of cars</div>
+    <div><b>Tab / P</b> Phone: spawn cars, jobs, map</div>
+    <div><b>J</b> Quit current job</div>
+    <div><b>T</b> Chat · <b>1-4</b> Emotes</div>
+    <div><b>Driving</b> W/S gas &amp; brake · A/D steer · Space handbrake</div>
+    <div><b>Helicopter</b> Space up · Shift down</div>
+  </div>
+  <p>Do jobs to earn money 💰: <b>Pizza delivery</b>, <b>Taxi driver</b>, <b>Firefighter</b>, <b>Garbage collector</b>, <b>Lumberjack</b>, <b>Fishing</b> and <b>Races</b>.
+  Spend money on clothes, hats, cars, a helicopter and your very own house! Find the 20 hidden 🎁 presents around the island.</p>
+  <p>Multiplayer: click <b>Host Multiplayer</b> and send your friends the link or room code.</p>
+  <button class="btn" id="helpClose">Got it!</button>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><div id="stickKnob"></div></div>
+  <div id="tbtns">
+    <button data-k="Space">Jump</button>
+    <button data-k="Grab">Grab</button>
+    <button data-k="KeyF">Slap</button>
+    <button data-k="KeyE">Use</button>
+    <button data-k="KeyR">Flop</button>
+    <button data-k="Tab">Phone</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
