@@ -40,14 +40,14 @@ export function angleLerp(a, b, t) {
   return a + d * t;
 }
 
-export const COLORS = ['#ffcf4a', '#ff8a3d', '#ff5b6e', '#e05a8a', '#b46cff', '#6c7bff', '#3fa7ff', '#3fd6d0', '#46c25a', '#9be05a', '#ffffff', '#9aa4b1', '#4a4f5a', '#8b5a2b', '#f2c9a0', '#ffd6e8'];
+export const COLORS = ['#f0f0f0', '#d9d2c3', '#9aa0a8', '#4a4f58', '#1f1f24', '#2f3e5c', '#3b4a66', '#4f6f8f', '#2f5f5f', '#4a5a3a', '#6b8a4a', '#8a6a4a', '#c77a2a', '#a33a3a', '#6b2f3a', '#5a4a6a', '#d8b04a', '#3a7ac8']
 
 const SAVE_KEY = 'bobblylife-save-v1';
 export function defaultSave() {
   return {
     name: 'Bobbler' + Math.floor(Math.random() * 900 + 100),
     money: 100,
-    outfit: { skin: '#ffcf4a', shirt: '#3fa7ff', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'round', extras: [] },
+    outfit: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [] },
     ownedHats: ['none', 'cap'],
     ownedGlasses: ['none'],
     ownedCars: ['sedan'],
@@ -106,14 +106,16 @@ export function placeBetween(mesh, a, b) {
 }
 
 // Text sprite (name tags, signs)
-export function textSprite(text, { size = 48, color = '#fff', bg = 'rgba(0,0,0,0.45)', scale = 1 } = {}) {
+export const noEmoji = (t) => String(t).replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u200D\uFE0F]/gu, '').replace(/\s+/g, ' ').trim();
+export function textSprite(text, { size = 48, color = '#fff', bg = 'rgba(0,0,0,0.45)', scale = 1, accent = null } = {}) {
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
-  ctx.font = `700 ${size}px Fredoka, sans-serif`;
+  ctx.font = `700 ${size}px 'Barlow Condensed', 'Barlow', sans-serif`;
   const w = Math.ceil(ctx.measureText(text).width) + size;
   c.width = w; c.height = size * 1.5;
-  ctx.font = `700 ${size}px Fredoka, sans-serif`;
-  if (bg) { ctx.fillStyle = bg; roundRect(ctx, 0, 0, c.width, c.height, size * 0.4); ctx.fill(); }
+  ctx.font = `700 ${size}px 'Barlow Condensed', 'Barlow', sans-serif`;
+  if (bg) { ctx.fillStyle = bg; roundRect(ctx, 0, 0, c.width, c.height, size * 0.12); ctx.fill(); }
+  if (accent) { ctx.fillStyle = accent; ctx.fillRect(0, c.height - size * 0.12, c.width, size * 0.12); }
   ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(text, c.width / 2, c.height / 2 + 2);
   const tex = new THREE.CanvasTexture(c);

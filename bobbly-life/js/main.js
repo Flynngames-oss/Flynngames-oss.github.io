@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP } from './state.js';
 import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows } from './world.js';
-import { Character, updateNPC, randomOutfit, PARTS } from './character.js';
+import { Character, updateNPC, randomOutfit, PARTS, SKIN_TONES, HAIRS, HAIR_COLORS } from './character.js';
 import { Vehicle, VTYPES, bumpVehicles, randomCarColor } from './vehicles.js';
 import { updateProps, kickProps, spawnPresents, updatePresents, updateTrees, hitTree, scatterProps, buildPropMesh } from './props.js';
 import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './jobs.js';
@@ -30,9 +30,27 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 22
 G.scene = scene; G.camera = camera; G.renderer = renderer;
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
+const TIPS = [
+  'Hold left click to grab things — and people. Let go to throw.',
+  'Press R to ragdoll. Hold it to stay floppy.',
+  'The elevator in Bobbly Tower goes all the way to the top. Bring a parachute (Space).',
+  'Tab opens your phone: fast travel, vehicles and jobs.',
+  'Crash a car hard enough and you will go through the windscreen.',
+  'Planes take off from the airport runway — hold Space once you have speed.',
+  'Jobs pay. Pizza, taxi, fire, garbage, lumber and fishing all earn cash.',
+  'Press V for first person.',
+];
+$('loadTip').textContent = TIPS[Math.floor(Math.random() * TIPS.length)];
+async function progress(p, text) {
+  $('loadFill').style.width = Math.round(p * 100) + '%';
+  $('loadPct').textContent = Math.round(p * 100) + '%';
+  $('loadText').textContent = text + '…';
+  await new Promise(r => setTimeout(r, 30));
+}
 loadSave();
 buildLights();
-buildWorld();
+await buildWorld(progress);
+await progress(0.9, 'Spawning people and traffic');
 
 const player = new Character(G.save.outfit, { isPlayer: true, name: G.save.name });
 G.player = player;
@@ -529,14 +547,6 @@ G.onJobStart = () => { UI.showHelp(false); };
 
 // ---------------------------------------------------------------- title screen
 function buildTitle() {
-  const logo = $('logo');
-  'BOBBLY LIFE'.split('').forEach((ch, i) => {
-    if (ch === ' ') { logo.appendChild(document.createElement('br')); return; }
-    const s = document.createElement('span');
-    s.textContent = ch;
-    s.style.animationDelay = (i * 0.1) + 's';
-    logo.appendChild(s);
-  });
   $('nameInput').value = G.save.name;
   const sw = (id, key, list) => {
     const el = $(id);
@@ -549,9 +559,15 @@ function buildTitle() {
       el.appendChild(d);
     }
   };
-  sw('swSkin', 'skin', ['#ffcf4a', '#f2c9a0', '#ffd6e8', '#9be05a', '#3fd6d0', '#ffb36b', '#b46cff', '#ff8fb0', '#c68b59', '#8b5a2b']);
-  sw('swShirt', 'shirt', COLORS.slice(0, 12));
-  sw('swPants', 'pants', COLORS.slice(0, 12));
+  sw('swSkin', 'skin', SKIN_TONES);
+  sw('swShirt', 'shirt', COLORS);
+  sw('swPants', 'pants', COLORS);
+  const hairSw = () => {
+    const el = $('swHair'); el.innerHTML = '';
+    for (const h of HAIRS) { const d = document.createElement('div'); d.className = 'sw txt' + (G.save.outfit.hair === h.id ? ' sel' : ''); d.textContent = h.name; d.onclick = () => { G.save.outfit.hair = h.id; player.setOutfit(G.save.outfit); writeSave(); hairSw(); }; el.appendChild(d); }
+    for (const c of HAIR_COLORS) { const d = document.createElement('div'); d.className = 'sw' + (G.save.outfit.hairColor === c ? ' sel' : ''); d.style.background = c; d.onclick = () => { G.save.outfit.hairColor = c; player.setOutfit(G.save.outfit); writeSave(); hairSw(); }; el.appendChild(d); }
+  };
+  hairSw();
   const room = new URLSearchParams(location.search).get('room');
   if (room) { $('codeInput').value = room.toUpperCase().slice(0, 5); $('titleMsg').style.color = '#2a8a3a'; $('titleMsg').textContent = 'Your friend invited you! Press Join 👉'; }
   const readName = () => {
@@ -588,7 +604,7 @@ function buildTitle() {
   };
   $('btnCustom').onclick = () => $('customCard').classList.toggle('hidden');
   $('btnCustomDone').onclick = () => { readName(); $('customCard').classList.add('hidden'); };
-  const gfxLabel = () => { $('btnGfx').innerHTML = `⚙️&nbsp; Graphics: ${G.save.gfx === 'low' ? 'Low (faster)' : 'High'}`; };
+  const gfxLabel = () => { $('btnGfx').innerHTML = `<b>Graphics: ${G.save.gfx === 'low' ? 'Low' : 'High'}</b><small>${G.save.gfx === 'low' ? 'Faster — good for Chromebooks' : 'Shadows and sharper image'}</small>`; };
   $('btnGfx').onclick = () => { G.save.gfx = G.save.gfx === 'low' ? 'high' : 'low'; writeSave(); applyGraphics(); gfxLabel(); };
   gfxLabel();
   $('codeInput').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('btnJoin').click(); });
@@ -691,7 +707,6 @@ function updateCamera(dt) {
     camera.position.set(P.x + Math.sin(f) * 5.2, P.y + 1.9, P.z + Math.cos(f) * 5.2);
     camera.lookAt(camTarget);
     if (innerWidth > 700) camera.translateX(-1.9);
-    if (!player.emote) { player.emote = 'dance'; player.emoteT = 0; }
     return;
   }
   const v = player.vehicle;
@@ -833,6 +848,9 @@ function loop(now) {
 }
 
 buildTitle();
+await progress(1, 'Ready');
 requestAnimationFrame(loop);
+setTimeout(() => $('loading').classList.add('done'), 250);
+setTimeout(() => $('loading').remove(), 1000);
 window.__bobbly = G; // handy for debugging in the console
 void UP;

@@ -5,50 +5,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Bobbly Life</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=10">
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-    "./js/audio.js": "./js/audio.js?v=9",
-    "./js/character.js": "./js/character.js?v=9",
-    "./js/jobs.js": "./js/jobs.js?v=9",
-    "./js/main.js": "./js/main.js?v=9",
-    "./js/net.js": "./js/net.js?v=9",
-    "./js/props.js": "./js/props.js?v=9",
-    "./js/state.js": "./js/state.js?v=9",
-    "./js/terrain.js": "./js/terrain.js?v=9",
-    "./js/textures.js": "./js/textures.js?v=9",
-    "./js/traffic.js": "./js/traffic.js?v=9",
-    "./js/ui.js": "./js/ui.js?v=9",
-    "./js/vehicles.js": "./js/vehicles.js?v=9",
-    "./js/weapons.js": "./js/weapons.js?v=9",
-    "./js/world.js": "./js/world.js?v=9"
+    "./js/audio.js": "./js/audio.js?v=10",
+    "./js/character.js": "./js/character.js?v=10",
+    "./js/jobs.js": "./js/jobs.js?v=10",
+    "./js/main.js": "./js/main.js?v=10",
+    "./js/net.js": "./js/net.js?v=10",
+    "./js/props.js": "./js/props.js?v=10",
+    "./js/state.js": "./js/state.js?v=10",
+    "./js/terrain.js": "./js/terrain.js?v=10",
+    "./js/textures.js": "./js/textures.js?v=10",
+    "./js/traffic.js": "./js/traffic.js?v=10",
+    "./js/ui.js": "./js/ui.js?v=10",
+    "./js/vehicles.js": "./js/vehicles.js?v=10",
+    "./js/weapons.js": "./js/weapons.js?v=10",
+    "./js/world.js": "./js/world.js?v=10"
 } }
 </script>
 </head>
 <body>
 <canvas id="game"></canvas>
 
+<!-- ============ LOADING SCREEN ============ -->
+<div id="loading">
+  <div class="load-inner">
+    <div class="load-logo">BOBBLY<span>LIFE</span></div>
+    <div class="load-bar"><div id="loadFill"></div></div>
+    <div class="load-row"><span id="loadText">Starting up…</span><span id="loadPct">0%</span></div>
+    <div class="load-tip" id="loadTip"></div>
+  </div>
+</div>
+
 <!-- ============ TITLE SCREEN ============ -->
 <div id="title">
   <div class="title-side">
-    <div class="logo" id="logo"></div>
-    <div class="subtitle">A wobbly, bobbly open world to play with your friends!</div>
+    <div class="logo" id="logo">BOBBLY<span>LIFE</span></div>
+    <div class="subtitle">Open world. Physics. Friends. Chaos.</div>
     <div class="menu">
-      <button id="btnSolo" class="mbtn">▶&nbsp; Play</button>
-      <button id="btnHost" class="mbtn blue">🌐&nbsp; Host Multiplayer</button>
+      <button id="btnSolo" class="mbtn primary"><b>Play</b><small>Single player</small></button>
+      <button id="btnHost" class="mbtn"><b>Host Online</b><small>Create a room for friends</small></button>
       <div class="joinrow">
         <input id="codeInput" placeholder="ROOM CODE" maxlength="5">
-        <button id="btnJoin" class="mbtn green">Join</button>
+        <button id="btnJoin" class="mbtn small">Join</button>
       </div>
-      <button id="btnCustom" class="mbtn purple">🎨&nbsp; Customize</button>
-      <button id="btnGfx" class="mbtn gray">⚙️&nbsp; Graphics: High</button>
+      <button id="btnCustom" class="mbtn"><b>Character</b><small>Name, skin tone, clothes</small></button>
+      <button id="btnGfx" class="mbtn"><b>Graphics: High</b><small>Switch for performance</small></button>
     </div>
     <div id="titleMsg"></div>
-    <div class="title-controls">WASD move · Mouse look · Space jump · Shift run · Hold Left Click grab · F slap · G blaster · V first person · R ragdoll · E interact · Tab phone · H help</div>
+    <div class="title-controls">WASD move · Mouse look · Space jump · Shift sprint · LMB grab · F slap · G blaster · V first person · R ragdoll · E interact · Tab phone · H help</div>
   </div>
   <div id="customCard" class="card hidden">
     <label class="lbl">Your name</label>
@@ -56,8 +66,9 @@
     <div class="row"><span>Skin</span><div class="swatches" id="swSkin"></div></div>
     <div class="row"><span>Shirt</span><div class="swatches" id="swShirt"></div></div>
     <div class="row"><span>Pants</span><div class="swatches" id="swPants"></div></div>
-    <p class="small">More skins, hats and costumes at the clothing store in town!</p>
-    <button id="btnCustomDone" class="mbtn green">✔ Done</button>
+    <div class="row"><span>Hair</span><div class="swatches" id="swHair"></div></div>
+    <p class="small">More outfits, hats and costumes at the clothing store in town.</p>
+    <button id="btnCustomDone" class="mbtn primary small">Done</button>
   </div>
 </div>
 
@@ -141,6 +152,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=9"></script>
+<script type="module" src="js/main.js?v=10"></script>
 </body>
 </html>

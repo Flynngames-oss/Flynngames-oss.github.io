@@ -1,6 +1,6 @@
 // HUD, shops, phone, minimap, chat.
-import { G, COLORS, addMoney, writeSave, LAND } from './state.js';
-import { HATS, GLASSES, EYES, SKINS } from './character.js';
+import { G, COLORS, addMoney, writeSave, LAND, noEmoji } from './state.js';
+import { HATS, GLASSES, EYES, SKINS, HAIRS, HAIR_COLORS, SKIN_TONES } from './character.js';
 import { VTYPES } from './vehicles.js';
 import { JOBS, startJob } from './jobs.js';
 import { LOC, ROADS, colliders, groundHeight } from './world.js';
@@ -15,7 +15,7 @@ const $ = (id) => document.getElementById(id);
 export function toast(text, cls = '', dur = 3800) {
   const el = document.createElement('div');
   el.className = 'toast ' + cls;
-  el.textContent = text;
+  el.textContent = noEmoji(text);
   $('toasts').appendChild(el);
   while ($('toasts').children.length > 5) $('toasts').firstChild.remove();
   setTimeout(() => el.remove(), dur);
@@ -28,7 +28,7 @@ function fmtTime(t) {
 }
 export function setJob(title, obj, timer) {
   $('jobPanel').classList.remove('hidden');
-  $('jobTitle').textContent = title;
+  $('jobTitle').textContent = noEmoji(title);
   $('jobObj').textContent = obj;
   const tEl = $('jobTimer');
   if (timer === null || timer === undefined) tEl.textContent = '';
@@ -83,6 +83,7 @@ function clothingPanel(title) {
       <button class="btn small ${tab === 'hats' ? '' : 'gray'}" data-tab="hats">🎩 Hats</button>
       <button class="btn small ${tab === 'glasses' ? '' : 'gray'}" data-tab="glasses">😎 Glasses</button>
       <button class="btn small ${tab === 'face' ? '' : 'gray'}" data-tab="face">👀 Face</button>
+      <button class="btn small ${tab === 'hair' ? '' : 'gray'}" data-tab="hair">💇 Hair</button>
       <button class="btn small ${tab === 'colors' ? '' : 'gray'}" data-tab="colors">🎨 Colors</button></div>`;
     if (tab === 'skins') {
       html += `<p class="small">A skin changes your whole look! You can still change hats and colors after.</p><div class="grid">${SKINS.map(sk => {
@@ -92,10 +93,14 @@ function clothingPanel(title) {
     }
     if (tab === 'hats') html += itemGrid(HATS, 'ownedHats', 'hat');
     if (tab === 'glasses') html += itemGrid(GLASSES, 'ownedGlasses', 'glasses');
+    if (tab === 'hair') {
+      html += `<h3>Style</h3><div class="grid">${HAIRS.map(h => `<div class="item ${o.hair === h.id ? 'equipped' : ''}" data-hair="${h.id}">${h.name}</div>`).join('')}</div>`;
+      html += `<h3>Colour</h3><div class="swatches">${HAIR_COLORS.map(c => `<div class="sw ${o.hairColor === c ? 'sel' : ''}" data-hc="${c}" style="background:${c}"></div>`).join('')}</div><p class="small">Haircuts are free.</p>`;
+    }
     if (tab === 'face') html += itemGrid(EYES.map(e => ({ ...e, emo: { round: '🙂', big: '😳', happy: '😊', angry: '😠', sleepy: '😴' }[e.id] })), null, 'eyes', true);
     if (tab === 'colors') {
       for (const [k, label] of [['skin', 'Skin'], ['shirt', 'Shirt'], ['pants', 'Pants']]) {
-        html += `<h3>${label}</h3><div class="swatches">${COLORS.concat(k === 'skin' ? ['#c68b59', '#8b5a2b', '#ffb36b'] : []).map(c => `<div class="sw ${o[k] === c ? 'sel' : ''}" data-color="${c}" data-key="${k}" style="background:${c}"></div>`).join('')}</div>`;
+        html += `<h3>${label}</h3><div class="swatches">${(k === 'skin' ? SKIN_TONES.concat(['#ffcf4a', '#9be05a', '#8fa3b8']) : COLORS).map(c => `<div class="sw ${o[k] === c ? 'sel' : ''}" data-color="${c}" data-key="${k}" style="background:${c}"></div>`).join('')}</div>`;
       }
       html += '<p class="small">Colors are free!</p>';
     }
@@ -115,6 +120,8 @@ function clothingPanel(title) {
       toast(`${sk.emo} You're now a ${sk.name}!`);
       render(el);
     });
+    el.querySelectorAll('[data-hair]').forEach(b => b.onclick = () => { o.hair = b.dataset.hair; outfitChanged(); render(el); });
+    el.querySelectorAll('[data-hc]').forEach(b => b.onclick = () => { o.hairColor = b.dataset.hc; outfitChanged(); render(el); });
     el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(el); });
     el.querySelectorAll('.sw').forEach(s => s.onclick = () => { o[s.dataset.key] = s.dataset.color; outfitChanged(); render(el); });
     el.querySelectorAll('.item[data-slot]').forEach(it => it.onclick = () => {
@@ -398,7 +405,7 @@ export function setPrompt(text) {
   const p = $('prompt');
   if (!text) { p.classList.add('hidden'); return; }
   p.classList.remove('hidden');
-  p.innerHTML = text;
+  p.innerHTML = noEmoji(text);
 }
 
 // ---------------------------------------------------------------- init
