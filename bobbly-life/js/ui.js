@@ -160,7 +160,7 @@ const TRAVEL = [
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
   ['🌳', 'Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0], ['🎣', 'Pier & Beach', 180, 0, Math.PI / 2],
-  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🏜️', 'Desert Pyramids', 'pyramid', 0, Math.PI], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Desert Oasis', 'oasis'], ['🏞️', 'East Lake', 'eastLake'],
+  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🏜️', 'Desert Pyramids', 'pyramid', 0, Math.PI], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Desert Oasis', 'oasis'], ['🏞️', 'East Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'],
 ];
 
 function blasterPanel() {
@@ -293,6 +293,11 @@ function buildWorldBase() {
     img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = bl; img.data[k + 3] = 255;
   }
   x.putImageData(img, 0, 0);
+  x.fillStyle = '#e8e2d4';
+  for (const c of colliders) {
+    if (Math.max(Math.abs(c.minX), Math.abs(c.minZ)) < LAND + 30 || c.maxX - c.minX < 5 || c.maxY < 3 || c.tag === 'tree') continue;
+    x.fillRect((c.minX + WORLD) / 5, (c.minZ + WORLD) / 5, Math.max(1, (c.maxX - c.minX) / 5), Math.max(1, (c.maxZ - c.minZ) / 5));
+  }
   x.strokeStyle = '#6b7079'; x.lineWidth = 2;
   for (const hw of HIGHWAYS) { x.beginPath(); x.moveTo((hw.x0 + WORLD) / 5, (hw.z0 + WORLD) / 5); x.lineTo((hw.x1 + WORLD) / 5, (hw.z1 + WORLD) / 5); x.stroke(); }
 }
@@ -354,7 +359,7 @@ export function drawMinimap() {
   };
   // far-away landmarks, drawn at a fixed size
   x.font = '16px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (const [e, k] of [['⛰️', 'peak'], ['🏜️', 'pyramid'], ['🏕️', 'cabin'], ['🌴', 'oasis'], ['✈️', 'airport']]) {
+  for (const [e, k] of [['⛰️', 'peak'], ['🏜️', 'pyramid'], ['🏕️', 'cabin'], ['🌴', 'oasis'], ['✈️', 'airport'], ['🏙️', 'city'], ['🏡', 'suburb']]) {
     const l = LOC[k]; if (!l) continue;
     const dx = l.x - P.x, dz = l.z - P.z, cs = Math.cos(G.cam.yaw), sn = Math.sin(G.cam.yaw);
     const sx = (dx * cs - dz * sn) * zoom, sy = (dx * sn + dz * cs) * zoom;

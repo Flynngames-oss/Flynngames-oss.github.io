@@ -41,6 +41,15 @@ export const HIGHWAYS = [
 ];
 export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 520, z: -640, r: 45 }, { x: 620, z: 700, r: 90 }];
 const BAY = { x0: 200, x1: 520, z0: -170, z1: 170 };
+// Flat building zones: Mega City (west) and the Suburbs (north-east)
+export const ZONES = {
+  city: { x0: -660, x1: -200, z0: -190, z1: 250 },
+  suburb: { x0: 140, x1: 560, z0: 185, z1: 440 },
+};
+export function inZone(x, z, m = 0) {
+  for (const k in ZONES) { const r = ZONES[k]; if (x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m) return k; }
+  return null;
+}
 
 function segDist(x, z, s) {
   const dx = s.x1 - s.x0, dz = s.z1 - s.z0;
@@ -75,6 +84,12 @@ function rawHeight(x, z) {
   let dr = 1e9;
   for (const hw of HIGHWAYS) dr = Math.min(dr, segDist(x, z, hw));
   h = mix(profile, h, sm(12, 90, dr));
+  // flat building zones
+  for (const k in ZONES) {
+    const r = ZONES[k];
+    const zx = Math.max(r.x0 - x, 0, x - r.x1), zz = Math.max(r.z0 - z, 0, z - r.z1);
+    h = mix(0, h, sm(0, 70, Math.hypot(zx, zz)));
+  }
   // flat town in the middle
   h *= sm(LAND + 8, 330, r);
   // bay east of town (where the pier is)

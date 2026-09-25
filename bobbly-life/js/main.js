@@ -8,7 +8,9 @@ import { updateProps, kickProps, spawnPresents, updatePresents, updateTrees, hit
 import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './jobs.js';
 import * as UI from './ui.js';
 import * as NET from './net.js';
-import { initAudio, sfx, setEngine } from './audio.js';
+import { initAudio, sfx, setEngine, setMusic, musicPlaying } from './audio.js';
+import { initTraffic, updateTraffic } from './traffic.js';
+import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
@@ -49,8 +51,8 @@ const WV = [
   ['scooter', 46, -10, 0], ['scooter', 46, -6, 0], ['scooter', 46, -2, 0], ['scooter', 46, 2, 0],
   ['taxi', -46, -9, Math.PI / 2], ['taxi', -46, 0, Math.PI / 2], ['taxi', -46, 9, Math.PI / 2],
   ['firetruck', 50, 68, 0], ['garbage', 42, -72, 0], ['pickup', -104, 16, Math.PI / 2], ['pickup', -92, -60, 0],
-  ['icecream', -44, 46, Math.PI / 2], ['monster', -48, -40, Math.PI], ['sports', 27.5, -12, 0], ['sedan', -27.5, 14, Math.PI],
-  ['police', 27.5, 16, 0], ['sedan', 92.5, 40, 0], ['sedan', -87.5, -20, Math.PI], ['sedan', 32.5, 120, 0], ['pickup', 150, 60, 0],
+  ['icecream', -44, 46, Math.PI / 2], ['monster', -48, -40, Math.PI], ['sports', 21, -12, 0], ['sedan', -21, 14, Math.PI],
+  ['police', 21, 16, 0], ['sedan', 99, 40, 0], ['sedan', -81, -20, Math.PI], ['sedan', 39, 120, 0], ['pickup', 159, 60, 0],
   ['boat', 200, 14, Math.PI / 2], ['boat', 205, -14, Math.PI / 2], ['heli', -76, -78, 0], ['sports', -150, -28, 0],
   ['biplane', -122, 164, Math.PI / 2], ['jet', -138, 171.5, Math.PI / 2],
 ];
@@ -62,8 +64,9 @@ WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color
 });
 
 // NPCs
-for (let i = 0; i < 20; i++) {
-  const s = pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160));
+initTraffic(14);
+for (let i = 0; i < 44; i++) {
+  const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
   const n = new Character(randomOutfit(), { isNPC: true });
   n.place(s.x + rand(-1, 1), 0, s.z + rand(-1, 1), rand(0, 6.28));
   n.respawn = () => n.place(LOC.spawn.x + rand(-5, 5), 0, LOC.spawn.z + rand(-5, 5));
@@ -137,6 +140,7 @@ function onKey(code) {
     else { stopFishing(); player.flop(null, 0.8); player.holdRag = true; }
   }
   if (code === 'KeyJ') quitJob();
+  if (code === 'KeyM') { G.save.music = !musicPlaying(); setMusic(G.save.music); writeSave(); UI.toast(G.save.music ? '🎵 Music on' : '🔇 Music off'); }
   if (code === 'KeyV') {
     G.cam.fp = !G.cam.fp;
     G.cam.pitch = G.cam.fp ? 0 : 0.35;
@@ -214,6 +218,7 @@ function nearestInteract() {
   const P = player.root;
   let best = null, bd = 1e9;
   for (const it of G.interacts) {
+    if (it.minY !== undefined && P.y < it.minY) continue;
     const d = Math.hypot(P.x - it.x, P.z - it.z);
     if (d < it.r && d < bd) { bd = d; best = it; }
   }
@@ -602,6 +607,7 @@ applyGraphics();
 
 function startGame() {
   initAudio();
+  if (G.save.music !== false) setMusic(true);
   G.started = true;
   $('title').classList.add('hidden');
   $('hud').classList.remove('hidden');
@@ -648,7 +654,12 @@ function controlPlayer(dt) {
   if (l > 1) { mx /= l; mz /= l; }
   p.ctrl.mx = mx; p.ctrl.mz = mz;
   p.ctrl.run = !!(K.ShiftLeft || K.ShiftRight) || (isTouch && l > 0.9);
-  if (!G.ui.fishing && space && !p.prevSpace) p.ctrl.jump = true;
+  if (!G.ui.fishing && space && !p.prevSpace) {
+    if (!p.grounded && !p.chute && !p.swimming && p.vel.y < -4 && p.root.y - groundHeight(p.root.x, p.root.z, p.root.y) > 5) {
+      p.chute = true; sfx.pop();
+      if (!G.seenChute) { G.seenChute = true; UI.toast('🪂 Parachute open! Steer with WASD.'); }
+    } else p.ctrl.jump = true;
+  }
   p.prevSpace = space;
   p.ctrl.grab = !blocked && (G.mouse.grab || G.mouse.grabLock) && !p.ragdoll;
   p.ctrl.aim = (p.weapon || G.cam.fp) && !p.fishing ? G.cam.yaw + Math.PI : null;
@@ -781,6 +792,7 @@ function loop(now) {
 
   controlPlayer(dt);
   if (G.started) updateGrab();
+  updateTraffic(dt, (ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
   for (const v of G.vehicles) if (!(v.driver === player && player.seat === 0)) v.update(dt); else v.sync();
   bumpVehicles();
   updateNPCs(dt);
@@ -797,7 +809,7 @@ function loop(now) {
       if (hat) G.save.ownedHats.push(hat);
       import('./character.js').then(({ HATS }) => {
         const h = HATS.find(x => x.id === hat);
-        UI.toast(`🎁 Present ${G.save.presents.length}/32! +$50${h ? ' and a free ' + h.name + '!' : ''}`, 'money', 6000);
+        UI.toast(`🎁 Present ${G.save.presents.length}/${PRESENT_SPOTS.length}! +$50${h ? ' and a free ' + h.name + '!' : ''}`, 'money', 6000);
       });
       G.save.money += 50; writeSave();
       void pr;
