@@ -51,6 +51,8 @@ export function defaultSave() {
     ownedHats: ['none', 'cap'],
     ownedGlasses: ['none'],
     ownedCars: ['sedan'],
+    ownedWeapons: [],
+    weapon: null,
     house: false,
     presents: [],
     raceBest: 0,

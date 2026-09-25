@@ -5,6 +5,7 @@ import { VTYPES } from './vehicles.js';
 import { JOBS, startJob } from './jobs.js';
 import { LOC, ROADS, colliders } from './world.js';
 import { sfx } from './audio.js';
+import { WEAPONS } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -129,16 +130,40 @@ function dealerPanel() {
   });
 }
 
+function blasterPanel() {
+  openPanel('🔫 Blaster Shop', (el) => {
+    el.innerHTML = `<p>Toy blasters make people flop over! Press <b>G</b> to switch blasters, <b>Left Click</b> to shoot.</p><div class="grid">${Object.entries(WEAPONS).map(([id, w]) => {
+      const owned = G.save.ownedWeapons.includes(id);
+      const eq = G.player.weapon === id;
+      return `<div class="item ${owned ? 'owned' : ''} ${eq ? 'equipped' : ''}" data-id="${id}"><span class="emo">${w.emo}</span>${w.name}<div class="small">${w.desc}</div><div class="price">${eq ? 'Equipped' : owned ? 'Owned — tap to equip' : '$' + w.price}</div></div>`;
+    }).join('')}</div>`;
+    el.querySelectorAll('.item').forEach(it => it.onclick = () => {
+      const id = it.dataset.id, w = WEAPONS[id];
+      if (!G.save.ownedWeapons.includes(id)) {
+        if (G.save.money < w.price) { toast('Not enough money! 💸 Do some jobs first.', 'bad'); sfx.bad(); return; }
+        addMoney(-w.price, `Bought ${w.name}!`);
+        G.save.ownedWeapons.push(id);
+        sfx.win();
+      }
+      G.equipWeapon(G.player.weapon === id ? null : id);
+      rerender();
+    });
+  });
+}
+
 function phonePanel() {
   openPanel('📱 Bobbly Phone', (el) => {
     const s = G.save;
     el.innerHTML = `
       <h3>🚗 My Vehicles</h3>
       <div class="grid">${s.ownedCars.map(id => `<div class="item owned" data-car="${id}"><span class="emo">${VTYPES[id].emo}</span>${VTYPES[id].name}<div class="price">Spawn</div></div>`).join('')}</div>
+      ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}
       <h3>💼 Jobs &amp; Activities</h3>
       <div class="grid">${Object.entries(JOBS).map(([id, j]) => `<div class="item" data-job="${id}"><span class="emo">${j.emo}</span>${j.name}<div class="small">${j.desc}</div><div class="price">${G.job && G.job.id === id ? 'Active' : 'Set waypoint'}</div></div>`).join('')}
         <div class="item" data-wp="clothing"><span class="emo">👕</span>Clothing Store<div class="price">Set waypoint</div></div>
         <div class="item" data-wp="dealer"><span class="emo">🚗</span>Car Dealer<div class="price">Set waypoint</div></div>
+        <div class="item" data-wp="airport"><span class="emo">✈️</span>Airport<div class="price">Set waypoint</div></div>
+        <div class="item" data-wp="blasters"><span class="emo">🔫</span>Blaster Shop<div class="price">Set waypoint</div></div>
         <div class="item" data-wp="mansion"><span class="emo">🏠</span>Dream House<div class="price">${s.house ? 'Your home' : '$2000'}</div></div>
       </div>
       <h3>📊 Stats</h3>
@@ -149,6 +174,7 @@ function phonePanel() {
         <button class="btn small gray" id="phWp">❌ Clear waypoint</button>
         <button class="btn small gray" id="phHelp">❓ Help</button>
       </div>`;
+    el.querySelectorAll('[data-wpn]').forEach(b => b.onclick = () => { G.equipWeapon(G.player.weapon === b.dataset.wpn ? null : b.dataset.wpn); rerender(); });
     el.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { closePanel(); G.spawnMyVehicle(b.dataset.car); });
     el.querySelectorAll('[data-job]').forEach(b => b.onclick = () => { G.waypoint = JOBS[b.dataset.job].loc; toast('📍 Waypoint set: ' + JOBS[b.dataset.job].name); closePanel(); });
     el.querySelectorAll('[data-wp]').forEach(b => b.onclick = () => { G.waypoint = LOC[b.dataset.wp]; toast('📍 Waypoint set!'); closePanel(); });
@@ -220,7 +246,7 @@ function buildMapBase() {
   for (const t of G.trees) { x.beginPath(); x.arc(W(t.x), W(t.z), 1.6, 0, 7); x.fill(); }
   x.font = '14px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   const icons = [['🍕', LOC.pizza], ['🚕', LOC.taxi], ['👕', LOC.clothing], ['🚗', LOC.dealer], ['🚒', LOC.fire], ['♻️', LOC.recycle],
-    ['🪓', LOC.sawmill], ['🎣', LOC.fishing], ['🐟', LOC.fishMarket], ['🏁', LOC.race], ['🏠', LOC.mansion], ['🌳', LOC.park], ['⛲', { x: 0, z: 0 }]];
+    ['🪓', LOC.sawmill], ['🎣', LOC.fishing], ['🐟', LOC.fishMarket], ['🏁', LOC.race], ['🏠', LOC.mansion], ['🌳', LOC.park], ['⛲', { x: 0, z: 0 }], ['✈️', LOC.airport], ['🔫', LOC.blasters]];
   for (const [e, l] of icons) x.fillText(e, W(l.x), W(l.z));
 }
 
@@ -299,6 +325,8 @@ export function initUI() {
   G.interacts.push(
     { x: LOC.clothing.x, z: LOC.clothing.z, r: 5, label: () => '👕 Shop for clothes', action: () => clothingPanel('👕 Bobbly Boutique') },
     { x: LOC.dealer.x, z: LOC.dealer.z, r: 5, label: () => '🚗 Browse vehicles', action: dealerPanel },
+    { x: LOC.blasters.x, z: LOC.blasters.z, r: 4, label: () => '🔫 Shop for blasters', action: blasterPanel },
+    { x: LOC.airport.x + 10, z: LOC.airport.z + 9, r: 4, label: () => '✈️ Buy planes (Car Dealer)', action: dealerPanel },
     {
       x: LOC.mansion.x, z: LOC.mansion.z + 4, r: 4.5,
       label: () => G.save.house ? '🏠 Your Dream House (spawn point)' : '🏠 Buy the Dream House ($2000)',

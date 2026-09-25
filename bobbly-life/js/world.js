@@ -199,6 +199,8 @@ export const LOC = {
   sawmill: { x: -108, z: -12 },
   logZone: { x: -106, z: 0, w: 12, d: 14 },
   fishing: { x: 229, z: 0 },
+  airport: { x: -135, z: 168 },
+  blasters: { x: -71, z: -44 },
   fishMarket: { x: 168, z: 10, w: 8, d: 5 },
   mansion: { x: 62, z: 108 },
   wardrobe: { x: 50, z: 112 },
@@ -250,7 +252,8 @@ function buildLamps() {
   for (const r of ROADS) {
     for (let t = -LAND + 10; t < LAND; t += 26) {
       if (ROADS.some(q => Math.abs(q - t) < 8)) continue;
-      lampPos.push([r + 6, t], [t, r - 6]);
+      if (Math.abs(t) < 156) lampPos.push([r + 6, t]);
+      lampPos.push([t, r - 6]);
     }
   }
   const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.14, 5, 6), mat('#4a4f5a'), lampPos.length);
@@ -537,7 +540,22 @@ export function buildWorld() {
   for (let z = -160; z <= 160; z += 22) if (Math.abs(z) > 12) umbrella(172 + rand(-3, 3), z, pick(umb));
   for (let x = -160; x <= 160; x += 22) umbrella(x, -172 + rand(-3, 3), pick(umb));
   for (let z = -170; z <= 170; z += 18) addTree(-172 + rand(-4, 4), z, 'pine');
-  for (let x = -170; x <= 170; x += 20) addTree(x + rand(-3, 3), 173, 'round');
+  for (let x = -170; x <= 170; x += 20) addTree(x + rand(-3, 3), 182, 'round');
+
+  // --- Airport (north edge)
+  flat(0, 0.03, 168, 304, 16, '#3a3e46');
+  for (let x = -145; x <= 145; x += 10) flat(x, 0.035, 168, 5, 0.6, '#ffffff');
+  for (const zz of [161, 175]) flat(0, 0.035, zz, 300, 0.4, '#ffd54a');
+  for (let i = 0; i < 6; i++) flat(-147, 0.035, 162.5 + i * 2.2, 3, 1, '#ffffff');
+  S(CYL, mat('#e8e2d4'), -165, 5, 179, 0, 0, 0, 1.6, 10, 1.6);
+  S(BOX, mat('#bfe6ff'), -165, 11, 179, 0, 0, 0, 5, 2, 5);
+  S(BOX, mat('#4a4f5a'), -165, 12.2, 179, 0, 0, 0, 5.6, 0.4, 5.6);
+  addCollider(-167.5, 0, 176.5, -162.5, 12.4, 181.5);
+  sign('✈️ BOBBLY AIRPORT', -135, 7, 178, '#fff', '#3f6f9e', 2.6);
+
+  // --- Blaster shop (stunt park corner)
+  building(-78, -44, 10, 8, 5, '#b46cff', '#5a2b8b');
+  sign('🔫 BLASTER SHOP', -72.5, 7.5, -44, '#fff', '#8b3fd6', 2.2);
 
   // Lighthouse
   for (let i = 0; i < 6; i++) S(CYL, mat(i % 2 ? '#ffffff' : '#e84a3f'), 172, i * 4 + 2, -172, 0, 0, 0, 3 - i * 0.15, 4, 3 - i * 0.15);
@@ -546,7 +564,6 @@ export function buildWorld() {
   addCollider(169.5, 0, -174.5, 174.5, 24, -169.5);
 
   // Scatter roadside trees in free edge strips
-  for (let i = 0; i < 20; i++) addTree(rand(-165, 165), rand(155, 168));
   for (let i = 0; i < 16; i++) addTree(rand(-168, -156), rand(-150, 150));
 
   buildTrees();
