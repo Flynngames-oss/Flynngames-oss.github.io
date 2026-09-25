@@ -20,6 +20,11 @@ export const HATS = [
   { id: 'viking', name: 'Viking Helmet', price: 300, emo: '🪓' },
   { id: 'halo', name: 'Halo', price: 500, emo: '😇' },
   { id: 'crown', name: 'Crown', price: 800, emo: '👑' },
+  { id: 'pirate', name: 'Pirate Hat', price: 260, emo: '🏴‍☠️' },
+  { id: 'police', name: 'Police Cap', price: 200, emo: '👮' },
+  { id: 'santa', name: 'Santa Hat', price: 150, emo: '🎅' },
+  { id: 'knight', name: 'Knight Helmet', price: 450, emo: '🛡️' },
+  { id: 'astro', name: 'Space Helmet', price: 600, emo: '👩‍🚀' },
 ];
 export const GLASSES = [
   { id: 'none', name: 'None', price: 0, emo: '🙂' },
@@ -85,10 +90,90 @@ export function makeHat(id) {
     }
     case 'viking': add(HALFBALL, '#9aa4b1', 0, 0.1, 0, 0.45, 0.4, 0.45); for (const s of [-1, 1]) add(CONE, '#fff6e0', s * 0.5, 0.35, 0, 0.09, 0.4, 0.09, 0, 0, -s * 1.1); break;
     case 'halo': { const t = mk(new THREE.TorusGeometry(0.3, 0.04, 8, 20), mat('#ffe066', { emissive: '#ffd000', emissiveIntensity: 0.8 })); t.rotation.x = Math.PI / 2; t.position.y = 0.72; g.add(t); break; }
+    case 'pirate': { const h = add(LIMB, '#222222', 0, 0.42, 0, 0.62, 0.22, 0.34); h.rotation.x = 0.1; add(BALL, '#ffffff', 0, 0.46, 0.33, 0.08, 0.08, 0.02); add(LIMB, '#222222', 0, 0.3, 0, 0.46, 0.06, 0.46); break; }
+    case 'police': add(LIMB, '#1f3f8f', 0, 0.36, 0, 0.44, 0.2, 0.44); add(LIMB, '#111', 0, 0.24, 0.3, 0.3, 0.03, 0.2); add(BALL, '#ffd54a', 0, 0.38, 0.42, 0.06, 0.06, 0.02); break;
+    case 'santa': add(CONE, '#e84a3f', 0.05, 0.62, -0.05, 0.38, 0.6, 0.38, -0.35); add(LIMB, '#ffffff', 0, 0.3, 0, 0.45, 0.1, 0.45); add(BALL, '#ffffff', 0.06, 0.82, -0.3, 0.1, 0.1, 0.1); break;
+    case 'knight': add(HALFBALL, '#c0c0c0', 0, 0.02, 0, 0.47, 0.5, 0.47); add(LIMB, '#c0c0c0', 0, -0.05, 0, 0.47, 0.2, 0.47); add(LIMB, '#333', 0, 0.05, 0.4, 0.3, 0.04, 0.1); add(CONE, '#e84a3f', 0, 0.6, 0, 0.06, 0.3, 0.06); break;
+    case 'astro': add(BALL, '#bfe6ff', 0, 0, 0, 0.56, 0.56, 0.56, 0, 0, 0, { transparent: true, opacity: 0.35 }); add(LIMB, '#ffffff', 0, -0.45, 0, 0.5, 0.12, 0.5); break;
     case 'crown': add(LIMB, '#ffcc22', 0, 0.42, 0, 0.3, 0.2, 0.3); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; add(CONE, '#ffcc22', Math.sin(a) * 0.26, 0.6, Math.cos(a) * 0.26, 0.07, 0.18, 0.07); } add(BALL, '#e84a3f', 0, 0.42, 0.3, 0.05, 0.05, 0.03); break;
   }
   return g;
 }
+
+// Costume extras. Spec is "name" or "name:#color".
+export function makeExtras(list = [], o = {}) {
+  const head = new THREE.Group(), body = new THREE.Group();
+  const CONE = new THREE.ConeGeometry(1, 1, 10);
+  const add = (g, geo, color, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0, opts) => {
+    const m = mk(geo, mat(color, opts), sx, sy, sz); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); g.add(m); return m;
+  };
+  for (const spec of list) {
+    const [id, col] = spec.split(':');
+    const c = col || o.shirt || '#888';
+    switch (id) {
+      case 'antenna': add(head, LIMB, '#4a4f5a', 0, 0.55, 0, 0.025, 0.3, 0.025); add(head, BALL, col || '#ff5b6e', 0, 0.72, 0, 0.07, 0.07, 0.07, 0, 0, 0, { emissive: col || '#ff2040', emissiveIntensity: 0.6 }); break;
+      case 'antennae': for (const sx of [-1, 1]) { add(head, LIMB, '#222', sx * 0.14, 0.52, 0, 0.02, 0.35, 0.02, 0, 0, -sx * 0.35); add(head, BALL, col || '#222', sx * 0.24, 0.68, 0, 0.06, 0.06, 0.06); } break;
+      case 'catears': for (const sx of [-1, 1]) add(head, CONE, c, sx * 0.24, 0.38, 0, 0.12, 0.26, 0.08, 0, 0, -sx * 0.35); break;
+      case 'horns': for (const sx of [-1, 1]) add(head, CONE, col || '#fff6e0', sx * 0.22, 0.4, 0.05, 0.07, 0.25, 0.07, 0, 0, -sx * 0.5); break;
+      case 'nose': add(head, BALL, col || '#ff2040', 0, -0.02, 0.44, 0.09, 0.09, 0.09); break;
+      case 'beak': add(head, CONE, col || '#ff8a3d', 0, -0.06, 0.5, 0.1, 0.22, 0.06, Math.PI / 2); break;
+      case 'carrot': add(head, CONE, '#ff7a1a', 0, -0.02, 0.56, 0.06, 0.32, 0.06, Math.PI / 2); break;
+      case 'mask': add(head, new THREE.CylinderGeometry(1, 1, 1, 18, 1, true), col || '#222', 0, 0.07, 0, 0.435, 0.13, 0.435, 0, 0, 0, { side: THREE.DoubleSide }); break;
+      case 'visor': add(head, BOX_G, col || '#3fd6d0', 0, 0.06, 0.39, 0.55, 0.12, 0.06, 0, 0, 0, { emissive: col || '#3fd6d0', emissiveIntensity: 0.8 }); break;
+      case 'stem': add(head, LIMB, '#6b4a2b', 0, 0.48, 0, 0.05, 0.16, 0.05); add(head, BALL, '#46c25a', 0.1, 0.5, 0, 0.12, 0.03, 0.07); break;
+      case 'cape': add(body, BOX_G, col || '#e84a3f', 0, 0.3, -0.5, 0.95, 1.2, 0.04, 0.18); break;
+      case 'tail': { const t = add(body, LIMB, c, 0, -0.05, -0.62, 0.09, 0.55, 0.09, -1.1); t.userData.tail = true; add(body, BALL, c, 0, -0.18, -0.86, 0.1, 0.1, 0.1); break; }
+      case 'backpack': add(body, BOX_G, col || '#9aa4b1', 0, 0.4, -0.52, 0.6, 0.7, 0.28); break;
+      case 'wings': for (const sx of [-1, 1]) add(body, BALL, col || '#ffffff', sx * 0.4, 0.6, -0.5, 0.35, 0.18, 0.04, 0, sx * 0.5, sx * 0.4, { transparent: true, opacity: 0.85 }); break;
+      case 'spikes': for (let i = 0; i < 4; i++) add(body, CONE, col || '#ffd54a', 0, -0.05 + i * 0.28, -0.46 + Math.sin(i / 3) * 0.02, 0.09, 0.2, 0.09, -Math.PI / 2); break;
+      case 'stripes': for (const y of [0.1, 0.45, 0.8]) add(body, new THREE.TorusGeometry(0.46, 0.06, 6, 18), col || '#222', 0, y, 0, 1, 1, 1, Math.PI / 2); break;
+      case 'belly': add(body, BALL, col || '#ffffff', 0, 0.3, 0.32, 0.34, 0.5, 0.18); break;
+      case 'fin': add(body, CONE, c, 0, 1.0, -0.3, 0.06, 0.45, 0.25, -0.3); break;
+      case 'shell': add(body, HALFBALL, col || '#3f8a4a', 0, 0.35, -0.3, 0.5, 0.6, 0.5, -Math.PI / 2); break;
+    }
+  }
+  return { head, body };
+}
+const BOX_G = new THREE.BoxGeometry(1, 1, 1);
+
+// Full costumes. hat/glasses they use become owned when you buy the skin.
+export const SKINS = [
+  { id: 'classic', name: 'Classic Bobbler', emo: '🙂', price: 0, o: { skin: '#ffcf4a', shirt: '#3fa7ff', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'round', extras: [] } },
+  { id: 'robot', name: 'Robot', emo: '🤖', price: 300, o: { skin: '#b8c4d6', shirt: '#9aa4b1', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'big', extras: ['antenna', 'visor', 'backpack:#6b7079'] } },
+  { id: 'alien', name: 'Alien', emo: '👽', price: 300, o: { skin: '#9be05a', shirt: '#b46cff', pants: '#6c4bd6', hat: 'none', glasses: 'none', eyes: 'big', extras: ['antennae:#9be05a'] } },
+  { id: 'ninja', name: 'Ninja', emo: '🥷', price: 250, o: { skin: '#f2c9a0', shirt: '#222222', pants: '#222222', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['mask:#222222'] } },
+  { id: 'pirate', name: 'Pirate', emo: '🏴‍☠️', price: 250, o: { skin: '#f2c9a0', shirt: '#ffffff', pants: '#6b4a2b', hat: 'pirate', glasses: 'none', eyes: 'angry', extras: [] } },
+  { id: 'astronaut', name: 'Astronaut', emo: '👩‍🚀', price: 500, o: { skin: '#f2c9a0', shirt: '#ffffff', pants: '#e8e8e8', hat: 'astro', glasses: 'none', eyes: 'round', extras: ['backpack:#e8e8e8'] } },
+  { id: 'dino', name: 'Dino', emo: '🦖', price: 400, o: { skin: '#46c25a', shirt: '#46c25a', pants: '#3f9e52', hat: 'none', glasses: 'none', eyes: 'big', extras: ['spikes', 'tail', 'belly:#ffe7b8'] } },
+  { id: 'cat', name: 'Cat', emo: '🐱', price: 250, o: { skin: '#ff8a3d', shirt: '#ff8a3d', pants: '#ff8a3d', hat: 'none', glasses: 'none', eyes: 'happy', extras: ['catears', 'tail', 'belly'] } },
+  { id: 'bee', name: 'Bee', emo: '🐝', price: 300, o: { skin: '#ffcf4a', shirt: '#ffcf4a', pants: '#222222', hat: 'none', glasses: 'none', eyes: 'big', extras: ['stripes', 'wings', 'antennae'] } },
+  { id: 'penguin', name: 'Penguin', emo: '🐧', price: 300, o: { skin: '#2b2f36', shirt: '#2b2f36', pants: '#2b2f36', hat: 'none', glasses: 'none', eyes: 'round', extras: ['belly', 'beak'] } },
+  { id: 'frog', name: 'Frog', emo: '🐸', price: 200, o: { skin: '#46c25a', shirt: '#46c25a', pants: '#46c25a', hat: 'none', glasses: 'none', eyes: 'big', extras: ['belly:#b8f08a'] } },
+  { id: 'bunny', name: 'Bunny', emo: '🐰', price: 250, o: { skin: '#ffffff', shirt: '#ffffff', pants: '#ffd6e8', hat: 'bunny', glasses: 'none', eyes: 'happy', extras: ['tail:#ffffff', 'nose:#ff8fb0'] } },
+  { id: 'panda', name: 'Panda', emo: '🐼', price: 350, o: { skin: '#ffffff', shirt: '#222222', pants: '#222222', hat: 'none', glasses: 'nerd', eyes: 'round', extras: ['catears:#222222', 'belly'] } },
+  { id: 'fox', name: 'Fox', emo: '🦊', price: 300, o: { skin: '#ff7a1a', shirt: '#ff7a1a', pants: '#4a2b1a', hat: 'none', glasses: 'none', eyes: 'happy', extras: ['catears:#ff7a1a', 'tail:#ff7a1a', 'belly'] } },
+  { id: 'shark', name: 'Shark', emo: '🦈', price: 450, o: { skin: '#8fa3b8', shirt: '#8fa3b8', pants: '#8fa3b8', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['fin', 'tail', 'belly'] } },
+  { id: 'turtle', name: 'Turtle', emo: '🐢', price: 300, o: { skin: '#9be05a', shirt: '#9be05a', pants: '#6b8a3a', hat: 'none', glasses: 'none', eyes: 'sleepy', extras: ['shell'] } },
+  { id: 'hero', name: 'Super Hero', emo: '🦸', price: 400, o: { skin: '#f2c9a0', shirt: '#3f6fff', pants: '#e84a3f', hat: 'none', glasses: 'none', eyes: 'round', extras: ['cape', 'mask:#e84a3f'] } },
+  { id: 'vampire', name: 'Vampire', emo: '🧛', price: 350, o: { skin: '#e6e6f0', shirt: '#222222', pants: '#222222', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['cape:#8b1a2a'] } },
+  { id: 'devil', name: 'Little Devil', emo: '😈', price: 400, o: { skin: '#e84a3f', shirt: '#b8322a', pants: '#222222', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['horns', 'tail:#b8322a'] } },
+  { id: 'angel', name: 'Angel', emo: '😇', price: 500, o: { skin: '#ffe7d0', shirt: '#ffffff', pants: '#ffffff', hat: 'halo', glasses: 'none', eyes: 'happy', extras: ['wings'] } },
+  { id: 'king', name: 'King', emo: '🤴', price: 1000, o: { skin: '#f2c9a0', shirt: '#ffcc22', pants: '#8b1a2a', hat: 'crown', glasses: 'none', eyes: 'round', extras: ['cape:#8b1a2a'] } },
+  { id: 'knight', name: 'Knight', emo: '🛡️', price: 600, o: { skin: '#f2c9a0', shirt: '#9aa4b1', pants: '#6b7079', hat: 'knight', glasses: 'none', eyes: 'angry', extras: ['cape:#3f6fff'] } },
+  { id: 'wizard', name: 'Wizard', emo: '🧙', price: 450, o: { skin: '#f2c9a0', shirt: '#5a2b8b', pants: '#5a2b8b', hat: 'witch', glasses: 'nerd', eyes: 'round', extras: ['cape:#3f2b6b'] } },
+  { id: 'clown', name: 'Clown', emo: '🤡', price: 200, o: { skin: '#ffffff', shirt: '#ff5b6e', pants: '#3fa7ff', hat: 'party', glasses: 'none', eyes: 'happy', extras: ['nose'] } },
+  { id: 'zombie', name: 'Zombie', emo: '🧟', price: 150, o: { skin: '#9bc48a', shirt: '#6b7a5a', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'sleepy', extras: [] } },
+  { id: 'snowman', name: 'Snowman', emo: '⛄', price: 200, o: { skin: '#ffffff', shirt: '#ffffff', pants: '#ffffff', hat: 'tophat', glasses: 'none', eyes: 'round', extras: ['carrot'] } },
+  { id: 'pumpkin', name: 'Pumpkin Head', emo: '🎃', price: 200, o: { skin: '#ff8a3d', shirt: '#3f9e52', pants: '#2b2f36', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['stem'] } },
+  { id: 'santa', name: 'Santa', emo: '🎅', price: 300, o: { skin: '#f2c9a0', shirt: '#e84a3f', pants: '#e84a3f', hat: 'santa', glasses: 'none', eyes: 'happy', extras: ['belly:#ffffff', 'backpack:#8b5a2b'] } },
+  { id: 'chef', name: 'Chef', emo: '👨‍🍳', price: 150, o: { skin: '#f2c9a0', shirt: '#ffffff', pants: '#4a4f5a', hat: 'chef', glasses: 'none', eyes: 'happy', extras: [] } },
+  { id: 'police', name: 'Police Officer', emo: '👮', price: 250, o: { skin: '#f2c9a0', shirt: '#1f3f8f', pants: '#1f2f5f', hat: 'police', glasses: 'sun', eyes: 'round', extras: [] } },
+  { id: 'firefighter', name: 'Firefighter', emo: '🧑‍🚒', price: 250, o: { skin: '#f2c9a0', shirt: '#e84a3f', pants: '#4a4f5a', hat: 'hardhat', glasses: 'none', eyes: 'round', extras: ['backpack:#ffd54a'] } },
+  { id: 'cowboy', name: 'Cowboy', emo: '🤠', price: 250, o: { skin: '#f2c9a0', shirt: '#b8322a', pants: '#3f5f8b', hat: 'cowboy', glasses: 'none', eyes: 'round', extras: [] } },
+  { id: 'viking', name: 'Viking', emo: '⚔️', price: 350, o: { skin: '#f2c9a0', shirt: '#8b5a2b', pants: '#4a2b1a', hat: 'viking', glasses: 'none', eyes: 'angry', extras: ['cape:#6b4a2b'] } },
+  { id: 'gold', name: 'Golden Bobbler', emo: '🏆', price: 2000, o: { skin: '#ffcc22', shirt: '#ffcc22', pants: '#e6b400', hat: 'crown', glasses: 'diamond', eyes: 'happy', extras: [] } },
+  { id: 'shadow', name: 'Shadow', emo: '🌑', price: 800, o: { skin: '#1a1a22', shirt: '#1a1a22', pants: '#1a1a22', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['visor:#ff2040'] } },
+];
 
 export function makeGlasses(id) {
   const g = new THREE.Group();
@@ -136,6 +221,7 @@ function makeFace(eyes) {
 }
 
 export function randomOutfit() {
+  if (Math.random() < 0.3) { const sk = pick(SKINS.slice(1)); return { ...sk.o, extras: [...sk.o.extras] }; }
   return {
     skin: pick(['#ffcf4a', '#f2c9a0', '#ffd6e8', '#9be05a', '#3fd6d0', '#ffb36b', '#b46cff', '#ff8fb0', '#c68b59', '#8b5a2b']),
     shirt: pick(COLORS), pants: pick(COLORS),
@@ -216,6 +302,9 @@ export class Character {
     this.faceObj = makeFace(o.eyes); this.head.add(this.faceObj);
     this.hatObj = makeHat(o.hat); this.head.add(this.hatObj);
     this.glassesObj = makeGlasses(o.glasses); this.head.add(this.glassesObj);
+    if (this.extras) { this.head.remove(this.extras.head); this.body.remove(this.extras.body); }
+    this.extras = makeExtras((Array.isArray(o.extras) ? o.extras : []).filter(x => typeof x === 'string').slice(0, 8), o);
+    this.head.add(this.extras.head); this.body.add(this.extras.body);
   }
 
   setName(name) {
@@ -359,7 +448,7 @@ export class Character {
         this.root.y = gh; this.vel.y = 0; this.grounded = true;
       }
     } else this.grounded = false;
-    if (this.root.y < -30 || Math.abs(this.root.x) > 900 || Math.abs(this.root.z) > 900) this.respawn && this.respawn();
+    if (this.root.y < -30 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500) this.respawn && this.respawn();
   }
 
   computeTargets(dt) {
@@ -520,6 +609,7 @@ export class Character {
     this.shoeL.quaternion.copy(this.body.quaternion); this.shoeR.quaternion.copy(this.body.quaternion);
     this.shoeL.position.addScaledVector(_fwd, 0.08); this.shoeR.position.addScaledVector(_fwd, 0.08);
     // spinning propeller hat
+    if (this.extras) for (const c of this.extras.body.children) if (c.userData.tail) c.rotation.z = Math.sin(G.time * 8 + this.phase) * 0.35;
     const pr = this.hatObj && this.hatObj.children.find(c => c.userData.spin);
     if (pr) pr.rotation.y += 0.3 + Math.min(1, this.vel.length() / 5) * 0.5;
     // tools

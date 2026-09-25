@@ -65,10 +65,10 @@ function rawHeight(x, z) {
   const hills = fbm(x / 180 + 10, z / 180, 4);
   const ridge = ridged(x / 320 + 5, z / 320 + 2, 5);
   const dunes = Math.sin(x / 38 + fbm(x / 200, z / 200, 2) * 7) * 0.5 + 0.5;
-  const profile = 8 + low * 0.6 + b.north * 25;
+  const profile = 14 + (low + 25) * 0.4 + b.north * 30;
   let h = profile;
   h += b.west * (hills - 0.3) * 60;
-  h += b.north * Math.pow(ridge, 1.6) * 240;
+  h += b.north * (Math.pow(ridge, 1.3) * 330 + fbm(x / 90, z / 90, 3) * 25);
   h += b.south * (dunes * 7 + (hills - 0.5) * 22);
   h += b.east * (hills - 0.5) * 22;
   // gentle corridors along the highways

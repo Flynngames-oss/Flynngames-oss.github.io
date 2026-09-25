@@ -304,7 +304,7 @@ function buildLandmarks() {
   const top1 = stepPyramid(140, -720, 70, 10, '#e6c27a');
   stepPyramid(260, -800, 44, 8, '#dcb56a');
   sign('🏜️ Bobbly Pyramids', 140, top1 + 6, -720, '#fff', '#c8963e', 3);
-  LOC.pyramid = { x: 140, z: -684, top: top1 };
+  LOC.pyramid = { x: 140, z: -665, top: top1 };
   // Oasis
   const lk = LAKES[1];
   for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; addTree(lk.x + Math.cos(a) * (lk.r + 6), lk.z + Math.sin(a) * (lk.r + 6), 'round', 1.2); }
