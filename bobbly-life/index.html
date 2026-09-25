@@ -6,24 +6,25 @@
 <title>Bobbly Life</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-    "./js/audio.js": "./js/audio.js?v=7",
-    "./js/character.js": "./js/character.js?v=7",
-    "./js/jobs.js": "./js/jobs.js?v=7",
-    "./js/main.js": "./js/main.js?v=7",
-    "./js/net.js": "./js/net.js?v=7",
-    "./js/props.js": "./js/props.js?v=7",
-    "./js/state.js": "./js/state.js?v=7",
-    "./js/terrain.js": "./js/terrain.js?v=7",
-    "./js/ui.js": "./js/ui.js?v=7",
-    "./js/vehicles.js": "./js/vehicles.js?v=7",
-    "./js/weapons.js": "./js/weapons.js?v=7",
-    "./js/world.js": "./js/world.js?v=7"
+    "./js/audio.js": "./js/audio.js?v=8",
+    "./js/character.js": "./js/character.js?v=8",
+    "./js/jobs.js": "./js/jobs.js?v=8",
+    "./js/main.js": "./js/main.js?v=8",
+    "./js/net.js": "./js/net.js?v=8",
+    "./js/props.js": "./js/props.js?v=8",
+    "./js/state.js": "./js/state.js?v=8",
+    "./js/terrain.js": "./js/terrain.js?v=8",
+    "./js/textures.js": "./js/textures.js?v=8",
+    "./js/ui.js": "./js/ui.js?v=8",
+    "./js/vehicles.js": "./js/vehicles.js?v=8",
+    "./js/weapons.js": "./js/weapons.js?v=8",
+    "./js/world.js": "./js/world.js?v=8"
 } }
 </script>
 </head>
@@ -32,23 +33,31 @@
 
 <!-- ============ TITLE SCREEN ============ -->
 <div id="title">
-  <div class="logo" id="logo"></div>
-  <div class="subtitle">A wobbly, bobbly open world to play with your friends!</div>
-  <div class="card">
+  <div class="title-side">
+    <div class="logo" id="logo"></div>
+    <div class="subtitle">A wobbly, bobbly open world to play with your friends!</div>
+    <div class="menu">
+      <button id="btnSolo" class="mbtn">▶&nbsp; Play</button>
+      <button id="btnHost" class="mbtn blue">🌐&nbsp; Host Multiplayer</button>
+      <div class="joinrow">
+        <input id="codeInput" placeholder="ROOM CODE" maxlength="5">
+        <button id="btnJoin" class="mbtn green">Join</button>
+      </div>
+      <button id="btnCustom" class="mbtn purple">🎨&nbsp; Customize</button>
+      <button id="btnGfx" class="mbtn gray">⚙️&nbsp; Graphics: High</button>
+    </div>
+    <div id="titleMsg"></div>
+    <div class="title-controls">WASD move · Mouse look · Space jump · Shift run · Hold Left Click grab · F slap · G blaster · V first person · R ragdoll · E interact · Tab phone · H help</div>
+  </div>
+  <div id="customCard" class="card hidden">
     <label class="lbl">Your name</label>
     <input id="nameInput" maxlength="14" placeholder="Bobbler">
     <div class="row"><span>Skin</span><div class="swatches" id="swSkin"></div></div>
     <div class="row"><span>Shirt</span><div class="swatches" id="swShirt"></div></div>
     <div class="row"><span>Pants</span><div class="swatches" id="swPants"></div></div>
-    <button id="btnSolo" class="btn big">Play Solo</button>
-    <button id="btnHost" class="btn big blue">Host Multiplayer</button>
-    <div class="joinrow">
-      <input id="codeInput" placeholder="ROOM CODE" maxlength="5">
-      <button id="btnJoin" class="btn big green">Join</button>
-    </div>
-    <div id="titleMsg"></div>
+    <p class="small">More skins, hats and costumes at the clothing store in town!</p>
+    <button id="btnCustomDone" class="mbtn green">✔ Done</button>
   </div>
-  <div class="title-controls">WASD move · Mouse look · Space jump · Shift run · Hold Left Click grab · F slap · G blaster · R ragdoll · E interact / drive · Tab phone · H help</div>
 </div>
 
 <!-- ============ HUD ============ -->
@@ -130,6 +139,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=7"></script>
+<script type="module" src="js/main.js?v=8"></script>
 </body>
 </html>

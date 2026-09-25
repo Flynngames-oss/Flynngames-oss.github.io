@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
+import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
 import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
@@ -125,7 +126,24 @@ function box(x, y0, z, w, h, d, material, collide = true, tag = null) {
   S(BOX, material, x, y0 + h / 2, z, 0, 0, 0, w, h, d);
   if (collide) return addCollider(x - w / 2, y0, z - d / 2, x + w / 2, y0 + h, z + d / 2, tag);
 }
+const flatGeoCache = new Map();
+function flatGeo(w, d, tile) {
+  const k = w + 'x' + d + 'x' + tile;
+  if (!flatGeoCache.has(k)) {
+    const g = new THREE.PlaneGeometry(1, 1);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / tile, uv.getY(i) * d / tile);
+    flatGeoCache.set(k, g);
+  }
+  return flatGeoCache.get(k);
+}
+const GRASSY = ['#86d162', '#5fae4a', '#7ccf5a'];
+const PAVED = ['#d9d4c7', '#eadfc6', '#cfcfcf', '#cfc6b3', '#b9bec7', '#9aa0aa'];
 function flat(x, y, z, w, d, color, ry = 0) {
+  if (typeof color === 'string' && TX) {
+    if (GRASSY.includes(color)) return S(flatGeo(w, d, 6), tmat(color, TX.grass, 'g'), x, y, z, ry, -Math.PI / 2, 0, w, d, 1);
+    if (PAVED.includes(color)) return S(flatGeo(w, d, 3), tmat(color, TX.paving, 'p'), x, y, z, ry, -Math.PI / 2, 0, w, d, 1);
+  }
   S(PLANE, typeof color === 'string' ? mat(color) : color, x, y, z, ry, -Math.PI / 2, 0, w, d, 1);
 }
 
@@ -134,20 +152,19 @@ const nightMats = [];
 const bmatCache = new Map();
 let winTex = null, winEmit = null;
 function makeWindowTextures() {
-  const c = document.createElement('canvas'); c.width = c.height = 64;
-  const x = c.getContext('2d');
-  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 64, 64);
-  x.fillStyle = '#9fc7e8'; x.fillRect(16, 14, 32, 30);
-  x.fillStyle = '#ffffff'; x.fillRect(31, 14, 2, 30);
-  x.fillStyle = '#d9d9d9'; x.fillRect(12, 44, 40, 4);
-  winTex = new THREE.CanvasTexture(c);
-  winTex.wrapS = winTex.wrapT = THREE.RepeatWrapping; winTex.colorSpace = THREE.SRGBColorSpace;
-  const e = document.createElement('canvas'); e.width = e.height = 64;
-  const y = e.getContext('2d');
-  y.fillStyle = '#000'; y.fillRect(0, 0, 64, 64);
-  y.fillStyle = '#ffd98a'; y.fillRect(16, 14, 32, 30);
-  winEmit = new THREE.CanvasTexture(e);
-  winEmit.wrapS = winEmit.wrapT = THREE.RepeatWrapping;
+  const w = wallTextures();
+  winTex = w.map; winEmit = w.emit;
+}
+// Textured material cache (colour + texture)
+const tmatCache = new Map();
+function tmat(color, map, key) {
+  const k = color + key;
+  if (!tmatCache.has(k)) tmatCache.set(k, new THREE.MeshLambertMaterial({ color, map }));
+  return tmatCache.get(k);
+}
+let TX = null;
+function initTextures() {
+  TX = { grass: grassDetail(), paving: pavingTexture(), roof: roofTexture() };
 }
 function bmat(color) {
   if (!bmatCache.has(color)) {
@@ -357,13 +374,7 @@ function buildLamps() {
 
 // ---------------------------------------------------------------- textures
 function roadTexture() {
-  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
-  const x = c.getContext('2d');
-  x.fillStyle = '#555a63'; x.fillRect(0, 0, 64, 64);
-  x.fillStyle = '#ffd54a'; x.fillRect(30, 4, 4, 30);
-  x.fillStyle = '#e8e8e8'; x.fillRect(2, 0, 2, 64); x.fillRect(60, 0, 2, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  const t = asphaltTexture();
   t.repeat.set(1, (LAND * 2) / 10);
   return t;
 }
@@ -372,7 +383,7 @@ function roadTexture() {
 function house(x, z, face, color) {
   const w = 8, d = 7, h = 4.5;
   S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
-  S(CONE4, mat(pick(['#b54a3f', '#6b4a3f', '#3f5f8b', '#4a7a4a'])), x, h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
+  S(CONE4, tmat(pick(['#c75a4a', '#8b5a44', '#4f6f9b', '#5a8a5a']), TX.roof, 'r'), x, h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
   addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.2, z + d / 2);
   // door + path
   const fx = face === 0 ? 1 : face === 1 ? -1 : 0, fz = face === 2 ? 1 : face === 3 ? -1 : 0;
@@ -463,13 +474,20 @@ function umbrella(x, z, color) {
 export function buildWorld() {
   const scene = G.scene;
   makeWindowTextures();
+  initTextures();
 
   // Terrain for the whole island
   buildHeights();
-  buildTerrainMesh(scene);
+  const terr = buildTerrainMesh(scene);
+  TX.grass.repeat.set(1, 1);
+  const gd = TX.grass.clone(); gd.needsUpdate = true; gd.repeat.set(WORLD / 5, WORLD / 5);
+  terr.material.map = gd; terr.material.needsUpdate = true;
 
   // Ocean
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshLambertMaterial({ color: '#2f9be8', transparent: true, opacity: 0.82 }));
+  const waterTex = waterTexture(); waterTex.repeat.set(700, 700);
+  G.waterTex = waterTex;
+  G.sky = makeSky(); scene.add(G.sky);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshPhongMaterial({ color: '#2d8fe0', map: waterTex, transparent: true, opacity: 0.86, shininess: 90, specular: '#ffffff' }));
   water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y;
   scene.add(water);
   G.water = water;
@@ -664,6 +682,8 @@ export function buildWorld() {
 let sun, hemi, amb;
 const skyDay = new THREE.Color('#8fd3ff'), skyDusk = new THREE.Color('#ff9f7a'), skyNight = new THREE.Color('#1b2350');
 const tmpC = new THREE.Color();
+const WHITE = new THREE.Color('#ffffff'), skyTopDay = new THREE.Color('#1f6ad8'), skyTopNight = new THREE.Color('#0a1030');
+export function setShadows(on) { if (sun) sun.castShadow = on; }
 export function buildLights() {
   hemi = new THREE.HemisphereLight('#ffffff', '#6a8a5a', 0.9);
   amb = new THREE.AmbientLight('#ffffff', 0.25);
@@ -685,6 +705,14 @@ export function updateWorld(dt, focus) {
   const dusk = clamp(1 - Math.abs(elev) * 4, 0, 1);
   tmpC.copy(skyNight).lerp(skyDay, day).lerp(skyDusk, dusk * 0.5);
   G.scene.background = tmpC.clone();
+  if (G.sky) {
+    const u = G.sky.material.uniforms;
+    u.horizon.value.copy(tmpC).lerp(WHITE, 0.08 * day);
+    u.top.value.copy(skyTopNight).lerp(skyTopDay, day).lerp(skyDusk, dusk * 0.3);
+    u.sunDir.value.set(Math.cos(a) * 0.8, Math.sin(a), 0.45);
+    G.sky.position.copy(G.camera.position);
+  }
+  if (G.waterTex) { G.waterTex.offset.x = G.time * 0.004; G.waterTex.offset.y = G.time * 0.0025; }
   G.scene.fog.color.copy(tmpC);
   sun.intensity = 0.25 + 1.4 * day;
   hemi.intensity = 0.45 + 0.5 * day;

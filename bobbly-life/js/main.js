@@ -1,7 +1,7 @@
 // Bobbly Life — main loop, player control, camera, multiplayer glue.
 import * as THREE from 'three';
 import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP } from './state.js';
-import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders } from './world.js';
+import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows } from './world.js';
 import { Character, updateNPC, randomOutfit, PARTS } from './character.js';
 import { Vehicle, VTYPES, bumpVehicles, randomCarColor } from './vehicles.js';
 import { updateProps, kickProps, spawnPresents, updatePresents, updateTrees, hitTree, scatterProps, buildPropMesh } from './props.js';
@@ -21,6 +21,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 2200);
 G.scene = scene; G.camera = camera; G.renderer = renderer;
@@ -524,8 +526,9 @@ G.onJobStart = () => { UI.showHelp(false); };
 function buildTitle() {
   const logo = $('logo');
   'BOBBLY LIFE'.split('').forEach((ch, i) => {
+    if (ch === ' ') { logo.appendChild(document.createElement('br')); return; }
     const s = document.createElement('span');
-    s.textContent = ch === ' ' ? ' ' : ch;
+    s.textContent = ch;
     s.style.animationDelay = (i * 0.1) + 's';
     logo.appendChild(s);
   });
@@ -578,9 +581,24 @@ function buildTitle() {
       UI.toast('🌐 Joined room ' + code + '!');
     }, (msg) => { $('titleMsg').textContent = msg; });
   };
+  $('btnCustom').onclick = () => $('customCard').classList.toggle('hidden');
+  $('btnCustomDone').onclick = () => { readName(); $('customCard').classList.add('hidden'); };
+  const gfxLabel = () => { $('btnGfx').innerHTML = `⚙️&nbsp; Graphics: ${G.save.gfx === 'low' ? 'Low (faster)' : 'High'}`; };
+  $('btnGfx').onclick = () => { G.save.gfx = G.save.gfx === 'low' ? 'high' : 'low'; writeSave(); applyGraphics(); gfxLabel(); };
+  gfxLabel();
   $('codeInput').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('btnJoin').click(); });
   $('nameInput').addEventListener('keydown', (e) => e.stopPropagation());
 }
+
+function applyGraphics() {
+  const high = G.save.gfx !== 'low';
+  renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
+  setShadows(high);
+  camera.far = high ? 2200 : 1200; camera.updateProjectionMatrix();
+  scene.fog.far = high ? 1500 : 800;
+}
+if (!G.save.gfx) G.save.gfx = isTouch ? 'low' : 'high';
+applyGraphics();
 
 function startGame() {
   initAudio();
@@ -589,6 +607,7 @@ function startGame() {
   $('hud').classList.remove('hidden');
   if (isTouch) $('touch').classList.remove('hidden');
   player.name = G.save.name;
+  player.emote = null;
   player.respawn();
   player.weapon = G.save.weapon && G.save.ownedWeapons.includes(G.save.weapon) ? G.save.weapon : null;
   G.cam.yaw = 0; G.cam.pitch = 0.35;
@@ -653,11 +672,15 @@ function pointSolid(x, y, z) {
 let camOrbit = 0;
 function updateCamera(dt) {
   if (!G.started) {
-    camOrbit += dt * 0.08;
+    // Home screen: your Bobbler dances on the right, the town behind them
+    camOrbit += dt * 0.25;
     const P = player.root;
-    camTarget.set(P.x, P.y + 1.4, P.z);
-    camera.position.set(P.x + Math.sin(camOrbit) * 9, P.y + 3.2, P.z + Math.cos(camOrbit) * 9);
+    const f = player.facing + Math.sin(camOrbit) * 0.25;
+    camTarget.set(P.x, P.y + 1.3, P.z);
+    camera.position.set(P.x + Math.sin(f) * 5.2, P.y + 1.9, P.z + Math.cos(f) * 5.2);
     camera.lookAt(camTarget);
+    if (innerWidth > 700) camera.translateX(-1.9);
+    if (!player.emote) { player.emote = 'dance'; player.emoteT = 0; }
     return;
   }
   const v = player.vehicle;
