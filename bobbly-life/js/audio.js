@@ -58,6 +58,11 @@ export const sfx = {
   present: () => { [784, 988, 1175, 1568].forEach((f, i) => tone('triangle', f, f, 0.12, 0.3, i * 0.07)); },
   door: () => tone('triangle', 300, 200, 0.12, 0.3),
   water: () => noise(0.06, 0.12, 4000),
+  pew: () => tone('square', 900, 250, 0.1, 0.15),
+  pop2: () => tone('triangle', 500, 150, 0.08, 0.25),
+  whoosh: () => { noise(0.4, 0.3, 900); tone('sawtooth', 200, 600, 0.3, 0.08); },
+  boom: () => { noise(0.8, 0.9, 600); tone('sine', 120, 30, 0.6, 0.5); [880, 1175, 1568].forEach((f, i) => tone('triangle', f, f, 0.1, 0.12, 0.15 + i * 0.06)); },
+  splat: () => noise(0.07, 0.3, 1500),
 };
 
 // Engine hum whose pitch follows vehicle speed.

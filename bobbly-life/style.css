@@ -114,3 +114,6 @@ body.touch #hint { display: none; }
   #jobPanel { min-width: 0; max-width: 60vw; font-size: 13px; }
   #money { font-size: 20px; }
 }
+
+#crosshair { position: absolute; top: 50%; left: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.35); }
+#crosshair::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #ff5b6e; border-radius: 50%; }

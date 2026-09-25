@@ -9,6 +9,7 @@ import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './job
 import * as UI from './ui.js';
 import * as NET from './net.js';
 import { initAudio, sfx, setEngine } from './audio.js';
+import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -49,6 +50,7 @@ const WV = [
   ['icecream', -44, 46, Math.PI / 2], ['monster', -48, -40, Math.PI], ['sports', 27.5, -12, 0], ['sedan', -27.5, 14, Math.PI],
   ['police', 27.5, 16, 0], ['sedan', 92.5, 40, 0], ['sedan', -87.5, -20, Math.PI], ['sedan', 32.5, 120, 0], ['pickup', 150, 60, 0],
   ['boat', 200, 14, Math.PI / 2], ['boat', 205, -14, Math.PI / 2], ['heli', -76, -78, 0], ['sports', -150, -28, 0],
+  ['biplane', -122, 164, Math.PI / 2], ['jet', -138, 171.5, Math.PI / 2],
 ];
 WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color: t === 'sedan' ? ['#3fa7ff', '#ff5b6e', '#b46cff', '#46c25a'][i % 4] : null }));
 // Showroom cars
@@ -83,6 +85,9 @@ G.spawnMyVehicle = (id) => {
     else if (nearWater) { x = player.root.x; z = Math.sign(player.root.z) * 205; }
     else { x = 205; z = 20; UI.toast('🚤 Your boat is waiting at the pier!'); G.waypoint = { x: 200, z: 20 }; }
     yaw = Math.PI / 2;
+  } else if (t.plane && Math.abs(player.root.z - 168) > 12) {
+    x = -140; z = 168; yaw = Math.PI / 2;
+    UI.toast(`${t.emo} Your plane is waiting on the airport runway!`); G.waypoint = { x: -140, z: 168 };
   } else {
     x = player.root.x + Math.sin(player.facing) * (t.len / 2 + 2.5);
     z = player.root.z + Math.cos(player.facing) * (t.len / 2 + 2.5);
@@ -109,7 +114,7 @@ addEventListener('keyup', (e) => {
   K[e.code] = false;
   if (e.code === 'KeyR') player.holdRag = false;
 });
-addEventListener('blur', () => { for (const k in K) K[k] = false; G.mouse.grab = false; });
+addEventListener('blur', () => { for (const k in K) K[k] = false; G.mouse.grab = false; G.mouse.fire = false; });
 
 function onKey(code) {
   if (code === 'Escape') {
@@ -130,6 +135,7 @@ function onKey(code) {
     else { stopFishing(); player.flop(null, 0.8); player.holdRag = true; }
   }
   if (code === 'KeyJ') quitJob();
+  if (code === 'KeyG') cycleWeapon();
   if (code === 'KeyV' && player.vehicle && player.vehicle.type.siren) sfx.honk();
   if (code === 'KeyQ' && player.vehicle) sfx.honk();
   const emotes = { Digit1: 'wave', Digit2: 'dance', Digit3: 'cheer', Digit4: 'sit' };
@@ -140,12 +146,13 @@ canvas.addEventListener('mousedown', (e) => {
   initAudio();
   if (!G.started || G.ui.panel || G.ui.help) return;
   if (!document.pointerLockElement && !isTouch) { canvas.requestPointerLock && canvas.requestPointerLock(); }
+  if (e.button === 0 && player.weapon && !player.vehicle) { G.mouse.fire = true; return; }
   if (e.button === 0 || e.button === 2) {
     if (G.mouse.grabLock) { G.mouse.grabLock = false; }
     G.mouse.grab = true;
   }
 });
-addEventListener('mouseup', (e) => { if (e.button === 0 || e.button === 2) G.mouse.grab = false; });
+addEventListener('mouseup', (e) => { if (e.button === 0 || e.button === 2) { G.mouse.grab = false; G.mouse.fire = false; } });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
@@ -176,11 +183,11 @@ if (isTouch) {
     const k = b.dataset.k;
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault(); initAudio();
-      if (k === 'Grab') { G.mouse.grabLock = false; G.mouse.grab = true; return; }
+      if (k === 'Grab') { if (player.weapon && !player.vehicle) { G.mouse.fire = true; return; } G.mouse.grabLock = false; G.mouse.grab = true; return; }
       if (G.ui.fishing && k === 'Space') { touch.reel = true; return; }
       K[k] = true; onKey(k);
     });
-    const up = () => { if (k === 'Grab') G.mouse.grab = false; else { K[k] = false; if (k === 'KeyR') player.holdRag = false; } touch.reel = false; };
+    const up = () => { if (k === 'Grab') { G.mouse.grab = false; G.mouse.fire = false; } else { K[k] = false; if (k === 'KeyR') player.holdRag = false; } touch.reel = false; };
     b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
   });
   canvas.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') touch.look = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
@@ -248,9 +255,21 @@ function interact() {
     player.emote = null;
     v.addOccupant(player, seat);
     sfx.door();
-    if (seat === 0 && !G.seenDriveTip) { G.seenDriveTip = true; UI.toast(v.type.heli ? '🚁 W/S forward/back · A/D turn · Space up · Shift down · E exit' : 'W/S drive · A/D steer · Space brake · Q honk · E exit'); }
+    if (seat === 0 && v.type.plane) UI.toast('✈️ W = more throttle · S = less · A/D turn · Space = nose up (take off when fast!) · Shift = nose down · E jump out', '', 8000);
+    else if (seat === 0 && !G.seenDriveTip) { G.seenDriveTip = true; UI.toast(v.type.heli ? '🚁 W/S forward/back · A/D turn · Space up · Shift down · E exit' : 'W/S drive · A/D steer · Space brake · Q honk · E exit'); }
   }
 }
+
+function cycleWeapon() {
+  const owned = Object.keys(WEAPONS).filter(id => G.save.ownedWeapons.includes(id));
+  if (!owned.length) { UI.toast('🔫 You have no blasters yet — buy one at the Blaster Shop (stunt park)!'); G.waypoint = LOC.blasters; return; }
+  const list = [null, ...owned];
+  const i = list.indexOf(player.weapon || null);
+  player.weapon = list[(i + 1) % list.length];
+  G.save.weapon = player.weapon; writeSave();
+  UI.toast(player.weapon ? `${WEAPONS[player.weapon].emo} ${WEAPONS[player.weapon].name} equipped — Left Click to shoot` : '✋ Blaster put away');
+}
+G.equipWeapon = (id) => { player.weapon = id; G.save.weapon = id; writeSave(); };
 
 function slap() {
   if (player.ragdoll || player.vehicle || player.punchT > 0 || player.fishing) return;
@@ -428,6 +447,18 @@ NET.on('pull', (m) => {
   player.grabbedBy = { point: new THREE.Vector3(m.pos[0], m.pos[1], m.pos[2]), t: 0.4 };
   player.ragMin = Math.max(player.ragMin, player.ragT + 0.6);
 });
+NET.on('shot', (m) => {
+  if (!WEAPONS[m.w]) return;
+  spawnShot(m.w, new THREE.Vector3(...m.p), new THREE.Vector3(...m.v), true, m.c);
+});
+NET.on('shothit', (m) => {
+  if (m.to && m.to !== G.net.myId) return;
+  if (!WEAPONS[m.ty]) return;
+  stopFishing();
+  applyHit(player, new THREE.Vector3(...m.d), WEAPONS[m.ty]);
+});
+G.onRemoteShot = (ch, dir, type) => NET.send({ t: 'shothit', to: ch.netId, d: [dir.x, dir.y, dir.z], ty: type });
+G.onRemoteHit = (ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] });
 NET.on('vdel', (m) => {
   const v = G.vehicles.find(v => v.id === m.id);
   if (v && !(player.vehicle === v && player.seat === 0)) { if (player.vehicle === v) v.removeOccupant(player); v.destroy(); }
@@ -436,6 +467,7 @@ NET.on('st', (m) => {
   let r = G.remotes.get(m.from);
   if (!r) return;
   r.applySnapshot(m.p, m.f, m.r);
+  r.weapon = WEAPONS[m.w] ? m.w : null;
   // held item visual
   if (m.h !== r.heldType) {
     if (r.heldMesh) G.scene.remove(r.heldMesh);
@@ -471,6 +503,7 @@ function netTick(dt) {
     t: 'st', p: player.snapshot(), f: Math.round(player.facing * 100) / 100, r: player.ragdoll ? 1 : 0,
     h: heldProp ? heldProp.type : 0, hv: heldProp ? heldProp.variant : 0,
     v: player.vehicle && player.seat === 0 ? player.vehicle.netState() : 0,
+    w: player.weapon || 0,
   };
   NET.send(msg);
   if (player.held && player.held.kind === 'remote' && player.held.pullPt) {
@@ -553,6 +586,7 @@ function startGame() {
   if (isTouch) $('touch').classList.remove('hidden');
   player.name = G.save.name;
   player.respawn();
+  player.weapon = G.save.weapon && G.save.ownedWeapons.includes(G.save.weapon) ? G.save.weapon : null;
   G.cam.yaw = 0; G.cam.pitch = 0.35;
   updateRoomInfo();
   if (!G.save.seenHelp) { G.save.seenHelp = true; writeSave(); UI.showHelp(true); }
@@ -580,7 +614,7 @@ function controlPlayer(dt) {
       v.hitThings((ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
       v.catchCargo();
     }
-    setEngine(p.seat === 0, v.speed + (v.type.heli ? v.pos.y * 0.3 : 0), v.type.heli);
+    setEngine(p.seat === 0, v.speed + (v.type.heli ? v.pos.y * 0.3 : 0), v.type.heli || v.type.plane);
     return;
   }
   setEngine(false);
@@ -594,6 +628,13 @@ function controlPlayer(dt) {
   if (!G.ui.fishing && space && !p.prevSpace) p.ctrl.jump = true;
   p.prevSpace = space;
   p.ctrl.grab = !blocked && (G.mouse.grab || G.mouse.grabLock) && !p.ragdoll;
+  p.ctrl.aim = p.weapon && !p.fishing ? G.cam.yaw + Math.PI : null;
+  p.fireCd = (p.fireCd || 0) - dt;
+  if (p.weapon && G.mouse.fire && !blocked && !p.ragdoll && !p.fishing && p.fireCd <= 0) {
+    p.fireCd = WEAPONS[p.weapon].rate;
+    const shot = fire(p, camera);
+    NET.send({ t: 'shot', ...shot });
+  }
   updateFishing(dt, space);
 }
 
@@ -616,10 +657,10 @@ function updateCamera(dt) {
     return;
   }
   const v = player.vehicle;
-  const tgt = v ? _v.copy(v.pos).add(_w.set(0, v.type.heli ? 1.8 : 1.4, 0)) : _v.copy(player.p[PARTS.CHE]).add(_w.set(0, 0.5, 0));
+  const tgt = v ? _v.copy(v.pos).add(_w.set(0, v.type.heli || v.type.plane ? 2 : 1.4, 0)) : _v.copy(player.p[PARTS.CHE]).add(_w.set(0, 0.5, 0));
   camTarget.lerp(tgt, 1 - Math.exp(-dt * (v ? 12 : 10)));
   if (camTarget.distanceToSquared(tgt) > 400) camTarget.copy(tgt);
-  let dist = G.cam.dist * (v ? (v.type.heli ? 2.1 : v.type.truck ? 1.8 : 1.5) : 1);
+  let dist = G.cam.dist * (v ? (v.type.plane ? 2.4 : v.type.heli ? 2.1 : v.type.truck ? 1.8 : 1.5) : (player.weapon ? 0.8 : 1));
   if (v && player.seat === 0 && G.time - G.cam.lastMouse > 1.2 && Math.abs(v.speed) > 2) {
     const behind = v.speed >= 0 ? v.yaw + Math.PI : v.yaw;
     G.cam.yaw = angleLerp(G.cam.yaw, behind, 1 - Math.exp(-dt * 2));
@@ -707,6 +748,8 @@ function loop(now) {
   for (const c of G.characters) c.update(dt);
   pushCharacters();
   for (const c of G.characters) if (!c.isRemote) kickProps(c);
+  updateWeapons(dt);
+  updateGunMeshes();
   updateProps(dt);
   updateTrees(dt);
   if (G.started) {
@@ -730,6 +773,7 @@ function loop(now) {
     if (frame % 2 === 0) UI.drawMinimap();
     updatePrompt();
     const locked = document.pointerLockElement === canvas;
+    $('crosshair').classList.toggle('hidden', !player.weapon || !!player.vehicle || player.ragdoll);
     $('clickToPlay').classList.toggle('hidden', isTouch || locked || !!G.ui.panel || G.ui.help || G.ui.chatOpen);
     netTick(dt);
     if (frame % 600 === 0) writeSave();

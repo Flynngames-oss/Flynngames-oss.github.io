@@ -328,7 +328,8 @@ export class Character {
     const tx = c.mx * speed, tz = c.mz * speed;
     this.vel.x += clamp(tx - this.vel.x, -acc * dt, acc * dt);
     this.vel.z += clamp(tz - this.vel.z, -acc * dt, acc * dt);
-    if (mlen > 0.1 && !this.fishing) this.facing = angleLerp(this.facing, Math.atan2(c.mx, c.mz), 1 - Math.exp(-10 * dt));
+    if (c.aim !== undefined && c.aim !== null) this.facing = angleLerp(this.facing, c.aim, 1 - Math.exp(-18 * dt));
+    else if (mlen > 0.1 && !this.fishing) this.facing = angleLerp(this.facing, Math.atan2(c.mx, c.mz), 1 - Math.exp(-10 * dt));
     if (c.jump && this.grounded) {
       this.vel.y = this.swimming ? 6 : 8.2; this.grounded = false;
       if (this.isPlayer) sfx.jump();
@@ -414,6 +415,7 @@ export class Character {
       }
     } else if (spd > 0.5) this.emote = null;
     if (this.fishing) { T(HL, -0.15, 1.2, 0.55); T(HR, 0.15, 1.25, 0.6); }
+    if (this.weapon && !this.ctrl.grab && !this.swimming) { T(HR, 0.22, 1.3, 0.65); T(HL, -0.05, 1.25, 0.7); }
     if (this.ctrl.grab) {
       const up = this.held && this.held.kind !== 'prop' ? 1.9 : 1.45;
       T(HL, -0.3, up, 0.85); T(HR, 0.3, up, 0.85);
@@ -425,11 +427,11 @@ export class Character {
   }
 
   springStep(dt) {
-    const n = 2, h = dt / n;
+    const n = Math.max(2, Math.ceil(dt * 150)), h = dt / n;
     for (let s = 0; s < n; s++) {
       for (let i = 0; i < 7; i++) {
         let k = K0[i], c = C0[i];
-        if ((i === HL || i === HR) && (this.ctrl.grab || this.punchT > 0 || this.vehicle || this.fishing || this.emote)) { k = 420; c = 30; }
+        if ((i === HL || i === HR) && (this.ctrl.grab || this.punchT > 0 || this.vehicle || this.fishing || this.emote || this.weapon)) { k = 420; c = 30; }
         if (this.vehicle) { k *= 2; c *= 1.5; }
         const p = this.p[i], v = this.v[i], t = this.tgt[i];
         v.x += ((t.x - p.x) * k - v.x * c) * h;

@@ -33,7 +33,7 @@
     </div>
     <div id="titleMsg"></div>
   </div>
-  <div class="title-controls">WASD move · Mouse look · Space jump · Shift run · Hold Left Click grab · F slap · R ragdoll · E interact / drive · Tab phone · H help</div>
+  <div class="title-controls">WASD move · Mouse look · Space jump · Shift run · Hold Left Click grab · F slap · G blaster · R ragdoll · E interact / drive · Tab phone · H help</div>
 </div>
 
 <!-- ============ HUD ============ -->
@@ -55,8 +55,9 @@
     <input id="chatInput" class="hidden" maxlength="100" placeholder="Say something... (Enter)">
   </div>
   <div id="players" class="hidden"></div>
+  <div id="crosshair" class="hidden"></div>
   <div id="clickToPlay" class="hidden">Click to play!</div>
-  <div id="hint">H = Help · Tab = Phone · T = Chat</div>
+  <div id="hint">H = Help · Tab = Phone · T = Chat · G = Blaster</div>
   <div id="speedo" class="hidden"></div>
 </div>
 
@@ -90,9 +91,11 @@
     <div><b>T</b> Chat · <b>1-4</b> Emotes</div>
     <div><b>Driving</b> W/S gas &amp; brake · A/D steer · Space handbrake</div>
     <div><b>Helicopter</b> Space up · Shift down</div>
+    <div><b>G</b> Switch blaster · <b>Left Click</b> shoot (Right Click still grabs)</div>
+    <div><b>Planes</b> W/S throttle · Space nose up · Shift nose down · A/D turn</div>
   </div>
   <p>Do jobs to earn money 💰: <b>Pizza delivery</b>, <b>Taxi driver</b>, <b>Firefighter</b>, <b>Garbage collector</b>, <b>Lumberjack</b>, <b>Fishing</b> and <b>Races</b>.
-  Spend money on clothes, hats, cars, a helicopter and your very own house! Find the 20 hidden 🎁 presents around the island.</p>
+  Spend money on clothes, hats, cars, planes, a helicopter, toy blasters and your very own house! Planes are at the ✈️ airport on the north side, blasters at the 🔫 Blaster Shop in the stunt park. Find the 20 hidden 🎁 presents around the island.</p>
   <p>Multiplayer: click <b>Host Multiplayer</b> and send your friends the link or room code.</p>
   <button class="btn" id="helpClose">Got it!</button>
 </div>
@@ -106,6 +109,7 @@
     <button data-k="KeyE">Use</button>
     <button data-k="KeyR">Flop</button>
     <button data-k="Tab">Phone</button>
+    <button data-k="KeyG">Blaster</button>
   </div>
 </div>
 
