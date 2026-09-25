@@ -56,6 +56,12 @@ const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3
 const _right = new THREE.Vector3(), _up = new THREE.Vector3(), _fwd = new THREE.Vector3();
 const _mtx = new THREE.Matrix4();
 
+// Soft plastic/rubber look for bodies (a little shiny)
+const cmatCache = new Map();
+function cmat(color) {
+  if (!cmatCache.has(color)) cmatCache.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.02 }));
+  return cmatCache.get(color);
+}
 function mk(geo, material, sx = 1, sy = 1, sz = 1) {
   const m = new THREE.Mesh(geo, material);
   m.scale.set(sx, sy, sz);
@@ -200,10 +206,12 @@ function makeFace(eyes) {
       t.position.set(s * 0.15, 0.05, 0.4); g.add(t);
       continue;
     }
-    const w = mk(BALL, white, 0.1 * big, (eyes === 'sleepy' ? 0.04 : 0.11) * big, 0.06);
-    w.position.set(s * 0.15, 0.06, 0.37); g.add(w);
-    const p = mk(BALL, black, 0.055 * big, (eyes === 'sleepy' ? 0.03 : 0.065) * big, 0.04);
-    p.position.set(s * 0.15, 0.05, 0.42); g.add(p);
+    const sl = eyes === 'sleepy' ? 0.4 : 1;
+    const w = mk(BALL, white, 0.105 * big, 0.14 * big * sl, 0.07);
+    w.position.set(s * 0.14, 0.07, 0.365); g.add(w);
+    const p = mk(BALL, black, 0.06 * big, 0.085 * big * sl, 0.045);
+    p.position.set(s * 0.14, 0.055, 0.41); g.add(p);
+    if (eyes !== 'sleepy') { const gl = mk(BALL, white, 0.022 * big, 0.022 * big, 0.015); gl.position.set(s * 0.14 + 0.02, 0.09, 0.448); g.add(gl); }
     if (eyes === 'angry') {
       const br = mk(new THREE.BoxGeometry(0.16, 0.035, 0.03), black);
       br.position.set(s * 0.15, 0.2, 0.39); br.rotation.z = s * 0.35; g.add(br);
@@ -290,7 +298,7 @@ export class Character {
 
   setOutfit(o) {
     this.outfit = Object.assign({}, o);
-    const skin = mat(o.skin), shirt = mat(o.shirt), pants = mat(o.pants);
+    const skin = cmat(o.skin), shirt = cmat(o.shirt), pants = cmat(o.pants);
     this.bodyMesh.material = shirt;
     this.headMesh.material = skin;
     this.armL.material = this.armR.material = shirt;
