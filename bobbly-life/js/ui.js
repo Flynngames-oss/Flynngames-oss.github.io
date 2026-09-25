@@ -130,6 +130,14 @@ function dealerPanel() {
   });
 }
 
+// [emoji, name, x, z, facing]
+const TRAVEL = [
+  ['✈️', 'Airport', -130, 158, Math.PI / 2], ['⛲', 'Town Square', 0, -14, Math.PI], ['🔫', 'Blaster Shop', -70, -48, -Math.PI / 2],
+  ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
+  ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
+  ['🌳', 'Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0], ['🎣', 'Pier & Beach', 180, 0, Math.PI / 2],
+];
+
 function blasterPanel() {
   openPanel('🔫 Blaster Shop', (el) => {
     el.innerHTML = `<p>Toy blasters make people flop over! Press <b>G</b> to switch blasters, <b>Left Click</b> to shoot.</p><div class="grid">${Object.entries(WEAPONS).map(([id, w]) => {
@@ -158,6 +166,8 @@ function phonePanel() {
       <h3>🚗 My Vehicles</h3>
       <div class="grid">${s.ownedCars.map(id => `<div class="item owned" data-car="${id}"><span class="emo">${VTYPES[id].emo}</span>${VTYPES[id].name}<div class="price">Spawn</div></div>`).join('')}</div>
       ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}
+      <h3>🚀 Fast Travel</h3>
+      <div class="grid">${TRAVEL.map((t, i) => `<div class="item" data-go="${i}"><span class="emo">${t[0]}</span>${t[1]}<div class="price">Go!</div></div>`).join('')}</div>
       <h3>💼 Jobs &amp; Activities</h3>
       <div class="grid">${Object.entries(JOBS).map(([id, j]) => `<div class="item" data-job="${id}"><span class="emo">${j.emo}</span>${j.name}<div class="small">${j.desc}</div><div class="price">${G.job && G.job.id === id ? 'Active' : 'Set waypoint'}</div></div>`).join('')}
         <div class="item" data-wp="clothing"><span class="emo">👕</span>Clothing Store<div class="price">Set waypoint</div></div>
@@ -177,6 +187,17 @@ function phonePanel() {
     el.querySelectorAll('[data-wpn]').forEach(b => b.onclick = () => { G.equipWeapon(G.player.weapon === b.dataset.wpn ? null : b.dataset.wpn); rerender(); });
     el.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { closePanel(); G.spawnMyVehicle(b.dataset.car); });
     el.querySelectorAll('[data-job]').forEach(b => b.onclick = () => { G.waypoint = JOBS[b.dataset.job].loc; toast('📍 Waypoint set: ' + JOBS[b.dataset.job].name); closePanel(); });
+    el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
+      const t = TRAVEL[+b.dataset.go];
+      closePanel();
+      const p = G.player;
+      if (p.vehicle) p.vehicle.removeOccupant(p);
+      if (p.held && G.dropHeld) G.dropHeld(false);
+      p.place(t[2], 0, t[3], t[4] || 0);
+      G.cam.yaw = (t[4] || 0) + Math.PI;
+      sfx.pop();
+      toast(`${t[0]} Welcome to ${t[1]}!`);
+    });
     el.querySelectorAll('[data-wp]').forEach(b => b.onclick = () => { G.waypoint = LOC[b.dataset.wp]; toast('📍 Waypoint set!'); closePanel(); });
     $('phRespawn').onclick = () => { closePanel(); G.player.respawn(); };
     if ($('phHome')) $('phHome').onclick = () => { closePanel(); G.player.respawn(true); };
