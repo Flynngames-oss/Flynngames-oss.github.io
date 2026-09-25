@@ -85,10 +85,10 @@ export function setEngine(on, speed = 0, heli = false) {
   engine.g.gain.setTargetAtTime(0.08, ctx.currentTime, 0.1);
 }
 
-// ---------------------------------------------------------------- cheerful background music
-// A tiny generative tune: pad chords, bouncy bass, a pentatonic melody and soft hats.
-const CHORDS = [[60, 64, 67], [67, 71, 74], [69, 72, 76], [65, 69, 72]]; // C G Am F
-const SCALE = [72, 74, 76, 79, 81, 84, 86, 88];
+// ---------------------------------------------------------------- background music
+// Laid-back lo-fi loop: warm 7th chords, soft bass, sparse electric-piano melody, dusty hats.
+const CHORDS = [[57, 60, 64, 67], [53, 57, 60, 64], [48, 52, 55, 59], [55, 59, 62, 65]]; // Am7 Fmaj7 Cmaj7 G7
+const SCALE = [69, 72, 74, 76, 79, 81, 84];
 let musicOn = false, musicGain = null, nextT = 0, step = 0, timer = null, melodyNote = 3;
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 function note(type, freq, t, dur, vol, cutoff = 3000) {
@@ -96,31 +96,39 @@ function note(type, freq, t, dur, vol, cutoff = 3000) {
   o.type = type; o.frequency.value = freq;
   f.type = 'lowpass'; f.frequency.value = cutoff;
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(vol, t + 0.02);
+  g.gain.linearRampToValueAtTime(vol, t + 0.03);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(f); f.connect(g); g.connect(musicGain);
   o.start(t); o.stop(t + dur + 0.05);
 }
-function hat(t) {
-  const len = Math.floor(ctx.sampleRate * 0.04);
+function hat(t, vol = 0.03) {
+  const len = Math.floor(ctx.sampleRate * 0.05);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
   const src = ctx.createBufferSource(); src.buffer = buf;
-  const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6000;
-  const g = ctx.createGain(); g.gain.value = 0.05;
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 7000;
+  const g = ctx.createGain(); g.gain.value = vol;
   src.connect(f); f.connect(g); g.connect(musicGain); src.start(t);
 }
+function kick(t) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+  g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  o.connect(g); g.connect(musicGain); o.start(t); o.stop(t + 0.3);
+}
 function schedule() {
-  const beat = 60 / 104 / 2; // eighth notes at 104 bpm
+  const beat = 60 / 82 / 2; // eighth notes at 82 bpm, swung
   while (nextT < ctx.currentTime + 0.3) {
     const bar = Math.floor(step / 8) % 4, s8 = step % 8;
     const ch = CHORDS[bar];
-    if (s8 === 0) for (const m of ch) note('triangle', mtof(m), nextT, beat * 7.5, 0.035, 1800);
-    if (s8 % 2 === 0) note('sine', mtof(ch[0] - 24 + (s8 === 4 ? 7 : 0)), nextT, beat * 1.6, 0.12, 600);
-    if (s8 % 2 === 1) hat(nextT);
-    if (Math.random() < (s8 % 2 ? 0.35 : 0.6)) {
-      melodyNote = Math.max(0, Math.min(SCALE.length - 1, melodyNote + Math.floor(Math.random() * 5) - 2));
-      note('square', mtof(SCALE[melodyNote]), nextT, beat * 0.9, 0.025, 2200);
+    const t = nextT + (s8 % 2 ? beat * 0.12 : 0);
+    if (s8 === 0) ch.forEach((m, k) => note('triangle', mtof(m), t + k * 0.012, beat * 7.8, 0.022, 1100));
+    if (s8 === 0 || s8 === 5) note('sine', mtof(ch[0] - 12), t, beat * 2.5, 0.1, 400);
+    if (s8 === 0 || s8 === 3 || s8 === 5) kick(t);
+    if (s8 % 2 === 1) hat(t, 0.02); else if (s8 === 2 || s8 === 6) hat(t, 0.035);
+    if (Math.random() < (s8 % 2 ? 0.18 : 0.3)) {
+      melodyNote = Math.max(0, Math.min(SCALE.length - 1, melodyNote + Math.floor(Math.random() * 3) - 1));
+      note('sine', mtof(SCALE[melodyNote]), t, beat * 2, 0.03, 1800);
     }
     nextT += beat; step++;
   }

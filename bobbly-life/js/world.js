@@ -1,7 +1,7 @@
 // Builds Bobbly Town: ground, roads, buildings, colliders, trees, day/night.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { G, mat, textSprite, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
+import { G, mat, textSprite, noEmoji, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
 import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
 import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone } from './terrain.js';
 
@@ -137,7 +137,7 @@ function flatGeo(w, d, tile) {
   }
   return flatGeoCache.get(k);
 }
-const GRASSY = ['#86d162', '#5fae4a', '#7ccf5a'];
+const GRASSY = ['#7fae4f', '#5a8f42', '#7fae4f'];
 const PAVED = ['#d9d4c7', '#eadfc6', '#cfcfcf', '#cfc6b3', '#b9bec7', '#9aa0aa'];
 function flat(x, y, z, w, d, color, ry = 0) {
   if (typeof color === 'string' && TX) {
@@ -191,7 +191,7 @@ function building(x, z, w, d, h, color, roofColor = '#6b6f78') {
   return addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.5, z + d / 2);
 }
 function sign(text, x, y, z, color = '#fff', bg = '#ff6a1a', scale = 3) {
-  const sp = textSprite(text, { size: 64, color, bg, scale });
+  const sp = textSprite(noEmoji(text).toUpperCase(), { size: 64, color: '#ffffff', bg: 'rgba(16,19,26,0.88)', accent: bg, scale });
   sp.position.set(x, y, z);
   G.scene.add(sp);
 }
@@ -231,8 +231,8 @@ function addTree(x, z, type = Math.random() < 0.5 ? 'round' : 'pine', s = rand(0
 function buildTrees() {
   const n = treeDefs.length;
   trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.45, 1, 7), mat('#8b5a2b'), n);
-  roundIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat('#5cbf4a', { flatShading: true }), n);
-  pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#3f9e52', { flatShading: true }), n);
+  roundIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat('#5f9a45', { flatShading: true }), n);
+  pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#3f7a4a', { flatShading: true }), n);
   snowIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#e8f2f5', { flatShading: true }), n);
   for (const im of [trunkIM, roundIM, pineIM, snowIM]) { im.castShadow = true; im.receiveShadow = true; G.scene.add(im); }
   treeDefs.forEach((t, i) => {
@@ -396,7 +396,7 @@ function tower(x, z, w, d, h, color, roof = '#6b7079', antenna = false) {
   return h;
 }
 const BALL_G = new THREE.SphereGeometry(1, 10, 8);
-const CITY_COLS = ['#9fd0ff', '#bfe6ff', '#ffd6a8', '#ffc4d8', '#c8f0d0', '#e6d6ff', '#fff3b0', '#a8e0e8', '#f0d8c0'];
+const CITY_COLS = ['#b8c8d8', '#8fa8c0', '#d8d0c0', '#c0b8b0', '#a8b8c8', '#e0dcd4', '#9ab0b8', '#c8b8a8', '#7f98b0', '#b0a090'];
 
 function buildMegaCity() {
   const Z = ZONES.city;
@@ -440,7 +440,7 @@ function buildMegaCity() {
   S(CYL8, mat('#dddddd'), STEP.cx, y + 20, STEP.cz, 0, 0, 0, 0.4, 40, 0.4);
   // City park
   const PARK = specials['3,5'];
-  flat(PARK.cx, 0.035, PARK.cz, PARK.bw - 4, PARK.bd - 4, '#86d162');
+  flat(PARK.cx, 0.035, PARK.cz, PARK.bw - 4, PARK.bd - 4, '#7fae4f');
   for (let k = 0; k < 10; k++) addTree(PARK.cx + rand(-20, 20), PARK.cz + rand(-20, 20), 'round');
   flowerBed(PARK.cx, PARK.cz, 30, 30, 140);
   for (let k = 0; k < 8; k++) bushAt(PARK.cx + rand(-22, 22), PARK.cz + rand(-22, 22), rand(0.8, 1.4));
@@ -503,11 +503,11 @@ function buildSuburbs() {
   for (const x of xs) roadStrip(x, (185 + zs[zs.length - 1]) / 2, zs[zs.length - 1] - 185 + 5, false);
   for (const z of zs) roadStrip((xs[0] + xs[xs.length - 1]) / 2, z, xs[xs.length - 1] - xs[0] + 10, true);
   for (const x of xs) for (const z of zs) flat(x, 0.03, z, 10, 10, '#555a63');
-  const colors = ['#ffe2b8', '#cfe8ff', '#ffd6e8', '#e0ffd6', '#fff3b0', '#e6d6ff', '#ffffff', '#ffd1a8', '#c8f0f0', '#ffc8c8'];
+  const colors = ['#e8dcc8', '#c8d0d8', '#d8c8b8', '#b8c4b0', '#e0d0b0', '#c0b8b0', '#f0ece4', '#d0b8a0', '#a8b0b8', '#b89a88'];
   for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
     const x0 = xs[i] + 5, x1 = xs[i + 1] - 5, z0 = zs[j] + 5, z1 = zs[j + 1] - 5;
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    flat(cx, 0.025, cz, x1 - x0, z1 - z0, '#86d162');
+    flat(cx, 0.025, cz, x1 - x0, z1 - z0, '#7fae4f');
     for (const [lx, lz] of [[x0 + 1, z0 + 1], [x1 - 1, z1 - 1]]) extraLamps.push([lx, lz]);
     G.locations.sidewalks.push({ x: x0 + 2, z: z0 + 2 }, { x: x1 - 2, z: z0 + 2 }, { x: x0 + 2, z: z1 - 2 }, { x: x1 - 2, z: z1 - 2 });
     if (i === 2 && j === 1) {
@@ -623,7 +623,7 @@ function house(x, z, face, color, tall = false) {
 }
 
 function residentialBlock(cx, cz) {
-  const colors = ['#ffe2b8', '#cfe8ff', '#ffd6e8', '#e0ffd6', '#fff3b0', '#e6d6ff', '#ffffff', '#ffd1a8'];
+  const colors = ['#e8dcc8', '#c8d0d8', '#d8c8b8', '#b8c4b0', '#e0d0b0', '#c0b8b0', '#f0ece4', '#d0b8a0', '#a8b0b8'];
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) house(cx + sx * 12, cz + sz * 11, sx > 0 ? 0 : 1, pick(colors));
   addTree(cx, cz + rand(-4, 4), 'round');
   addTree(cx + rand(-3, 3), cz - 14);
@@ -638,7 +638,7 @@ function forestBlock(cx, cz, n = 24) {
     if (placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 4.2)) continue;
     placed.push([x, z]); addTree(x, z);
   }
-  flat(cx, 0.03, cz, 48, 48, '#5fae4a');
+  flat(cx, 0.03, cz, 48, 48, '#5a8f42');
 }
 
 function downtownBlock(cx, cz) {
@@ -693,13 +693,15 @@ function umbrella(x, z, color) {
 }
 
 // ---------------------------------------------------------------- build everything
-export function buildWorld() {
+export async function buildWorld(progress = () => {}) {
   const scene = G.scene;
   makeWindowTextures();
   initTextures();
 
   // Terrain for the whole island
+  await progress(0.05, 'Shaping the island');
   buildHeights();
+  await progress(0.25, 'Painting terrain');
   const terr = buildTerrainMesh(scene);
   TX.grass.repeat.set(1, 1);
   const gd = TX.grass.clone(); gd.needsUpdate = true; gd.repeat.set(WORLD / 5, WORLD / 5);
@@ -726,7 +728,7 @@ export function buildWorld() {
   // Sidewalk blocks
   for (const bx of BLOCKS) for (const bz of BLOCKS) {
     flat(bx, 0.022, bz, 50, 50, '#d9d4c7');
-    flat(bx, 0.028, bz, 45, 45, '#86d162');
+    flat(bx, 0.028, bz, 45, 45, '#7fae4f');
     G.locations.sidewalks.push(
       { x: bx - 23.5, z: bz - 23.5 }, { x: bx + 23.5, z: bz - 23.5 }, { x: bx - 23.5, z: bz + 23.5 }, { x: bx + 23.5, z: bz + 23.5 });
   }
@@ -755,21 +757,21 @@ export function buildWorld() {
   sign('🍕 PIZZA PLACE', 61, 10.5, 0, '#fff', '#d23c32');
 
   // --- Taxi depot (-60,0)
-  building(-70, 0, 16, 24, 7, '#ffd84a', '#333');
+  building(-70, 0, 16, 24, 7, '#e0c060', '#333');
   sign('🚕 TAXI DEPOT', -61, 9.5, 0, '#222', '#ffd84a');
   for (let i = -1; i <= 1; i++) flat(-46, 0.04, i * 9, 5, 8, '#f5f5f5');
 
   // --- Clothing (0,60)
-  building(0, 70, 26, 16, 8, '#ffb0d8', '#b8467d');
+  building(0, 70, 26, 16, 8, '#d8c0b8', '#6b4a44');
   sign('👕 BOBBLY BOUTIQUE', 0, 10.5, 61, '#fff', '#e05a8a');
 
   // --- Dealership (0,-60)
-  building(0, -72, 30, 12, 6, '#bfe6ff', '#3f6f9e');
+  building(0, -72, 30, 12, 6, '#b8c8d8', '#3f4f6e');
   sign('🚗 CAR DEALER', 0, 8.5, -65, '#fff', '#3f6f9e');
   flat(0, 0.04, -52, 40, 16, '#b9bec7');
 
   // --- Fire station (60,60)
-  building(70, 68, 22, 22, 9, '#e84a3f', '#8b2a22');
+  building(70, 68, 22, 22, 9, '#a8453c', '#5a2a22');
   sign('🚒 FIRE STATION', 58, 11.5, 60, '#fff', '#b8322a');
   flat(50, 0.04, 68, 10, 12, '#b9bec7');
 
@@ -792,12 +794,12 @@ export function buildWorld() {
 
   // --- Stunt park (-60,-60)
   flat(-60, 0.036, -60, 45, 45, '#9aa0aa');
-  wedge(-60, -44, 7, 12, 3, 2, '#ff8a3d');
-  wedge(-60, -70, 7, 12, 3, 0, '#ff8a3d');
-  wedge(-78, -60, 8, 18, 6, 1, '#ff5b6e');
-  box(-44, 0, -74, 10, 3, 8, '#b46cff');
-  wedge(-44, -63, 10, 14, 3, 2, '#b46cff');
-  wedge(-40, -50, 4, 6, 1.5, 3, '#ffd54a');
+  wedge(-60, -44, 7, 12, 3, 2, '#9a958c');
+  wedge(-60, -70, 7, 12, 3, 0, '#9a958c');
+  wedge(-78, -60, 8, 18, 6, 1, '#8a857c');
+  box(-44, 0, -74, 10, 3, 8, '#7a7f88');
+  wedge(-44, -63, 10, 14, 3, 2, '#7a7f88');
+  wedge(-40, -50, 4, 6, 1.5, 3, '#a8a090');
   flat(-76, 0.05, -78, 10, 10, '#4a4f5a');
   S(CYL, mat('#ffd54a'), -76, 0.06, -78, 0, 0, 0, 3.5, 0.02, 3.5);
   sign('STUNT PARK', -60, 8, -40, '#fff', '#ff5b6e', 2.2);
@@ -867,7 +869,7 @@ export function buildWorld() {
   sign('✈️ BOBBLY AIRPORT', -135, 7, 178, '#fff', '#3f6f9e', 2.6);
 
   // --- Blaster shop (stunt park corner)
-  building(-78, -44, 10, 8, 5, '#b46cff', '#5a2b8b');
+  building(-78, -44, 10, 8, 5, '#5a5f6a', '#2a2d33');
   sign('🔫 BLASTER SHOP', -72.5, 7.5, -44, '#fff', '#8b3fd6', 2.2);
 
   // Lighthouse
@@ -879,14 +881,18 @@ export function buildWorld() {
   // Scatter roadside trees in free edge strips
   for (let i = 0; i < 16; i++) addTree(rand(-168, -156), rand(-150, 150));
 
+  await progress(0.4, 'Building the town');
   buildLandmarks();
+  await progress(0.5, 'Raising Mega City');
   buildMegaCity();
   buildSuburbs();
   buildBalloons();
+  await progress(0.65, 'Growing forests');
   buildWilderness();
   buildTrees();
   buildLamps();
   buildDecor();
+  await progress(0.8, 'Finishing touches');
   finalizeStatic();
 
   // Clouds
@@ -940,6 +946,7 @@ export function updateWorld(dt, focus) {
     u.sunDir.value.set(Math.cos(a) * 0.8, Math.sin(a), 0.45);
     G.sky.position.copy(G.camera.position);
   }
+  updateBalloons(G.time);
   if (G.waterTex) { G.waterTex.offset.x = G.time * 0.004; G.waterTex.offset.y = G.time * 0.0025; }
   G.scene.fog.color.copy(tmpC);
   sun.intensity = 0.25 + 1.4 * day;

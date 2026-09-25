@@ -124,7 +124,7 @@ export function slopeAt(x, z) {
 
 // ---------------------------------------------------------------- meshes
 const C = (h) => new THREE.Color(h);
-const COL = { grass: C('#7ccf5a'), forest: C('#5aa847'), sand: C('#f2dc9a'), desert: C('#f0cf86'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f') };
+const COL = { grass: C('#7fae4f'), forest: C('#5a8f42'), sand: C('#f2dc9a'), desert: C('#f0cf86'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f') };
 export function buildTerrainMesh(scene) {
   const segs = N - 1;
   const g = new THREE.PlaneGeometry(WORLD * 2, WORLD * 2, segs, segs);

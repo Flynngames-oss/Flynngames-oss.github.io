@@ -47,8 +47,9 @@ const CONS = [[PEL, CHE], [CHE, HEAD], [PEL, HEAD], [CHE, HL], [CHE, HR], [PEL, 
 const K0 = [800, 380, 190, 70, 70, 650, 650];
 const C0 = [50, 24, 11, 7, 7, 42, 42];
 
-const CAPS = new THREE.CapsuleGeometry(0.46, 0.5, 6, 14);
-const HEADG = new THREE.SphereGeometry(0.42, 18, 14);
+const CAPS = new THREE.CapsuleGeometry(0.43, 0.6, 6, 16);
+const HEADG = new THREE.SphereGeometry(0.38, 20, 16);
+const HIPS = new THREE.CylinderGeometry(0.43, 0.4, 0.42, 16);
 const LIMB = new THREE.CylinderGeometry(1, 1, 1, 8);
 const BALL = new THREE.SphereGeometry(1, 10, 8);
 const HALFBALL = new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -59,7 +60,7 @@ const _mtx = new THREE.Matrix4();
 // Soft plastic/rubber look for bodies (a little shiny)
 const cmatCache = new Map();
 function cmat(color) {
-  if (!cmatCache.has(color)) cmatCache.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.02 }));
+  if (!cmatCache.has(color)) cmatCache.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.0 }));
   return cmatCache.get(color);
 }
 function mk(geo, material, sx = 1, sy = 1, sz = 1) {
@@ -144,7 +145,7 @@ const BOX_G = new THREE.BoxGeometry(1, 1, 1);
 
 // Full costumes. hat/glasses they use become owned when you buy the skin.
 export const SKINS = [
-  { id: 'classic', name: 'Classic Bobbler', emo: '🙂', price: 0, o: { skin: '#ffcf4a', shirt: '#3fa7ff', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'round', extras: [] } },
+  { id: 'classic', name: 'Everyday', emo: '🙂', price: 0, o: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [] } },
   { id: 'robot', name: 'Robot', emo: '🤖', price: 300, o: { skin: '#b8c4d6', shirt: '#9aa4b1', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'big', extras: ['antenna', 'visor', 'backpack:#6b7079'] } },
   { id: 'alien', name: 'Alien', emo: '👽', price: 300, o: { skin: '#9be05a', shirt: '#b46cff', pants: '#6c4bd6', hat: 'none', glasses: 'none', eyes: 'big', extras: ['antennae:#9be05a'] } },
   { id: 'ninja', name: 'Ninja', emo: '🥷', price: 250, o: { skin: '#f2c9a0', shirt: '#222222', pants: '#222222', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['mask:#222222'] } },
@@ -197,45 +198,61 @@ export function makeGlasses(id) {
 }
 
 function makeFace(eyes) {
+  // Simple, grown-up face: small dark eyes with a glint, brows and a neutral mouth
   const g = new THREE.Group();
-  const white = mat('#ffffff'), black = mat('#1a1a1a');
-  const big = eyes === 'big' ? 1.35 : 1;
+  const dark = mat('#1c1512'), white = mat('#ffffff');
+  const big = eyes === 'big' ? 1.2 : 1;
   for (const s of [-1, 1]) {
-    if (eyes === 'happy') {
-      const t = mk(new THREE.TorusGeometry(0.075, 0.022, 6, 12, Math.PI), black);
-      t.position.set(s * 0.15, 0.05, 0.4); g.add(t);
-      continue;
-    }
-    const sl = eyes === 'sleepy' ? 0.4 : 1;
-    const w = mk(BALL, white, 0.105 * big, 0.14 * big * sl, 0.07);
-    w.position.set(s * 0.14, 0.07, 0.365); g.add(w);
-    const p = mk(BALL, black, 0.06 * big, 0.085 * big * sl, 0.045);
-    p.position.set(s * 0.14, 0.055, 0.41); g.add(p);
-    if (eyes !== 'sleepy') { const gl = mk(BALL, white, 0.022 * big, 0.022 * big, 0.015); gl.position.set(s * 0.14 + 0.02, 0.09, 0.448); g.add(gl); }
-    if (eyes === 'angry') {
-      const br = mk(new THREE.BoxGeometry(0.16, 0.035, 0.03), black);
-      br.position.set(s * 0.15, 0.2, 0.39); br.rotation.z = s * 0.35; g.add(br);
-    }
+    const sl = eyes === 'sleepy' ? 0.45 : 1;
+    const e = mk(BALL, dark, 0.042 * big, 0.062 * big * sl, 0.03);
+    e.position.set(s * 0.12, 0.05, 0.355); g.add(e);
+    if (eyes !== 'sleepy') { const gl = mk(BALL, white, 0.012, 0.012, 0.008); gl.position.set(s * 0.12 + 0.012, 0.07, 0.382); g.add(gl); }
+    const br = mk(BOX_G, mat('#2a1d16'), 0.1, 0.022, 0.025);
+    br.position.set(s * 0.125, eyes === 'happy' ? 0.15 : 0.14, 0.345);
+    br.rotation.z = eyes === 'angry' ? s * 0.35 : eyes === 'happy' ? -s * 0.12 : s * -0.05;
+    g.add(br);
   }
-  const mouth = mk(new THREE.TorusGeometry(0.08, 0.02, 6, 12, Math.PI), mat(eyes === 'angry' ? '#1a1a1a' : '#b8326a'));
-  mouth.position.set(0, -0.12, 0.39);
-  mouth.rotation.z = eyes === 'angry' ? 0 : Math.PI;
-  g.add(mouth);
-  for (const s of [-1, 1]) {
-    const b = mk(BALL, mat('#ff8fb0', { transparent: true, opacity: 0.55 }), 0.06, 0.035, 0.02);
-    b.position.set(s * 0.27, -0.06, 0.34); g.add(b);
-  }
+  const mouth = mk(BOX_G, mat('#6b3a30'), eyes === 'happy' ? 0.12 : 0.09, 0.018, 0.02);
+  mouth.position.set(0, -0.1, 0.36);
+  if (eyes === 'happy') { const m2 = mk(new THREE.TorusGeometry(0.055, 0.012, 6, 12, Math.PI), mat('#6b3a30')); m2.position.set(0, -0.08, 0.36); m2.rotation.z = Math.PI; g.add(m2); }
+  else g.add(mouth);
+  // nose
+  const n = mk(BALL, mat('#000', { transparent: true, opacity: 0.08 }), 0.035, 0.04, 0.03);
+  n.position.set(0, -0.02, 0.375); g.add(n);
   return g;
 }
 
+export const HAIRS = [
+  { id: 'none', name: 'Bald' }, { id: 'buzz', name: 'Buzz Cut' }, { id: 'short', name: 'Short' }, { id: 'swept', name: 'Swept' },
+  { id: 'curly', name: 'Curly' }, { id: 'long', name: 'Long' }, { id: 'ponytail', name: 'Ponytail' }, { id: 'bun', name: 'Bun' },
+];
+export const HAIR_COLORS = ['#1c1512', '#3b2a20', '#5a3a22', '#8a5a2b', '#c9a060', '#e8d0a0', '#9a9a9a', '#a33a2a'];
+function makeHair(id, color) {
+  const g = new THREE.Group();
+  if (!id || id === 'none') return g;
+  const m = cmat(color || '#3b2a20');
+  const cap = (thetaLen, sc = 1.06) => { const h = new THREE.Mesh(new THREE.SphereGeometry(0.38, 18, 10, 0, Math.PI * 2, 0, thetaLen), m); h.scale.setScalar(sc); h.rotation.x = -0.35; h.castShadow = true; g.add(h); return h; };
+  if (id === 'buzz') cap(1.25, 1.02);
+  if (id === 'short' || id === 'swept' || id === 'long' || id === 'ponytail' || id === 'bun') cap(1.35, 1.07);
+  if (id === 'swept') { const f = mk(BALL, m, 0.3, 0.12, 0.2); f.position.set(0.05, 0.3, 0.2); f.rotation.z = -0.3; g.add(f); }
+  if (id === 'curly') for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2, r = i % 2 ? 0.22 : 0.3; const b = mk(BALL, m, 0.13, 0.13, 0.13); b.position.set(Math.cos(a) * r, 0.28 + (i % 3) * 0.04, Math.sin(a) * r - 0.05); g.add(b); }
+  if (id === 'long') { const b = mk(BOX_G, m, 0.66, 0.55, 0.22); b.position.set(0, -0.12, -0.24); g.add(b); }
+  if (id === 'ponytail') { const b = mk(BALL, m, 0.11, 0.26, 0.11); b.position.set(0, 0.0, -0.45); b.rotation.x = 0.5; g.add(b); }
+  if (id === 'bun') { const b = mk(BALL, m, 0.15, 0.15, 0.15); b.position.set(0, 0.36, -0.2); g.add(b); }
+  return g;
+}
+
+export const SKIN_TONES = ['#f6d7c3', '#eec4a5', '#e0ac86', '#c68b62', '#a86f4a', '#8a5536', '#5e3a24'];
+const SHIRTS = ['#2f3e5c', '#3a3a40', '#6b2f3a', '#4a5a3a', '#d9d2c3', '#f0f0f0', '#1f1f24', '#4f6f8f', '#8a6a4a', '#a33a3a', '#2f5f5f', '#c77a2a', '#5a4a6a'];
+const PANTS = ['#2c3e5c', '#1f2328', '#4a4f58', '#8a7a5a', '#3b4a66', '#555a44', '#6a5a4a'];
 export function randomOutfit() {
-  if (Math.random() < 0.3) { const sk = pick(SKINS.slice(1)); return { ...sk.o, extras: [...sk.o.extras] }; }
+  if (Math.random() < 0.1) { const sk = pick(SKINS.slice(1)); return { ...sk.o, extras: [...sk.o.extras] }; }
   return {
-    skin: pick(['#ffcf4a', '#f2c9a0', '#ffd6e8', '#9be05a', '#3fd6d0', '#ffb36b', '#b46cff', '#ff8fb0', '#c68b59', '#8b5a2b']),
-    shirt: pick(COLORS), pants: pick(COLORS),
-    hat: Math.random() < 0.5 ? pick(HATS).id : 'none',
-    glasses: Math.random() < 0.25 ? pick(GLASSES).id : 'none',
-    eyes: pick(EYES).id,
+    skin: pick(SKIN_TONES), shirt: pick(SHIRTS), pants: pick(PANTS),
+    hair: pick(['short', 'short', 'buzz', 'swept', 'curly', 'long', 'ponytail', 'bun', 'none']), hairColor: pick(HAIR_COLORS),
+    hat: Math.random() < 0.2 ? pick(['cap', 'beanie', 'cowboy', 'police', 'hardhat']) : 'none',
+    glasses: Math.random() < 0.2 ? pick(['sun', 'nerd']) : 'none',
+    eyes: pick(['round', 'round', 'happy', 'angry', 'sleepy']),
   };
 }
 
@@ -275,18 +292,21 @@ export class Character {
     this.body = new THREE.Group();
     this.head = new THREE.Group();
     this.bodyMesh = mk(CAPS, mat('#fff'));
-    this.bodyMesh.position.y = 0.32;
+    this.bodyMesh.position.y = 0.38;
     this.body.add(this.bodyMesh);
+    this.hipsMesh = mk(HIPS, mat('#fff'));
+    this.hipsMesh.position.y = -0.02;
+    this.body.add(this.hipsMesh);
     this.headMesh = mk(HEADG, mat('#fff'));
     this.head.add(this.headMesh);
-    this.armL = mk(LIMB, mat('#fff'), 0.12, 1, 0.12);
-    this.armR = mk(LIMB, mat('#fff'), 0.12, 1, 0.12);
-    this.legL = mk(LIMB, mat('#fff'), 0.15, 1, 0.15);
-    this.legR = mk(LIMB, mat('#fff'), 0.15, 1, 0.15);
-    this.handL = mk(BALL, mat('#fff'), 0.15, 0.15, 0.15);
-    this.handR = mk(BALL, mat('#fff'), 0.15, 0.15, 0.15);
-    this.shoeL = mk(BALL, mat('#333'), 0.17, 0.12, 0.24);
-    this.shoeR = mk(BALL, mat('#333'), 0.17, 0.12, 0.24);
+    this.armL = mk(LIMB, mat('#fff'), 0.11, 1, 0.11);
+    this.armR = mk(LIMB, mat('#fff'), 0.11, 1, 0.11);
+    this.legL = mk(LIMB, mat('#fff'), 0.14, 1, 0.14);
+    this.legR = mk(LIMB, mat('#fff'), 0.14, 1, 0.14);
+    this.handL = mk(BALL, mat('#fff'), 0.13, 0.13, 0.13);
+    this.handR = mk(BALL, mat('#fff'), 0.13, 0.13, 0.13);
+    this.shoeL = mk(BALL, cmat('#2a2a2e'), 0.16, 0.11, 0.26);
+    this.shoeR = mk(BALL, cmat('#2a2a2e'), 0.16, 0.11, 0.26);
     this.group.add(this.body, this.head, this.armL, this.armR, this.legL, this.legR, this.handL, this.handR, this.shoeL, this.shoeR);
     G.scene.add(this.group);
     // fishing rod & hose nozzle (hidden until used)
@@ -304,14 +324,18 @@ export class Character {
     this.armL.material = this.armR.material = shirt;
     this.handL.material = this.handR.material = skin;
     this.legL.material = this.legR.material = pants;
+    this.hipsMesh.material = pants;
     if (this.hatObj) this.head.remove(this.hatObj);
     if (this.glassesObj) this.head.remove(this.glassesObj);
     if (this.faceObj) this.head.remove(this.faceObj);
+    if (this.hairObj) this.head.remove(this.hairObj);
+    this.hairObj = makeHair(o.hat === 'astro' || o.hat === 'knight' ? 'none' : o.hair, o.hairColor); this.head.add(this.hairObj);
     this.faceObj = makeFace(o.eyes); this.head.add(this.faceObj);
-    this.hatObj = makeHat(o.hat); this.head.add(this.hatObj);
-    this.glassesObj = makeGlasses(o.glasses); this.head.add(this.glassesObj);
+    this.hatObj = makeHat(o.hat); this.hatObj.scale.setScalar(0.92); this.hatObj.position.y = 0.02; this.head.add(this.hatObj);
+    this.glassesObj = makeGlasses(o.glasses); this.glassesObj.scale.setScalar(0.88); this.head.add(this.glassesObj);
     if (this.extras) { this.head.remove(this.extras.head); this.body.remove(this.extras.body); }
     this.extras = makeExtras((Array.isArray(o.extras) ? o.extras : []).filter(x => typeof x === 'string').slice(0, 8), o);
+    this.extras.head.scale.setScalar(0.9);
     this.head.add(this.extras.head); this.body.add(this.extras.body);
   }
 
