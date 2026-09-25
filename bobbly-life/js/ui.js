@@ -1,9 +1,11 @@
 // HUD, shops, phone, minimap, chat.
 import { G, COLORS, addMoney, writeSave, LAND } from './state.js';
-import { HATS, GLASSES, EYES } from './character.js';
+import { HATS, GLASSES, EYES, SKINS } from './character.js';
 import { VTYPES } from './vehicles.js';
 import { JOBS, startJob } from './jobs.js';
-import { LOC, ROADS, colliders } from './world.js';
+import { LOC, ROADS, colliders, groundHeight } from './world.js';
+import { PRESENT_SPOTS } from './props.js';
+import { WORLD, heightAt, biome, HIGHWAYS } from './terrain.js';
 import { sfx } from './audio.js';
 import { WEAPONS } from './weapons.js';
 
@@ -73,14 +75,21 @@ function itemGrid(list, ownedKey, slot, freeAll = false) {
 }
 
 function clothingPanel(title) {
-  let tab = 'hats';
+  let tab = 'skins';
   const render = (el) => {
     const o = G.save.outfit;
     let html = `<div class="tabs">
+      <button class="btn small ${tab === 'skins' ? '' : 'gray'}" data-tab="skins">🦸 Skins</button>
       <button class="btn small ${tab === 'hats' ? '' : 'gray'}" data-tab="hats">🎩 Hats</button>
       <button class="btn small ${tab === 'glasses' ? '' : 'gray'}" data-tab="glasses">😎 Glasses</button>
       <button class="btn small ${tab === 'face' ? '' : 'gray'}" data-tab="face">👀 Face</button>
       <button class="btn small ${tab === 'colors' ? '' : 'gray'}" data-tab="colors">🎨 Colors</button></div>`;
+    if (tab === 'skins') {
+      html += `<p class="small">A skin changes your whole look! You can still change hats and colors after.</p><div class="grid">${SKINS.map(sk => {
+        const owned = G.save.ownedSkins.includes(sk.id);
+        return `<div class="item ${owned ? 'owned' : ''}" data-skin="${sk.id}"><span class="emo">${sk.emo}</span>${sk.name}<div class="price">${owned ? 'Owned — wear it' : '$' + sk.price}</div></div>`;
+      }).join('')}</div>`;
+    }
     if (tab === 'hats') html += itemGrid(HATS, 'ownedHats', 'hat');
     if (tab === 'glasses') html += itemGrid(GLASSES, 'ownedGlasses', 'glasses');
     if (tab === 'face') html += itemGrid(EYES.map(e => ({ ...e, emo: { round: '🙂', big: '😳', happy: '😊', angry: '😠', sleepy: '😴' }[e.id] })), null, 'eyes', true);
@@ -91,9 +100,24 @@ function clothingPanel(title) {
       html += '<p class="small">Colors are free!</p>';
     }
     el.innerHTML = html;
+    el.querySelectorAll('[data-skin]').forEach(it => it.onclick = () => {
+      const sk = SKINS.find(x => x.id === it.dataset.skin);
+      if (!G.save.ownedSkins.includes(sk.id)) {
+        if (G.save.money < sk.price) { toast('Not enough money! Do some jobs 💼', 'bad'); sfx.bad(); return; }
+        addMoney(-sk.price, `Bought the ${sk.name} skin!`);
+        G.save.ownedSkins.push(sk.id);
+        sfx.win();
+      }
+      if (!G.save.ownedHats.includes(sk.o.hat)) G.save.ownedHats.push(sk.o.hat);
+      if (!G.save.ownedGlasses.includes(sk.o.glasses)) G.save.ownedGlasses.push(sk.o.glasses);
+      Object.assign(o, sk.o, { extras: [...sk.o.extras] });
+      outfitChanged();
+      toast(`${sk.emo} You're now a ${sk.name}!`);
+      render(el);
+    });
     el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(el); });
     el.querySelectorAll('.sw').forEach(s => s.onclick = () => { o[s.dataset.key] = s.dataset.color; outfitChanged(); render(el); });
-    el.querySelectorAll('.item').forEach(it => it.onclick = () => {
+    el.querySelectorAll('.item[data-slot]').forEach(it => it.onclick = () => {
       const slot = it.dataset.slot, id = it.dataset.id, price = +it.dataset.price;
       const ownedKey = slot === 'hat' ? 'ownedHats' : slot === 'glasses' ? 'ownedGlasses' : null;
       if (it.dataset.owned !== '1') {
@@ -136,6 +160,7 @@ const TRAVEL = [
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
   ['🌳', 'Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0], ['🎣', 'Pier & Beach', 180, 0, Math.PI / 2],
+  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🏜️', 'Desert Pyramids', 'pyramid', 0, Math.PI], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Desert Oasis', 'oasis'], ['🏞️', 'East Lake', 'eastLake'],
 ];
 
 function blasterPanel() {
@@ -177,7 +202,7 @@ function phonePanel() {
         <div class="item" data-wp="mansion"><span class="emo">🏠</span>Dream House<div class="price">${s.house ? 'Your home' : '$2000'}</div></div>
       </div>
       <h3>📊 Stats</h3>
-      <p>🎁 Presents found: <b>${s.presents.length} / 20</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'}</p>
+      <p>🎁 Presents found: <b>${s.presents.length} / ${PRESENT_SPOTS.length}</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'}</p>
       <div class="tabs">
         <button class="btn small blue" id="phRespawn">🔄 Respawn (unstuck)</button>
         ${s.house ? '<button class="btn small green" id="phHome">🏠 Go Home</button>' : ''}
@@ -193,8 +218,10 @@ function phonePanel() {
       const p = G.player;
       if (p.vehicle) p.vehicle.removeOccupant(p);
       if (p.held && G.dropHeld) G.dropHeld(false);
-      p.place(t[2], 0, t[3], t[4] || 0);
-      G.cam.yaw = (t[4] || 0) + Math.PI;
+      const tx = typeof t[2] === 'string' ? LOC[t[2]].x + (t[2] === 'peak' ? 4 : 0) : t[2], tz = typeof t[2] === 'string' ? LOC[t[2]].z : t[3];
+      const face = typeof t[2] === 'string' ? (t[4] || 0) : (t[4] || 0);
+      p.place(tx, groundHeight(tx, tz, 999) + 0.1, tz, face);
+      G.cam.yaw = face + Math.PI;
       sfx.pop();
       toast(`${t[0]} Welcome to ${t[1]}!`);
     });
@@ -246,25 +273,48 @@ export function chatLine(name, text, color = '#ffd166') {
 
 // ---------------------------------------------------------------- minimap
 let mapBase = null;
+let worldBase = null;
+// Whole-island overview map: 1 pixel = 5 metres.
+function buildWorldBase() {
+  const S = Math.round(WORLD * 2 / 5);
+  worldBase = document.createElement('canvas');
+  worldBase.width = worldBase.height = S;
+  const x = worldBase.getContext('2d');
+  const img = x.createImageData(S, S);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const wx = -WORLD + i * 5, wz = -WORLD + j * 5;
+    const h = heightAt(wx, wz), b = biome(wx, wz);
+    let r, g, bl;
+    if (h < -0.6) { r = 63; g = 155; bl = 224; }
+    else if (h > 95) { r = 240; g = 244; bl = 250; }
+    else if (h > 60) { r = 150; g = 145; bl = 135; }
+    else { r = 124 + (240 - 124) * b.south - 30 * b.west; g = 207 + (207 - 207) * b.south - 40 * b.west; bl = 90 + (134 - 90) * b.south - 20 * b.west; }
+    const k = (j * S + i) * 4;
+    img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = bl; img.data[k + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  x.strokeStyle = '#6b7079'; x.lineWidth = 2;
+  for (const hw of HIGHWAYS) { x.beginPath(); x.moveTo((hw.x0 + WORLD) / 5, (hw.z0 + WORLD) / 5); x.lineTo((hw.x1 + WORLD) / 5, (hw.z1 + WORLD) / 5); x.stroke(); }
+}
+
 function buildMapBase() {
   const S = 520;
   mapBase = document.createElement('canvas');
   mapBase.width = mapBase.height = S;
   const x = mapBase.getContext('2d');
   const W = (v) => (v + S / 2);
-  x.fillStyle = '#3f9be0'; x.fillRect(0, 0, S, S);
-  x.fillStyle = '#f2dc9a'; x.fillRect(W(-LAND - 6), W(-LAND - 6), (LAND + 6) * 2, (LAND + 6) * 2);
-  x.fillStyle = '#7ccf5a'; x.fillRect(W(-LAND + 20), W(-LAND + 20), (LAND - 20) * 2, (LAND - 20) * 2);
+  x.fillStyle = '#7ccf5a'; x.fillRect(W(-LAND), W(-LAND), LAND * 2, LAND * 2);
   x.fillStyle = '#6b7079';
   for (const r of ROADS) { x.fillRect(W(r - 5), W(-LAND), 10, LAND * 2); x.fillRect(W(-LAND), W(r - 5), LAND * 2, 10); }
   x.fillStyle = '#b88a5a'; x.fillRect(W(183), W(-3), 49, 6);
   x.fillStyle = '#e8e2d4';
   for (const c of colliders) {
+    if (Math.abs(c.minX) > LAND + 60 || Math.abs(c.minZ) > LAND + 60) continue;
     if (c.tag === 'tree' || c.maxX - c.minX < 3 || c.maxZ - c.minZ < 3 || c.maxY < 2) continue;
     x.fillRect(W(c.minX), W(c.minZ), c.maxX - c.minX, c.maxZ - c.minZ);
   }
   x.fillStyle = '#3f8f4a';
-  for (const t of G.trees) { x.beginPath(); x.arc(W(t.x), W(t.z), 1.6, 0, 7); x.fill(); }
+  for (const t of G.trees) { if (Math.abs(t.x) > LAND + 60 || Math.abs(t.z) > LAND + 60) continue; x.beginPath(); x.arc(W(t.x), W(t.z), 1.6, 0, 7); x.fill(); }
   x.font = '14px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   const icons = [['🍕', LOC.pizza], ['🚕', LOC.taxi], ['👕', LOC.clothing], ['🚗', LOC.dealer], ['🚒', LOC.fire], ['♻️', LOC.recycle],
     ['🪓', LOC.sawmill], ['🎣', LOC.fishing], ['🐟', LOC.fishMarket], ['🏁', LOC.race], ['🏠', LOC.mansion], ['🌳', LOC.park], ['⛲', { x: 0, z: 0 }], ['✈️', LOC.airport], ['🔫', LOC.blasters]];
@@ -272,11 +322,12 @@ function buildMapBase() {
 }
 
 export function drawMinimap() {
-  if (!mapBase) buildMapBase();
+  if (!mapBase) { buildMapBase(); buildWorldBase(); }
   const c = $('minimap'), x = c.getContext('2d');
   const S = c.width, R = S / 2;
   const P = G.player.vehicle ? G.player.vehicle.pos : G.player.pos;
-  const zoom = G.player.vehicle ? 0.9 : 1.4;
+  const vt = G.player.vehicle && G.player.vehicle.type;
+  const zoom = vt ? (vt.plane ? 0.22 : vt.heli ? 0.35 : 0.9) : 1.4;
   x.save();
   x.clearRect(0, 0, S, S);
   x.beginPath(); x.arc(R, R, R, 0, 7); x.clip();
@@ -284,6 +335,7 @@ export function drawMinimap() {
   x.translate(R, R);
   x.rotate(G.cam.yaw);          // camera forward is up
   x.scale(zoom, zoom);
+  x.drawImage(worldBase, -P.x - WORLD, -P.z - WORLD, WORLD * 2, WORLD * 2);
   x.drawImage(mapBase, -P.x - mapBase.width / 2, -P.z - mapBase.height / 2);
   const dot = (wx, wz, col, r = 4) => { x.fillStyle = col; x.beginPath(); x.arc(wx - P.x, wz - P.z, r / zoom, 0, 7); x.fill(); };
   if (G.job && G.job.markers) for (const m of G.job.markers) dot(m.x, m.z, '#222', 4);
@@ -300,6 +352,14 @@ export function drawMinimap() {
     x.fillStyle = col; x.strokeStyle = '#fff'; x.lineWidth = 2;
     x.beginPath(); x.arc(R + sx, R + sy, 7, 0, 7); x.fill(); x.stroke();
   };
+  // far-away landmarks, drawn at a fixed size
+  x.font = '16px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const [e, k] of [['⛰️', 'peak'], ['🏜️', 'pyramid'], ['🏕️', 'cabin'], ['🌴', 'oasis'], ['✈️', 'airport']]) {
+    const l = LOC[k]; if (!l) continue;
+    const dx = l.x - P.x, dz = l.z - P.z, cs = Math.cos(G.cam.yaw), sn = Math.sin(G.cam.yaw);
+    const sx = (dx * cs - dz * sn) * zoom, sy = (dx * sn + dz * cs) * zoom;
+    if (Math.hypot(sx, sy) < R - 10) x.fillText(e, R + sx, R + sy);
+  }
   if (G.waypoint) drawTarget(G.waypoint, '#3fa7ff');
   if (G.job && G.job.target) drawTarget(G.job.target, '#ffd54a');
   // player arrow

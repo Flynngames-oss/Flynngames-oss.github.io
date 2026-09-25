@@ -22,7 +22,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 900);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 2200);
 G.scene = scene; G.camera = camera; G.renderer = renderer;
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
@@ -135,8 +135,12 @@ function onKey(code) {
     else { stopFishing(); player.flop(null, 0.8); player.holdRag = true; }
   }
   if (code === 'KeyJ') quitJob();
+  if (code === 'KeyV') {
+    G.cam.fp = !G.cam.fp;
+    G.cam.pitch = G.cam.fp ? 0 : 0.35;
+    UI.toast(G.cam.fp ? '👀 First-person view (V to switch back)' : '🎥 Third-person view');
+  }
   if (code === 'KeyG') cycleWeapon();
-  if (code === 'KeyV' && player.vehicle && player.vehicle.type.siren) sfx.honk();
   if (code === 'KeyQ' && player.vehicle) sfx.honk();
   const emotes = { Digit1: 'wave', Digit2: 'dance', Digit3: 'cheer', Digit4: 'sit' };
   if (emotes[code] && !player.vehicle) { player.emote = player.emote === emotes[code] ? null : emotes[code]; player.emoteT = 0; }
@@ -157,7 +161,7 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== canvas) return;
   G.cam.yaw -= e.movementX * 0.0025;
-  G.cam.pitch = clamp(G.cam.pitch + e.movementY * 0.0025, -0.35, 1.35);
+  G.cam.pitch = clamp(G.cam.pitch + e.movementY * 0.0025, G.cam.fp ? -1.45 : -0.35, G.cam.fp ? 1.45 : 1.35);
   G.cam.lastMouse = G.time;
 });
 addEventListener('wheel', (e) => { if (G.started && !G.ui.panel) G.cam.dist = clamp(G.cam.dist + Math.sign(e.deltaY) * 0.8, 3, 18); }, { passive: true });
@@ -194,7 +198,7 @@ if (isTouch) {
   canvas.addEventListener('pointermove', (e) => {
     if (!touch.look || e.pointerId !== touch.look.id) return;
     G.cam.yaw -= (e.clientX - touch.look.x) * 0.006;
-    G.cam.pitch = clamp(G.cam.pitch + (e.clientY - touch.look.y) * 0.004, -0.35, 1.35);
+    G.cam.pitch = clamp(G.cam.pitch + (e.clientY - touch.look.y) * 0.004, G.cam.fp ? -1.45 : -0.35, G.cam.fp ? 1.45 : 1.35);
     touch.look.x = e.clientX; touch.look.y = e.clientY; G.cam.lastMouse = G.time;
   });
   const endLook = () => { touch.look = null; };
@@ -628,7 +632,7 @@ function controlPlayer(dt) {
   if (!G.ui.fishing && space && !p.prevSpace) p.ctrl.jump = true;
   p.prevSpace = space;
   p.ctrl.grab = !blocked && (G.mouse.grab || G.mouse.grabLock) && !p.ragdoll;
-  p.ctrl.aim = p.weapon && !p.fishing ? G.cam.yaw + Math.PI : null;
+  p.ctrl.aim = (p.weapon || G.cam.fp) && !p.fishing ? G.cam.yaw + Math.PI : null;
   p.fireCd = (p.fireCd || 0) - dt;
   if (p.weapon && G.mouse.fire && !blocked && !p.ragdoll && !p.fishing && p.fireCd <= 0) {
     p.fireCd = WEAPONS[p.weapon].rate;
@@ -657,6 +661,18 @@ function updateCamera(dt) {
     return;
   }
   const v = player.vehicle;
+  player.head.visible = !G.cam.fp;
+  if (G.cam.fp) {
+    // First person: eyes inside the head, looking where the mouse points
+    const H = player.p[PARTS.HEAD];
+    const cp = Math.cos(G.cam.pitch), sp = Math.sin(G.cam.pitch);
+    const look = _u.set(-Math.sin(G.cam.yaw) * cp, -sp, -Math.cos(G.cam.yaw) * cp);
+    if (v && player.seat === 0 && G.time - G.cam.lastMouse > 1.2 && Math.abs(v.speed) > 2) G.cam.yaw = angleLerp(G.cam.yaw, v.yaw + Math.PI, 1 - Math.exp(-dt * 3));
+    camera.position.set(H.x, H.y + 0.12, H.z).addScaledVector(_w.set(look.x, 0, look.z).normalize(), 0.25);
+    camera.lookAt(_v.copy(camera.position).add(look));
+    camTarget.copy(camera.position);
+    return;
+  }
   const tgt = v ? _v.copy(v.pos).add(_w.set(0, v.type.heli || v.type.plane ? 2 : 1.4, 0)) : _v.copy(player.p[PARTS.CHE]).add(_w.set(0, 0.5, 0));
   camTarget.lerp(tgt, 1 - Math.exp(-dt * (v ? 12 : 10)));
   if (camTarget.distanceToSquared(tgt) > 400) camTarget.copy(tgt);
@@ -758,7 +774,7 @@ function loop(now) {
       if (hat) G.save.ownedHats.push(hat);
       import('./character.js').then(({ HATS }) => {
         const h = HATS.find(x => x.id === hat);
-        UI.toast(`🎁 Present ${G.save.presents.length}/20! +$50${h ? ' and a free ' + h.name + '!' : ''}`, 'money', 6000);
+        UI.toast(`🎁 Present ${G.save.presents.length}/32! +$50${h ? ' and a free ' + h.name + '!' : ''}`, 'money', 6000);
       });
       G.save.money += 50; writeSave();
       void pr;
@@ -773,7 +789,7 @@ function loop(now) {
     if (frame % 2 === 0) UI.drawMinimap();
     updatePrompt();
     const locked = document.pointerLockElement === canvas;
-    $('crosshair').classList.toggle('hidden', !player.weapon || !!player.vehicle || player.ragdoll);
+    $('crosshair').classList.toggle('hidden', !(player.weapon || G.cam.fp) || !!player.vehicle || player.ragdoll);
     $('clickToPlay').classList.toggle('hidden', isTouch || locked || !!G.ui.panel || G.ui.help || G.ui.chatOpen);
     netTick(dt);
     if (frame % 600 === 0) writeSave();

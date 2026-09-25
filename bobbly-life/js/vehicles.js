@@ -242,7 +242,7 @@ export class Vehicle {
     const gh = groundHeight(this.pos.x, this.pos.z, this.pos.y + 0.5, 1.2);
     const floor = Math.max(gh, baseHeight(this.pos.x, this.pos.z) < WATER_Y ? WATER_Y : -99);
     if (this.pos.y < floor) { this.pos.y = floor; if (this.vy < 0) this.vy = 0; this.onGround = true; } else this.onGround = this.pos.y - floor < 0.05;
-    if (this.pos.y > 160) { this.pos.y = 160; this.vy = Math.min(0, this.vy); }
+    if (this.pos.y > 420) { this.pos.y = 420; this.vy = Math.min(0, this.vy); }
     this.collideWalls(dt, 0);
     this.pitch = lerp(this.pitch, this.speed / t.max * 0.25, 0.1);
     this.roll = lerp(this.roll, -inp.steer * 0.2, 0.1);
@@ -277,7 +277,7 @@ export class Vehicle {
       if (this.speed < t.takeoff * 0.6) this.pos.y -= 7 * dt;
     }
     this.vy = this.onGround ? 0 : Math.sin(fp) * this.speed;
-    if (this.pos.y > 260) this.pos.y = 260;
+    if (this.pos.y > 450) this.pos.y = 450;
     const gh = groundHeight(this.pos.x, this.pos.z, this.pos.y + 0.6, 1);
     const water = baseHeight(this.pos.x, this.pos.z) < WATER_Y && gh < WATER_Y;
     const floor = water ? WATER_Y : gh;

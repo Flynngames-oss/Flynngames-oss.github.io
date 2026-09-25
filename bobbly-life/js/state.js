@@ -47,11 +47,12 @@ export function defaultSave() {
   return {
     name: 'Bobbler' + Math.floor(Math.random() * 900 + 100),
     money: 100,
-    outfit: { skin: '#ffcf4a', shirt: '#3fa7ff', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'round' },
+    outfit: { skin: '#ffcf4a', shirt: '#3fa7ff', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'round', extras: [] },
     ownedHats: ['none', 'cap'],
     ownedGlasses: ['none'],
     ownedCars: ['sedan'],
     ownedWeapons: [],
+    ownedSkins: ['classic'],
     weapon: null,
     house: false,
     presents: [],
