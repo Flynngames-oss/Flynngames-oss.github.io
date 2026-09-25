@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
+import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
 export const colliders = [];
@@ -33,10 +34,7 @@ export function addCollider(minX, minY, minZ, maxX, maxY, maxZ, tag = null) {
 }
 
 export function baseHeight(x, z) {
-  const m = Math.max(Math.abs(x), Math.abs(z));
-  if (m <= LAND) return 0;
-  if (m <= LAND + 12) return -((m - LAND) / 12) * 3;
-  return -3;
+  return heightAt(x, z);
 }
 
 function rampHeight(rp, x, z) {
@@ -208,41 +206,130 @@ export const LOC = {
 };
 
 // ---------------------------------------------------------------- trees (instanced so they can be chopped)
-let trunkIM, roundIM, pineIM;
+let trunkIM, roundIM, pineIM, snowIM;
 const treeDefs = [];
 function addTree(x, z, type = Math.random() < 0.5 ? 'round' : 'pine', s = rand(0.85, 1.25)) {
-  treeDefs.push({ x, z, type, s });
+  treeDefs.push({ x, z, type, s, y: heightAt(x, z) });
 }
 function buildTrees() {
   const n = treeDefs.length;
   trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.45, 1, 7), mat('#8b5a2b'), n);
   roundIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat('#5cbf4a', { flatShading: true }), n);
   pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#3f9e52', { flatShading: true }), n);
-  for (const im of [trunkIM, roundIM, pineIM]) { im.castShadow = true; im.receiveShadow = true; G.scene.add(im); }
+  snowIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#e8f2f5', { flatShading: true }), n);
+  for (const im of [trunkIM, roundIM, pineIM, snowIM]) { im.castShadow = true; im.receiveShadow = true; G.scene.add(im); }
   treeDefs.forEach((t, i) => {
-    const tree = { x: t.x, z: t.z, type: t.type, s: t.s, idx: i, hp: 5, alive: true, regrow: 0, shake: 0 };
-    tree.collider = addCollider(t.x - 0.45, 0, t.z - 0.45, t.x + 0.45, 4 * t.s, t.z + 0.45, 'tree');
+    const tree = { x: t.x, z: t.z, y: t.y, type: t.type, s: t.s, idx: i, hp: 5, alive: true, regrow: 0, shake: 0 };
+    tree.collider = addCollider(t.x - 0.45, t.y - 1, t.z - 0.45, t.x + 0.45, t.y + 4 * t.s, t.z + 0.45, 'tree');
     G.trees.push(tree);
     setTreeMatrix(tree, 1);
   });
+  for (const im of [trunkIM, roundIM, pineIM, snowIM]) im.computeBoundingSphere();
 }
 const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _qq = new THREE.Quaternion(), _s = new THREE.Vector3(), _e = new THREE.Euler();
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 export function setTreeMatrix(tree, grow, lean = 0) {
-  const s = tree.s * grow;
+  const s = tree.s * grow, y = tree.y || 0;
   _e.set(lean * 0.6, 0, lean);
   _qq.setFromEuler(_e);
-  _p.set(tree.x, 1.5 * s, tree.z); _s.set(s, 3 * s, s);
+  _p.set(tree.x, y + 1.5 * s, tree.z); _s.set(s, 3 * s, s);
   _m.compose(_p, _qq, _s); trunkIM.setMatrixAt(tree.idx, _m);
-  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  roundIM.setMatrixAt(tree.idx, ZERO); pineIM.setMatrixAt(tree.idx, ZERO); snowIM.setMatrixAt(tree.idx, ZERO);
   if (tree.type === 'round') {
-    _p.set(tree.x, 4.2 * s, tree.z); _s.set(2.2 * s, 2.0 * s, 2.2 * s);
-    _m.compose(_p, _qq, _s); roundIM.setMatrixAt(tree.idx, _m); pineIM.setMatrixAt(tree.idx, zero);
+    _p.set(tree.x, y + 4.2 * s, tree.z); _s.set(2.2 * s, 2.0 * s, 2.2 * s);
+    _m.compose(_p, _qq, _s); roundIM.setMatrixAt(tree.idx, _m);
   } else {
-    _p.set(tree.x, 4.8 * s, tree.z); _s.set(2.0 * s, 5 * s, 2.0 * s);
-    _m.compose(_p, _qq, _s); pineIM.setMatrixAt(tree.idx, _m); roundIM.setMatrixAt(tree.idx, zero);
+    _p.set(tree.x, y + 4.8 * s, tree.z); _s.set(2.0 * s, 5 * s, 2.0 * s);
+    _m.compose(_p, _qq, _s); (tree.type === 'snow' ? snowIM : pineIM).setMatrixAt(tree.idx, _m);
   }
-  if (grow === 0) { trunkIM.setMatrixAt(tree.idx, zero); roundIM.setMatrixAt(tree.idx, zero); pineIM.setMatrixAt(tree.idx, zero); }
-  trunkIM.instanceMatrix.needsUpdate = roundIM.instanceMatrix.needsUpdate = pineIM.instanceMatrix.needsUpdate = true;
+  if (grow === 0) trunkIM.setMatrixAt(tree.idx, ZERO), roundIM.setMatrixAt(tree.idx, ZERO), pineIM.setMatrixAt(tree.idx, ZERO), snowIM.setMatrixAt(tree.idx, ZERO);
+  trunkIM.instanceMatrix.needsUpdate = roundIM.instanceMatrix.needsUpdate = pineIM.instanceMatrix.needsUpdate = snowIM.instanceMatrix.needsUpdate = true;
+}
+
+// Cacti and rocks: simple instanced decorations with small colliders.
+function buildInstanced(list, parts) {
+  for (const [geo, color, tf] of parts) {
+    const im = new THREE.InstancedMesh(geo, mat(color, { flatShading: true }), list.length);
+    list.forEach((d, i) => { tf(d, _m); im.setMatrixAt(i, _m); });
+    im.castShadow = true; im.receiveShadow = true;
+    im.computeBoundingSphere();
+    G.scene.add(im);
+  }
+}
+function buildWilderness() {
+  const cacti = [], rocks = [];
+  const tries = 60000;
+  for (let k = 0; k < tries; k++) {
+    const x = (srand() * 2 - 1) * (WORLD - 60), z = (srand() * 2 - 1) * (WORLD - 60);
+    if (Math.max(Math.abs(x), Math.abs(z)) < LAND + 25) continue;
+    if (Math.abs(x + 30) < 12 && z > 0) continue;
+    if (Math.abs(x - 30) < 12 && z < 0) continue;
+    if (Math.abs(z - 30) < 12 && x < 0) continue;
+    const h = heightAt(x, z);
+    if (h < 0.8) continue;
+    const b = biome(x, z), sl = slopeAt(x, z), r = srand();
+    if (b.west > 0.55 && h < 90 && sl < 0.7) { if (r < 0.09) addTree(x, z, srand() < 0.6 ? 'pine' : 'round', 0.9 + srand() * 0.7); }
+    else if (b.north > 0.5 && sl < 0.9) {
+      if (h < 115 && r < 0.035) addTree(x, z, h > 60 ? 'snow' : 'pine', 0.9 + srand() * 0.6);
+      else if (r > 0.992) rocks.push({ x, z, y: h, s: 1 + srand() * 3, a: srand() * 6 });
+    } else if (b.south > 0.55) {
+      if (r < 0.012) cacti.push({ x, z, y: h, s: 0.8 + srand() * 0.7, a: srand() * 6 });
+      else if (r > 0.996) rocks.push({ x, z, y: h, s: 1 + srand() * 2.5, a: srand() * 6 });
+    } else if (r < 0.012) addTree(x, z, 'round', 0.9 + srand() * 0.5);
+    else if (r > 0.997) rocks.push({ x, z, y: h, s: 1 + srand() * 2, a: srand() * 6 });
+  }
+  const up = new THREE.Vector3(0, 1, 0);
+  buildInstanced(cacti, [
+    [new THREE.CylinderGeometry(0.45, 0.5, 1, 8), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x, d.y + 2 * d.s, d.z), _qq, _s.set(d.s, 4 * d.s, d.s)); }],
+    [new THREE.CylinderGeometry(0.3, 0.3, 1, 8), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x + Math.cos(d.a) * 0.8 * d.s, d.y + 2.6 * d.s, d.z - Math.sin(d.a) * 0.8 * d.s), _qq, _s.set(d.s, 1.6 * d.s, d.s)); }],
+    [new THREE.CylinderGeometry(0.3, 0.3, 1, 8), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x - Math.cos(d.a) * 0.8 * d.s, d.y + 2.1 * d.s, d.z + Math.sin(d.a) * 0.8 * d.s), _qq, _s.set(d.s, 1.3 * d.s, d.s)); }],
+  ]);
+  for (const d of cacti) addCollider(d.x - 0.5 * d.s, d.y - 1, d.z - 0.5 * d.s, d.x + 0.5 * d.s, d.y + 4 * d.s, d.z + 0.5 * d.s);
+  buildInstanced(rocks, [[new THREE.DodecahedronGeometry(1, 0), '#9b9186', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x, d.y + d.s * 0.3, d.z), _qq, _s.set(d.s * 1.3, d.s, d.s)); }]]);
+  for (const d of rocks) addCollider(d.x - d.s, d.y - 2, d.z - d.s, d.x + d.s, d.y + d.s * 1.1, d.z + d.s);
+}
+
+// Landmarks out in the wild
+function stepPyramid(x, z, size, steps, color) {
+  const y0 = heightAt(x, z) - 3;
+  const sh = size * 0.08;
+  for (let i = 0; i < steps; i++) {
+    const w = size * (1 - i / steps);
+    box(x, y0 + i * sh, z, w, sh + (i === 0 ? 3 : 0), w, color);
+  }
+  return y0 + steps * sh;
+}
+function buildLandmarks() {
+  // Desert pyramids
+  const top1 = stepPyramid(140, -720, 70, 10, '#e6c27a');
+  stepPyramid(260, -800, 44, 8, '#dcb56a');
+  sign('🏜️ Bobbly Pyramids', 140, top1 + 6, -720, '#fff', '#c8963e', 3);
+  LOC.pyramid = { x: 140, z: -684, top: top1 };
+  // Oasis
+  const lk = LAKES[1];
+  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; addTree(lk.x + Math.cos(a) * (lk.r + 6), lk.z + Math.sin(a) * (lk.r + 6), 'round', 1.2); }
+  LOC.oasis = { x: lk.x + lk.r + 14, z: lk.z };
+  // Mountain summit
+  const pk = findPeak(-400, 500, 400, 1100);
+  LOC.peak = pk;
+  S(CYL8, mat('#8b5a2b'), pk.x, pk.h + 3, pk.z, 0, 0, 0, 0.15, 6, 0.15);
+  S(BOX, mat('#ff5b6e'), pk.x + 1, pk.h + 5.2, pk.z, 0, 0, 0, 2, 1.2, 0.08);
+  sign('⛰️ Mount Bobble — you made it!', pk.x, pk.h + 8, pk.z, '#fff', '#3f6f9e', 3);
+  // Lake cabin
+  const lake = LAKES[0];
+  const cx = lake.x + lake.r + 14, cz = lake.z;
+  const cy = heightAt(cx, cz);
+  box(cx, cy - 2, cz, 8, 6.5, 7, '#8b5a2b');
+  S(CONE4, mat('#6b3a2a'), cx, cy + 5.9, cz, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
+  box(cx - 9, -3, cz, 12, 3.4, 3, '#a0683a');
+  sign('🏕️ Lake Cabin', cx, cy + 9, cz, '#fff', '#5a8a3a', 2.4);
+  LOC.cabin = { x: cx - 6, z: cz + 6 };
+  // North lake viewpoint
+  LOC.eastLake = { x: LAKES[2].x - LAKES[2].r - 10, z: LAKES[2].z };
+  // Highway signs at the town exits
+  sign('⛰️ Snowy Mountains ↑', -30, 6, 200, '#fff', '#3f6f9e', 2.4);
+  sign('🏜️ Desert ↓', 30, 6, -200, '#fff', '#c8963e', 2.4);
+  sign('🌲 Forest & Lake ←', -200, 6, 30, '#fff', '#3f8a4a', 2.4);
 }
 
 // ---------------------------------------------------------------- lamps (instanced)
@@ -377,29 +464,12 @@ export function buildWorld() {
   const scene = G.scene;
   makeWindowTextures();
 
-  // Ground with beach slope
-  const size = (LAND + 60) * 2, segs = 120;
-  const gg = new THREE.PlaneGeometry(size, size, segs, segs);
-  gg.rotateX(-Math.PI / 2);
-  const cols = [];
-  const pos = gg.attributes.position;
-  const grass = new THREE.Color('#7ccf5a'), sand = new THREE.Color('#f2dc9a');
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i);
-    const y = baseHeight(x, z);
-    pos.setY(i, y);
-    const m = Math.max(Math.abs(x), Math.abs(z));
-    const c = m > LAND - 26 ? sand : grass;
-    cols.push(c.r, c.g, c.b);
-  }
-  gg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  gg.computeVertexNormals();
-  const ground = new THREE.Mesh(gg, new THREE.MeshLambertMaterial({ vertexColors: true }));
-  ground.receiveShadow = true;
-  scene.add(ground);
+  // Terrain for the whole island
+  buildHeights();
+  buildTerrainMesh(scene);
 
   // Ocean
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshLambertMaterial({ color: '#2f9be8', transparent: true, opacity: 0.82 }));
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshLambertMaterial({ color: '#2f9be8', transparent: true, opacity: 0.82 }));
   water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y;
   scene.add(water);
   G.water = water;
@@ -411,6 +481,7 @@ export function buildWorld() {
     S(PLANE, roadMat, 0, 0.021, r, 0, -Math.PI / 2, Math.PI / 2, 10, LAND * 2, 1);
   }
   for (const a of ROADS) for (const b of ROADS) flat(a, 0.025, b, 10, 10, '#555a63');
+  buildHighways(scene, roadMat);
 
   // Sidewalk blocks
   for (const bx of BLOCKS) for (const bz of BLOCKS) {
@@ -566,6 +637,8 @@ export function buildWorld() {
   // Scatter roadside trees in free edge strips
   for (let i = 0; i < 16; i++) addTree(rand(-168, -156), rand(-150, 150));
 
+  buildLandmarks();
+  buildWilderness();
   buildTrees();
   buildLamps();
   finalizeStatic();
@@ -573,14 +646,15 @@ export function buildWorld() {
   // Clouds
   G.clouds = [];
   const cm = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.25 });
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 60; i++) {
     const cl = new THREE.Group();
     for (let j = 0; j < 5; j++) {
       const s = new THREE.Mesh(new THREE.SphereGeometry(rand(4, 8), 8, 6), cm);
       s.position.set(rand(-8, 8), rand(-1, 2), rand(-4, 4));
       cl.add(s);
     }
-    cl.position.set(rand(-400, 400), rand(70, 100), rand(-400, 400));
+    cl.position.set(rand(-WORLD, WORLD), rand(90, 170), rand(-WORLD, WORLD));
+    cl.scale.setScalar(rand(1, 2.2));
     scene.add(cl);
     G.clouds.push(cl);
   }
@@ -600,7 +674,7 @@ export function buildLights() {
   s.left = -60; s.right = 60; s.top = 60; s.bottom = -60; s.near = 1; s.far = 260;
   sun.shadow.bias = -0.0008;
   G.scene.add(hemi, amb, sun, sun.target);
-  G.scene.fog = new THREE.Fog('#8fd3ff', 120, 420);
+  G.scene.fog = new THREE.Fog('#8fd3ff', 250, 1500);
 }
 
 export function updateWorld(dt, focus) {
@@ -622,5 +696,5 @@ export function updateWorld(dt, focus) {
   for (const m of nightMats) m.emissiveIntensity = night * 0.9;
   if (bulbMat) bulbMat.color.setRGB(lerp(0.9, 1, night), lerp(0.9, 0.9, night), lerp(0.9, 0.5, night));
   G.night = night;
-  for (const c of G.clouds) { c.position.x += dt * 2; if (c.position.x > 450) c.position.x = -450; }
+  for (const c of G.clouds) { c.position.x += dt * 2; if (c.position.x > WORLD + 100) c.position.x = -WORLD - 100; }
 }

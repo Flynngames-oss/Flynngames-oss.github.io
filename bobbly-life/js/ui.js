@@ -3,7 +3,9 @@ import { G, COLORS, addMoney, writeSave, LAND } from './state.js';
 import { HATS, GLASSES, EYES } from './character.js';
 import { VTYPES } from './vehicles.js';
 import { JOBS, startJob } from './jobs.js';
-import { LOC, ROADS, colliders } from './world.js';
+import { LOC, ROADS, colliders, groundHeight } from './world.js';
+import { PRESENT_SPOTS } from './props.js';
+import { WORLD, heightAt, biome, HIGHWAYS } from './terrain.js';
 import { sfx } from './audio.js';
 import { WEAPONS } from './weapons.js';
 
@@ -136,6 +138,7 @@ const TRAVEL = [
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
   ['🌳', 'Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0], ['🎣', 'Pier & Beach', 180, 0, Math.PI / 2],
+  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🏜️', 'Desert Pyramids', 'pyramid'], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Desert Oasis', 'oasis'], ['🏞️', 'East Lake', 'eastLake'],
 ];
 
 function blasterPanel() {
@@ -177,7 +180,7 @@ function phonePanel() {
         <div class="item" data-wp="mansion"><span class="emo">🏠</span>Dream House<div class="price">${s.house ? 'Your home' : '$2000'}</div></div>
       </div>
       <h3>📊 Stats</h3>
-      <p>🎁 Presents found: <b>${s.presents.length} / 20</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'}</p>
+      <p>🎁 Presents found: <b>${s.presents.length} / ${PRESENT_SPOTS.length}</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'}</p>
       <div class="tabs">
         <button class="btn small blue" id="phRespawn">🔄 Respawn (unstuck)</button>
         ${s.house ? '<button class="btn small green" id="phHome">🏠 Go Home</button>' : ''}
@@ -193,7 +196,8 @@ function phonePanel() {
       const p = G.player;
       if (p.vehicle) p.vehicle.removeOccupant(p);
       if (p.held && G.dropHeld) G.dropHeld(false);
-      p.place(t[2], 0, t[3], t[4] || 0);
+      const tx = typeof t[2] === 'string' ? LOC[t[2]].x + (t[2] === 'peak' ? 4 : 0) : t[2], tz = typeof t[2] === 'string' ? LOC[t[2]].z : t[3];
+      p.place(tx, groundHeight(tx, tz, 999) + 0.1, tz, t[4] || 0);
       G.cam.yaw = (t[4] || 0) + Math.PI;
       sfx.pop();
       toast(`${t[0]} Welcome to ${t[1]}!`);
@@ -246,25 +250,50 @@ export function chatLine(name, text, color = '#ffd166') {
 
 // ---------------------------------------------------------------- minimap
 let mapBase = null;
+let worldBase = null;
+// Whole-island overview map: 1 pixel = 5 metres.
+function buildWorldBase() {
+  const S = Math.round(WORLD * 2 / 5);
+  worldBase = document.createElement('canvas');
+  worldBase.width = worldBase.height = S;
+  const x = worldBase.getContext('2d');
+  const img = x.createImageData(S, S);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const wx = -WORLD + i * 5, wz = -WORLD + j * 5;
+    const h = heightAt(wx, wz), b = biome(wx, wz);
+    let r, g, bl;
+    if (h < -0.6) { r = 63; g = 155; bl = 224; }
+    else if (h > 95) { r = 240; g = 244; bl = 250; }
+    else if (h > 60) { r = 150; g = 145; bl = 135; }
+    else { r = 124 + (240 - 124) * b.south - 30 * b.west; g = 207 + (207 - 207) * b.south - 40 * b.west; bl = 90 + (134 - 90) * b.south - 20 * b.west; }
+    const k = (j * S + i) * 4;
+    img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = bl; img.data[k + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  x.strokeStyle = '#6b7079'; x.lineWidth = 2;
+  for (const hw of HIGHWAYS) { x.beginPath(); x.moveTo((hw.x0 + WORLD) / 5, (hw.z0 + WORLD) / 5); x.lineTo((hw.x1 + WORLD) / 5, (hw.z1 + WORLD) / 5); x.stroke(); }
+  x.font = '16px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const [e, k] of [['⛰️', 'peak'], ['🏜️', 'pyramid'], ['🏕️', 'cabin'], ['🌴', 'oasis']]) if (LOC[k]) x.fillText(e, (LOC[k].x + WORLD) / 5, (LOC[k].z + WORLD) / 5);
+}
+
 function buildMapBase() {
   const S = 520;
   mapBase = document.createElement('canvas');
   mapBase.width = mapBase.height = S;
   const x = mapBase.getContext('2d');
   const W = (v) => (v + S / 2);
-  x.fillStyle = '#3f9be0'; x.fillRect(0, 0, S, S);
-  x.fillStyle = '#f2dc9a'; x.fillRect(W(-LAND - 6), W(-LAND - 6), (LAND + 6) * 2, (LAND + 6) * 2);
-  x.fillStyle = '#7ccf5a'; x.fillRect(W(-LAND + 20), W(-LAND + 20), (LAND - 20) * 2, (LAND - 20) * 2);
+  x.fillStyle = '#7ccf5a'; x.fillRect(W(-LAND), W(-LAND), LAND * 2, LAND * 2);
   x.fillStyle = '#6b7079';
   for (const r of ROADS) { x.fillRect(W(r - 5), W(-LAND), 10, LAND * 2); x.fillRect(W(-LAND), W(r - 5), LAND * 2, 10); }
   x.fillStyle = '#b88a5a'; x.fillRect(W(183), W(-3), 49, 6);
   x.fillStyle = '#e8e2d4';
   for (const c of colliders) {
+    if (Math.abs(c.minX) > LAND + 60 || Math.abs(c.minZ) > LAND + 60) continue;
     if (c.tag === 'tree' || c.maxX - c.minX < 3 || c.maxZ - c.minZ < 3 || c.maxY < 2) continue;
     x.fillRect(W(c.minX), W(c.minZ), c.maxX - c.minX, c.maxZ - c.minZ);
   }
   x.fillStyle = '#3f8f4a';
-  for (const t of G.trees) { x.beginPath(); x.arc(W(t.x), W(t.z), 1.6, 0, 7); x.fill(); }
+  for (const t of G.trees) { if (Math.abs(t.x) > LAND + 60 || Math.abs(t.z) > LAND + 60) continue; x.beginPath(); x.arc(W(t.x), W(t.z), 1.6, 0, 7); x.fill(); }
   x.font = '14px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   const icons = [['🍕', LOC.pizza], ['🚕', LOC.taxi], ['👕', LOC.clothing], ['🚗', LOC.dealer], ['🚒', LOC.fire], ['♻️', LOC.recycle],
     ['🪓', LOC.sawmill], ['🎣', LOC.fishing], ['🐟', LOC.fishMarket], ['🏁', LOC.race], ['🏠', LOC.mansion], ['🌳', LOC.park], ['⛲', { x: 0, z: 0 }], ['✈️', LOC.airport], ['🔫', LOC.blasters]];
@@ -272,11 +301,12 @@ function buildMapBase() {
 }
 
 export function drawMinimap() {
-  if (!mapBase) buildMapBase();
+  if (!mapBase) { buildMapBase(); buildWorldBase(); }
   const c = $('minimap'), x = c.getContext('2d');
   const S = c.width, R = S / 2;
   const P = G.player.vehicle ? G.player.vehicle.pos : G.player.pos;
-  const zoom = G.player.vehicle ? 0.9 : 1.4;
+  const vt = G.player.vehicle && G.player.vehicle.type;
+  const zoom = vt ? (vt.plane ? 0.22 : vt.heli ? 0.35 : 0.9) : 1.4;
   x.save();
   x.clearRect(0, 0, S, S);
   x.beginPath(); x.arc(R, R, R, 0, 7); x.clip();
@@ -284,6 +314,7 @@ export function drawMinimap() {
   x.translate(R, R);
   x.rotate(G.cam.yaw);          // camera forward is up
   x.scale(zoom, zoom);
+  x.drawImage(worldBase, -P.x - WORLD, -P.z - WORLD, WORLD * 2, WORLD * 2);
   x.drawImage(mapBase, -P.x - mapBase.width / 2, -P.z - mapBase.height / 2);
   const dot = (wx, wz, col, r = 4) => { x.fillStyle = col; x.beginPath(); x.arc(wx - P.x, wz - P.z, r / zoom, 0, 7); x.fill(); };
   if (G.job && G.job.markers) for (const m of G.job.markers) dot(m.x, m.z, '#222', 4);

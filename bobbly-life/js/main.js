@@ -22,7 +22,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 900);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 2200);
 G.scene = scene; G.camera = camera; G.renderer = renderer;
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
