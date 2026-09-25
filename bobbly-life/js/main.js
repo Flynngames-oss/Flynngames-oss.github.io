@@ -559,7 +559,7 @@ function buildTitle() {
       if (err) { $('titleMsg').style.color = '#d24'; $('titleMsg').textContent = err; return; }
       startGame();
       UI.toast(`🌐 Room created! Code: ${code} — click "Copy invite link" at the top to invite friends.`, '', 9000);
-    });
+    }, (msg) => { $('titleMsg').textContent = msg; });
   };
   $('btnJoin').onclick = () => {
     const code = $('codeInput').value.trim().toUpperCase();
@@ -572,7 +572,7 @@ function buildTitle() {
       startGame();
       NET.send({ t: 'hello', name: G.save.name, outfit: G.save.outfit });
       UI.toast('🌐 Joined room ' + code + '!');
-    });
+    }, (msg) => { $('titleMsg').textContent = msg; });
   };
   $('codeInput').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('btnJoin').click(); });
   $('nameInput').addEventListener('keydown', (e) => e.stopPropagation());

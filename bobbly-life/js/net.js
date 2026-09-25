@@ -29,12 +29,36 @@ function peerOpts() {
 
 export function available() { return typeof window.Peer === 'function'; }
 
-export function hostGame(cb, tries = 0) {
+const NET_ERRORS = ['network', 'server-error', 'socket-error', 'socket-closed', 'timeout'];
+const MAX_TRIES = 3;
+function friendly(type) {
+  if (NET_ERRORS.includes(type)) return "Couldn't reach the multiplayer server. Check your internet and try again in a minute. (Some school or work networks block multiplayer, and then only solo works there.)";
+  if (type === 'browser-incompatible') return "This browser can't do multiplayer. Try Chrome, Edge or Firefox.";
+  return 'Multiplayer error: ' + type + '. Try again!';
+}
+// Retry wrapper: the free PeerJS server sometimes drops the first connection.
+function withRetry(start, cb, status) {
+  let attempt = 1;
+  const go = () => start((err, ...rest) => {
+    if (err && err.retry && attempt < MAX_TRIES) {
+      attempt++;
+      status && status(`Server busy, retrying (${attempt}/${MAX_TRIES})...`);
+      setTimeout(go, 1500 * attempt);
+      return;
+    }
+    cb(err ? (err.msg || err) : null, ...rest);
+  });
+  go();
+}
+
+export function hostGame(cb, status) { withRetry(hostOnce, cb, status); }
+
+function hostOnce(cb, tries = 0) {
   if (!available()) { cb('Multiplayer library failed to load (check your internet).'); return; }
   const code = randomCode();
   peer = new window.Peer(PREFIX + code, peerOpts());
   let done = false;
-  const timer = setTimeout(() => { if (!done) { done = true; cb('Could not reach the multiplayer server. Try again!'); } }, 15000);
+  const timer = setTimeout(() => { if (!done) { done = true; try { peer.destroy(); } catch (e) { /* ignore */ } cb({ retry: true, msg: friendly('timeout') }); } }, 12000);
   peer.on('open', (id) => {
     if (done) return;
     done = true; clearTimeout(timer);
@@ -48,18 +72,20 @@ export function hostGame(cb, tries = 0) {
     conn.on('error', () => dropPeer(conn.peer));
   });
   peer.on('error', (e) => {
-    if (e.type === 'unavailable-id' && tries < 3 && !done) { done = true; clearTimeout(timer); peer.destroy(); hostGame(cb, tries + 1); return; }
-    if (!done) { done = true; clearTimeout(timer); cb('Multiplayer error: ' + e.type); }
+    if (e.type === 'unavailable-id' && tries < 3 && !done) { done = true; clearTimeout(timer); peer.destroy(); hostOnce(cb, tries + 1); return; }
+    if (!done) { done = true; clearTimeout(timer); try { peer.destroy(); } catch (x) { /* ignore */ } cb({ retry: NET_ERRORS.includes(e.type), msg: friendly(e.type) }); }
   });
   peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) { /* ignore */ } });
 }
 
-export function joinGame(code, cb) {
+export function joinGame(code, cb, status) { withRetry((done) => joinOnce(code, done), cb, status); }
+
+function joinOnce(code, cb) {
   if (!available()) { cb('Multiplayer library failed to load (check your internet).'); return; }
   peer = new window.Peer(peerOpts());
   let done = false;
   const fail = (m) => { if (!done) { done = true; clearTimeout(timer); cb(m); try { peer.destroy(); } catch (e) { /* ignore */ } } };
-  const timer = setTimeout(() => fail('Could not find room ' + code + '. Check the code and try again.'), 15000);
+  const timer = setTimeout(() => fail({ retry: true, msg: 'Could not connect to room ' + code + '. Check the code, make sure your friend is still hosting, and try again.' }), 15000);
   peer.on('open', (id) => {
     G.net.myId = id;
     hostConn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
@@ -71,9 +97,9 @@ export function joinGame(code, cb) {
     });
     hostConn.on('data', (msg) => dispatch(msg));
     hostConn.on('close', () => dispatch({ t: 'disconnected' }));
-    hostConn.on('error', () => fail('Connection error.'));
+    hostConn.on('error', () => fail({ retry: true, msg: 'Connection to your friend failed. Try again!' }));
   });
-  peer.on('error', (e) => fail(e.type === 'peer-unavailable' ? `Room "${code}" not found. Is your friend still hosting?` : 'Multiplayer error: ' + e.type));
+  peer.on('error', (e) => fail(e.type === 'peer-unavailable' ? `Room "${code}" not found. Is your friend still hosting?` : { retry: NET_ERRORS.includes(e.type), msg: friendly(e.type) }));
 }
 
 function hostReceive(conn, msg) {
