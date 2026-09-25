@@ -3,7 +3,7 @@ import * as THREE from 'three';
 
 export const G = {
   scene: null, camera: null, renderer: null,
-  time: 0, dayTime: 0.3, // 0..1, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
+  time: 0, dayTime: 0.36, // 0..1, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
   started: false,
   player: null,
   characters: [],      // every Character (player, npcs, remotes)
