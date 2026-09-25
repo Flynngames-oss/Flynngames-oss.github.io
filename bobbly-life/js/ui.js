@@ -295,7 +295,7 @@ function buildWorldBase() {
     if (h < -0.6) { r = 63; g = 155; bl = 224; }
     else if (h > 95) { r = 240; g = 244; bl = 250; }
     else if (h > 60) { r = 150; g = 145; bl = 135; }
-    else { r = 124 + (240 - 124) * b.south - 30 * b.west; g = 207 + (207 - 207) * b.south - 40 * b.west; bl = 90 + (134 - 90) * b.south - 20 * b.west; }
+    else { r = 106 + (200 - 106) * b.south - 20 * b.west; g = 138 + (180 - 138) * b.south - 25 * b.west; bl = 85 + (120 - 85) * b.south - 15 * b.west; }
     const k = (j * S + i) * 4;
     img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = bl; img.data[k + 3] = 255;
   }
@@ -315,7 +315,7 @@ function buildMapBase() {
   mapBase.width = mapBase.height = S;
   const x = mapBase.getContext('2d');
   const W = (v) => (v + S / 2);
-  x.fillStyle = '#7ccf5a'; x.fillRect(W(-LAND), W(-LAND), LAND * 2, LAND * 2);
+  x.fillStyle = '#6a8a55'; x.fillRect(W(-LAND), W(-LAND), LAND * 2, LAND * 2);
   x.fillStyle = '#6b7079';
   for (const r of ROADS) { x.fillRect(W(r - 5), W(-LAND), 10, LAND * 2); x.fillRect(W(-LAND), W(r - 5), LAND * 2, 10); }
   x.fillStyle = '#b88a5a'; x.fillRect(W(183), W(-3), 49, 6);

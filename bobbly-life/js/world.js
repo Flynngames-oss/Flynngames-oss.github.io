@@ -231,8 +231,8 @@ function addTree(x, z, type = Math.random() < 0.5 ? 'round' : 'pine', s = rand(0
 function buildTrees() {
   const n = treeDefs.length;
   trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.45, 1, 7), mat('#8b5a2b'), n);
-  roundIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat('#5f9a45', { flatShading: true }), n);
-  pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#3f7a4a', { flatShading: true }), n);
+  roundIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), mat('#4f7f3a', { flatShading: true }), n);
+  pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#35603a', { flatShading: true }), n);
   snowIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#e8f2f5', { flatShading: true }), n);
   for (const im of [trunkIM, roundIM, pineIM, snowIM]) { im.castShadow = true; im.receiveShadow = true; G.scene.add(im); }
   treeDefs.forEach((t, i) => {
@@ -319,7 +319,7 @@ function stepPyramid(x, z, size, steps, color) {
 }
 // ---------------------------------------------------------------- flowers, bushes, balloons
 const flowerPos = [], bushPos = [], extraLamps = [];
-const FLOWER_COLS = ['#ff5b6e', '#ffd54a', '#ffffff', '#b46cff', '#ff8fd0', '#ff8a3d', '#6fb8ff'];
+const FLOWER_COLS = ['#e8e4d8', '#d8c878', '#b8a8c8', '#c87868', '#f0f0f0'];
 function flowerAt(x, z) { flowerPos.push([x, z]); }
 function bushAt(x, z, s = 1) { bushPos.push([x, z, s]); }
 function flowerBed(x, z, w, d, n) { for (let i = 0; i < n; i++) flowerAt(x + (Math.random() - 0.5) * w, z + (Math.random() - 0.5) * d); }
@@ -442,7 +442,7 @@ function buildMegaCity() {
   const PARK = specials['3,5'];
   flat(PARK.cx, 0.035, PARK.cz, PARK.bw - 4, PARK.bd - 4, '#7fae4f');
   for (let k = 0; k < 10; k++) addTree(PARK.cx + rand(-20, 20), PARK.cz + rand(-20, 20), 'round');
-  flowerBed(PARK.cx, PARK.cz, 30, 30, 140);
+  flowerBed(PARK.cx, PARK.cz, 30, 30, 50);
   for (let k = 0; k < 8; k++) bushAt(PARK.cx + rand(-22, 22), PARK.cz + rand(-22, 22), rand(0.8, 1.4));
   S(CYL, mat('#b9c3cf'), PARK.cx, 0.4, PARK.cz, 0, 0, 0, 4, 0.8, 4);
   S(CYL, mat('#5cc8ff'), PARK.cx, 0.72, PARK.cz, 0, 0, 0, 3.6, 0.1, 3.6);
@@ -513,7 +513,7 @@ function buildSuburbs() {
     if (i === 2 && j === 1) {
       // neighbourhood park
       for (let k = 0; k < 8; k++) addTree(cx + rand(-30, 30), cz + rand(-22, 22), 'round');
-      flowerBed(cx, cz, 50, 40, 160);
+      flowerBed(cx, cz, 50, 40, 50);
       trampoline(cx - 10, cz); trampoline(cx + 10, cz);
       for (let k = 0; k < 10; k++) bushAt(cx + rand(-32, 32), cz + rand(-25, 25), rand(0.7, 1.3));
       continue;
@@ -747,7 +747,7 @@ export async function buildWorld(progress = () => {}) {
     addTree(Math.cos(a) * 16, Math.sin(a) * 16, 'round', 1);
     bench(Math.cos(a + 0.4) * 11, Math.sin(a + 0.4) * 11, -a - 0.4 + Math.PI / 2);
   }
-  sign('Welcome to Bobbly Town!', 0, 7, -3, '#fff', '#e05a8a', 3.2);
+  sign('Bobbly Town', 0, 7, -3, '#fff', '#c8a040', 3.2);
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; flowerBed(Math.cos(a) * 16, Math.sin(a) * 16, 3, 3, 18); bushAt(Math.cos(a + 0.2) * 20, Math.sin(a + 0.2) * 20, 1.1); }
   flowerBed(0, 0, 9, 9, 0);
 
@@ -886,7 +886,6 @@ export async function buildWorld(progress = () => {}) {
   await progress(0.5, 'Raising Mega City');
   buildMegaCity();
   buildSuburbs();
-  buildBalloons();
   await progress(0.65, 'Growing forests');
   buildWilderness();
   buildTrees();
@@ -897,7 +896,7 @@ export async function buildWorld(progress = () => {}) {
 
   // Clouds
   G.clouds = [];
-  const cm = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.25 });
+  const cm = new THREE.MeshLambertMaterial({ color: '#e4e8ec', emissive: '#ffffff', emissiveIntensity: 0.08, transparent: true, opacity: 0.9 });
   for (let i = 0; i < 60; i++) {
     const cl = new THREE.Group();
     for (let j = 0; j < 5; j++) {
@@ -914,13 +913,13 @@ export async function buildWorld(progress = () => {}) {
 
 // ---------------------------------------------------------------- lighting / day-night
 let sun, hemi, amb;
-const skyDay = new THREE.Color('#8fd3ff'), skyDusk = new THREE.Color('#ff9f7a'), skyNight = new THREE.Color('#1b2350');
+const skyDay = new THREE.Color('#b4c8d4'), skyDusk = new THREE.Color('#d99a78'), skyNight = new THREE.Color('#141a2a');
 const tmpC = new THREE.Color();
-const WHITE = new THREE.Color('#ffffff'), skyTopDay = new THREE.Color('#1f6ad8'), skyTopNight = new THREE.Color('#0a1030');
+const WHITE = new THREE.Color('#ffffff'), skyTopDay = new THREE.Color('#4f7ca8'), skyTopNight = new THREE.Color('#0a1030');
 export function setShadows(on) { if (sun) sun.castShadow = on; }
 export function buildLights() {
   hemi = new THREE.HemisphereLight('#ffffff', '#6a8a5a', 0.9);
-  amb = new THREE.AmbientLight('#ffffff', 0.25);
+  amb = new THREE.AmbientLight('#ffffff', 0.12);
   sun = new THREE.DirectionalLight('#fff4dd', 1.6);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -928,7 +927,7 @@ export function buildLights() {
   s.left = -60; s.right = 60; s.top = 60; s.bottom = -60; s.near = 1; s.far = 260;
   sun.shadow.bias = -0.0008;
   G.scene.add(hemi, amb, sun, sun.target);
-  G.scene.fog = new THREE.Fog('#8fd3ff', 250, 1500);
+  G.scene.fog = new THREE.Fog('#b4c8d4', 160, 1300);
 }
 
 export function updateWorld(dt, focus) {
@@ -941,7 +940,7 @@ export function updateWorld(dt, focus) {
   G.scene.background = tmpC.clone();
   if (G.sky) {
     const u = G.sky.material.uniforms;
-    u.horizon.value.copy(tmpC).lerp(WHITE, 0.08 * day);
+    u.horizon.value.copy(tmpC).lerp(WHITE, 0.12 * day);
     u.top.value.copy(skyTopNight).lerp(skyTopDay, day).lerp(skyDusk, dusk * 0.3);
     u.sunDir.value.set(Math.cos(a) * 0.8, Math.sin(a), 0.45);
     G.sky.position.copy(G.camera.position);
@@ -949,9 +948,9 @@ export function updateWorld(dt, focus) {
   updateBalloons(G.time);
   if (G.waterTex) { G.waterTex.offset.x = G.time * 0.004; G.waterTex.offset.y = G.time * 0.0025; }
   G.scene.fog.color.copy(tmpC);
-  sun.intensity = 0.25 + 1.4 * day;
-  hemi.intensity = 0.45 + 0.5 * day;
-  sun.color.setRGB(1, lerp(0.75, 0.96, day), lerp(0.6, 0.87, day));
+  sun.intensity = 0.25 + 1.7 * day;
+  hemi.intensity = 0.3 + 0.35 * day;
+  sun.color.setRGB(1, lerp(0.7, 0.9, day), lerp(0.5, 0.76, day));
   const sd = new THREE.Vector3(Math.cos(a) * 0.8, Math.max(0.35, Math.abs(elev)), 0.45).normalize();
   sun.position.copy(focus).addScaledVector(sd, 120);
   sun.target.position.copy(focus);

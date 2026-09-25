@@ -1,5 +1,9 @@
 // Bobbly Life — main loop, player control, camera, multiplayer glue.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP } from './state.js';
 import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows } from './world.js';
 import { Character, updateNPC, randomOutfit, PARTS, SKIN_TONES, HAIRS, HAIR_COLORS } from './character.js';
@@ -24,11 +28,33 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.05;
+// Cinematic colour grade: softer saturation, film contrast, split toning and a vignette
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, sat: { value: 0.72 }, contrast: { value: 1.14 }, vig: { value: 0.85 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb;
+      float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      col = mix(vec3(l), col, sat);
+      col += vec3(-0.012, 0.0, 0.02) * (1.0 - clamp(l, 0.0, 1.0)) + vec3(0.03, 0.012, -0.018) * clamp(l, 0.0, 1.0);
+      col = (col - 0.18) * contrast + 0.18;
+      vec2 d = vUv - 0.5; col *= 1.0 - vig * dot(d, d) * 1.3;
+      gl_FragColor = vec4(max(col, 0.0), c.a);
+    }`,
+};
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 2200);
 G.scene = scene; G.camera = camera; G.renderer = renderer;
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const gradePass = new ShaderPass(GradeShader);
+composer.addPass(gradePass);
+composer.addPass(new OutputPass());
+let useGrade = true;
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
 const TIPS = [
   'Hold left click to grab things — and people. Let go to throw.',
@@ -615,6 +641,8 @@ function applyGraphics() {
   const high = G.save.gfx !== 'low';
   renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
   setShadows(high);
+  useGrade = high;
+  composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight);
   camera.far = high ? 2200 : 1200; camera.updateProjectionMatrix();
   scene.fog.far = high ? 1500 : 800;
 }
@@ -844,7 +872,7 @@ function loop(now) {
     netTick(dt);
     if (frame % 600 === 0) writeSave();
   }
-  renderer.render(scene, camera);
+  if (useGrade) composer.render(); else renderer.render(scene, camera);
 }
 
 buildTitle();
