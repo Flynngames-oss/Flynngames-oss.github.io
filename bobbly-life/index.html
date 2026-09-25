@@ -6,25 +6,26 @@
 <title>Bobbly Life</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-    "./js/audio.js": "./js/audio.js?v=8",
-    "./js/character.js": "./js/character.js?v=8",
-    "./js/jobs.js": "./js/jobs.js?v=8",
-    "./js/main.js": "./js/main.js?v=8",
-    "./js/net.js": "./js/net.js?v=8",
-    "./js/props.js": "./js/props.js?v=8",
-    "./js/state.js": "./js/state.js?v=8",
-    "./js/terrain.js": "./js/terrain.js?v=8",
-    "./js/textures.js": "./js/textures.js?v=8",
-    "./js/ui.js": "./js/ui.js?v=8",
-    "./js/vehicles.js": "./js/vehicles.js?v=8",
-    "./js/weapons.js": "./js/weapons.js?v=8",
-    "./js/world.js": "./js/world.js?v=8"
+    "./js/audio.js": "./js/audio.js?v=9",
+    "./js/character.js": "./js/character.js?v=9",
+    "./js/jobs.js": "./js/jobs.js?v=9",
+    "./js/main.js": "./js/main.js?v=9",
+    "./js/net.js": "./js/net.js?v=9",
+    "./js/props.js": "./js/props.js?v=9",
+    "./js/state.js": "./js/state.js?v=9",
+    "./js/terrain.js": "./js/terrain.js?v=9",
+    "./js/textures.js": "./js/textures.js?v=9",
+    "./js/traffic.js": "./js/traffic.js?v=9",
+    "./js/ui.js": "./js/ui.js?v=9",
+    "./js/vehicles.js": "./js/vehicles.js?v=9",
+    "./js/weapons.js": "./js/weapons.js?v=9",
+    "./js/world.js": "./js/world.js?v=9"
 } }
 </script>
 </head>
@@ -81,7 +82,7 @@
   <div id="players" class="hidden"></div>
   <div id="crosshair" class="hidden"></div>
   <div id="clickToPlay" class="hidden">Click to play!</div>
-  <div id="hint">H = Help · Tab = Phone (Fast Travel!) · T = Chat · G = Blaster · V = First person</div>
+  <div id="hint">H = Help · Tab = Phone (Fast Travel!) · T = Chat · G = Blaster · V = First person · M = Music</div>
   <div id="speedo" class="hidden"></div>
 </div>
 
@@ -115,12 +116,13 @@
     <div><b>T</b> Chat · <b>1-4</b> Emotes</div>
     <div><b>Driving</b> W/S gas &amp; brake · A/D steer · Space handbrake</div>
     <div><b>Helicopter</b> Space up · Shift down</div>
-    <div><b>V</b> First-person / third-person camera</div>
+    <div><b>V</b> First-person / third-person camera · <b>M</b> Music on/off</div>
+    <div><b>Space while falling</b> Open your parachute 🪂</div>
     <div><b>G</b> Switch blaster · <b>Left Click</b> shoot (Right Click still grabs)</div>
     <div><b>Planes</b> W/S throttle · Space nose up · Shift nose down · A/D turn</div>
   </div>
   <p>Do jobs to earn money 💰: <b>Pizza delivery</b>, <b>Taxi driver</b>, <b>Firefighter</b>, <b>Garbage collector</b>, <b>Lumberjack</b>, <b>Fishing</b> and <b>Races</b>.
-  Spend money on clothes, hats, cars, planes, a helicopter, toy blasters and your very own house! Planes are at the ✈️ airport on the north side, blasters at the 🔫 Blaster Shop in the stunt park. Find the 32 hidden 🎁 presents around the island — some are far out in the mountains, desert and forest! Buy costumes in the 🦸 Skins tab at the clothing store.</p>
+  Spend money on clothes, hats, cars, planes, a helicopter, toy blasters and your very own house! Planes are at the ✈️ airport on the north side, blasters at the 🔫 Blaster Shop in the stunt park. Find all the hidden 🎁 presents around the island — some are far out in the mountains, desert and forest! Buy costumes in the 🦸 Skins tab at the clothing store.</p>
   <p>Multiplayer: click <b>Host Multiplayer</b> and send your friends the link or room code.</p>
   <button class="btn" id="helpClose">Got it!</button>
 </div>
@@ -139,6 +141,6 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=8"></script>
+<script type="module" src="js/main.js?v=9"></script>
 </body>
 </html>

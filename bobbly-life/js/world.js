@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
 import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
-import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD } from './terrain.js';
+import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
 export const colliders = [];
@@ -279,6 +279,7 @@ function buildWilderness() {
   for (let k = 0; k < tries; k++) {
     const x = (srand() * 2 - 1) * (WORLD - 60), z = (srand() * 2 - 1) * (WORLD - 60);
     if (Math.max(Math.abs(x), Math.abs(z)) < LAND + 25) continue;
+    if (inZone(x, z, 25)) continue;
     if (Math.abs(x + 30) < 12 && z > 0) continue;
     if (Math.abs(x - 30) < 12 && z < 0) continue;
     if (Math.abs(z - 30) < 12 && x < 0) continue;
@@ -316,6 +317,219 @@ function stepPyramid(x, z, size, steps, color) {
   }
   return y0 + steps * sh;
 }
+// ---------------------------------------------------------------- flowers, bushes, balloons
+const flowerPos = [], bushPos = [], extraLamps = [];
+const FLOWER_COLS = ['#ff5b6e', '#ffd54a', '#ffffff', '#b46cff', '#ff8fd0', '#ff8a3d', '#6fb8ff'];
+function flowerAt(x, z) { flowerPos.push([x, z]); }
+function bushAt(x, z, s = 1) { bushPos.push([x, z, s]); }
+function flowerBed(x, z, w, d, n) { for (let i = 0; i < n; i++) flowerAt(x + (Math.random() - 0.5) * w, z + (Math.random() - 0.5) * d); }
+function buildDecor() {
+  const col = new THREE.Color();
+  const stem = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 4), mat('#3f9e52'), flowerPos.length);
+  const head = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.16, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), flowerPos.length);
+  flowerPos.forEach(([x, z], i) => {
+    const y = heightAt(x, z);
+    _m.makeTranslation(x, y + 0.25, z); stem.setMatrixAt(i, _m);
+    _m.makeTranslation(x, y + 0.52, z); head.setMatrixAt(i, _m);
+    head.setColorAt(i, col.set(FLOWER_COLS[i % FLOWER_COLS.length]));
+  });
+  const bush = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), bushPos.length);
+  bushPos.forEach(([x, z, sc], i) => {
+    _qq.identity(); _p.set(x, heightAt(x, z) + 0.45 * sc, z); _s.set(0.9 * sc, 0.75 * sc, 0.9 * sc);
+    _m.compose(_p, _qq, _s); bush.setMatrixAt(i, _m);
+    bush.setColorAt(i, col.set(['#4fae45', '#5fbf4a', '#3f9e52', '#6fc85a'][i % 4]));
+  });
+  for (const im of [stem, head, bush]) { im.receiveShadow = true; im.computeBoundingSphere(); G.scene.add(im); }
+  bush.castShadow = true;
+}
+
+// Hot-air balloons drifting over the island
+function stripeTexture(cols) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 32;
+  const x = c.getContext('2d');
+  cols.forEach((cl, i) => { x.fillStyle = cl; x.fillRect(i * 256 / cols.length, 0, 256 / cols.length + 1, 32); });
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function buildBalloons() {
+  G.balloons = [];
+  const sets = [['#ff5b6e', '#ffd54a'], ['#3fa7ff', '#ffffff'], ['#b46cff', '#ff8fd0'], ['#46c25a', '#ffd54a'], ['#ff8a3d', '#ffffff', '#ff5b6e'], ['#3fd6d0', '#b46cff']];
+  sets.forEach((cols, i) => {
+    const g = new THREE.Group();
+    const env = new THREE.Mesh(new THREE.SphereGeometry(7, 20, 14), new THREE.MeshLambertMaterial({ map: stripeTexture([...cols, ...cols, ...cols, ...cols]) }));
+    env.scale.set(1, 1.2, 1); g.add(env);
+    const bot = new THREE.Mesh(new THREE.ConeGeometry(4.6, 5, 20, 1, true), new THREE.MeshLambertMaterial({ color: cols[0], side: THREE.DoubleSide }));
+    bot.position.y = -8.5; bot.rotation.x = Math.PI; g.add(bot);
+    const basket = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.2), mat('#a0683a'));
+    basket.position.y = -13; g.add(basket);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const r = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.5, 4), mat('#6b4a2b'));
+      r.position.set(sx * 1.4, -11, sz * 1.4); g.add(r);
+    }
+    const a = i / sets.length * Math.PI * 2;
+    g.userData = { cx: Math.cos(a) * 300, cz: Math.sin(a) * 300, r: 120 + i * 40, sp: 0.01 + i * 0.002, ph: a, y: 110 + i * 18 };
+    G.scene.add(g);
+    G.balloons.push(g);
+  });
+}
+export function updateBalloons(t) {
+  for (const b of G.balloons || []) {
+    const u = b.userData, a = u.ph + t * u.sp;
+    b.position.set(u.cx + Math.cos(a) * u.r, u.y + Math.sin(t * 0.3 + u.ph) * 6, u.cz + Math.sin(a) * u.r);
+    b.rotation.y = t * 0.05;
+  }
+}
+
+// ---------------------------------------------------------------- Mega City & Suburbs
+let cityRoadMat = null;
+function roadStrip(x, z, len, alongX) {
+  if (!cityRoadMat) cityRoadMat = new THREE.MeshLambertMaterial({ map: asphaltTexture() });
+  if (alongX) S(flatGeo(10, len, 10), cityRoadMat, x, 0.02, z, 0, -Math.PI / 2, Math.PI / 2, 10, len, 1);
+  else S(flatGeo(10, len, 10), cityRoadMat, x, 0.021, z, 0, -Math.PI / 2, 0, 10, len, 1);
+}
+function tower(x, z, w, d, h, color, roof = '#6b7079', antenna = false) {
+  S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
+  S(BOX, mat(roof), x, h + 0.4, z, 0, 0, 0, w + 0.8, 0.8, d + 0.8);
+  addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.8, z + d / 2);
+  // rooftop details
+  box(x - w / 4, h + 0.8, z - d / 4, Math.min(4, w / 3), 2, Math.min(4, d / 3), '#9aa4b1');
+  if (antenna) { S(CYL8, mat('#dddddd'), x, h + 12, z, 0, 0, 0, 0.3, 22, 0.3); S(BALL_G, mat('#ff3030', { emissive: '#ff0000', emissiveIntensity: 1 }), x, h + 23.5, z, 0, 0, 0, 0.7, 0.7, 0.7); }
+  return h;
+}
+const BALL_G = new THREE.SphereGeometry(1, 10, 8);
+const CITY_COLS = ['#9fd0ff', '#bfe6ff', '#ffd6a8', '#ffc4d8', '#c8f0d0', '#e6d6ff', '#fff3b0', '#a8e0e8', '#f0d8c0'];
+
+function buildMegaCity() {
+  const Z = ZONES.city;
+  const xs = [-210, -270, -330, -390, -450, -510, -570, -630];
+  const zs = [-170, -110, -50, 30, 90, 150, 210];
+  // streets
+  for (const x of xs) roadStrip(x, (zs[0] + zs[zs.length - 1]) / 2, zs[zs.length - 1] - zs[0] + 10, false);
+  for (const z of zs) if (z !== 30) roadStrip((xs[0] + xs[xs.length - 1]) / 2, z, xs[0] - xs[xs.length - 1] + 10, true);
+  for (const x of xs) for (const z of zs) flat(x, 0.03, z, 10, 10, '#555a63');
+  // connect to town
+  roadStrip((-185 + -210) / 2, -90, 25, true); roadStrip((-185 + -210) / 2, -30, 25, true);
+  const specials = {};
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+    const x0 = xs[i + 1] + 5, x1 = xs[i] - 5, z0 = zs[j] + 5, z1 = zs[j + 1] - 5;
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, bw = x1 - x0, bd = z1 - z0;
+    flat(cx, 0.025, cz, bw, bd, '#d9d4c7');
+    for (const [lx, lz] of [[x0 + 2, z0 + 2], [x1 - 2, z1 - 2], [x0 + 2, z1 - 2], [x1 - 2, z0 + 2]]) extraLamps.push([lx, lz]);
+    const key = i + ',' + j;
+    G.locations.sidewalks.push({ x: x0 + 1, z: z0 + 1 }, { x: x1 - 1, z: z0 + 1 }, { x: x0 + 1, z: z1 - 1 }, { x: x1 - 1, z: z1 - 1 });
+    specials[key] = { cx, cz, bw, bd };
+    // city trees in planters along the long sides
+    for (let t = z0 + 6; t < z1 - 4; t += 12) { addTree(x0 + 1.5, t, 'round', 0.7); addTree(x1 - 1.5, t, 'round', 0.7); flowerBed(x0 + 1.5, t + 3, 1.4, 2, 5); }
+  }
+  // Landmark blocks
+  const TWR = specials['2,2'];     // centre block (x -390..-330, z -50..30)
+  buildBobblyTower(TWR.cx, TWR.cz);
+  const TWIN = specials['4,2'];
+  for (const dz of [-17, 17]) tower(TWIN.cx, TWIN.cz + dz, 22, 22, 232, '#a8c8ec', '#50555e', true);
+  sign('🏢 Twin Bobbles', TWIN.cx, 20, TWIN.cz + 36, '#fff', '#3f6f9e', 3);
+  const CYLB = specials['5,4'];
+  const cg = new THREE.CylinderGeometry(15, 15, 190, 28);
+  const uv = cg.attributes.uv;
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * 24, uv.getY(k) * 47);
+  S(cg, bmat('#7fd6e8'), CYLB.cx, 95, CYLB.cz);
+  S(new THREE.CylinderGeometry(16, 16, 1, 28), mat('#50555e'), CYLB.cx, 190.5, CYLB.cz);
+  S(new THREE.ConeGeometry(12, 24, 28), mat('#e8eef5'), CYLB.cx, 203, CYLB.cz);
+  addCollider(CYLB.cx - 13, 0, CYLB.cz - 13, CYLB.cx + 13, 191, CYLB.cz + 13);
+  const STEP = specials['1,4'];
+  let y = 0;
+  for (const [w, h] of [[42, 70], [32, 60], [22, 55], [12, 30]]) { S(windowBoxGeo(w, h, w), bmat('#ffe2b8'), STEP.cx, y + h / 2, STEP.cz); addCollider(STEP.cx - w / 2, y, STEP.cz - w / 2, STEP.cx + w / 2, y + h, STEP.cz + w / 2); y += h; S(BOX, mat('#c8a070'), STEP.cx, y + 0.3, STEP.cz, 0, 0, 0, w + 1, 0.6, w + 1); }
+  S(CYL8, mat('#dddddd'), STEP.cx, y + 20, STEP.cz, 0, 0, 0, 0.4, 40, 0.4);
+  // City park
+  const PARK = specials['3,5'];
+  flat(PARK.cx, 0.035, PARK.cz, PARK.bw - 4, PARK.bd - 4, '#86d162');
+  for (let k = 0; k < 10; k++) addTree(PARK.cx + rand(-20, 20), PARK.cz + rand(-20, 20), 'round');
+  flowerBed(PARK.cx, PARK.cz, 30, 30, 140);
+  for (let k = 0; k < 8; k++) bushAt(PARK.cx + rand(-22, 22), PARK.cz + rand(-22, 22), rand(0.8, 1.4));
+  S(CYL, mat('#b9c3cf'), PARK.cx, 0.4, PARK.cz, 0, 0, 0, 4, 0.8, 4);
+  S(CYL, mat('#5cc8ff'), PARK.cx, 0.72, PARK.cz, 0, 0, 0, 3.6, 0.1, 3.6);
+  addCollider(PARK.cx - 3, 0, PARK.cz - 3, PARK.cx + 3, 0.8, PARK.cz + 3);
+  // Other blocks: skyscrapers, taller toward the middle
+  for (const key in specials) {
+    if (['2,2', '4,2', '5,4', '1,4', '3,5'].includes(key)) continue;
+    const b = specials[key];
+    const mid = 1 - Math.min(1, Math.hypot(b.cx + 420, b.cz - 20) / 300);
+    const n = Math.random() < 0.5 ? 2 : 4;
+    for (let k = 0; k < n; k++) {
+      const hw = n === 2 ? (b.bw - 12) / 2 : (b.bw - 14) / 2, hd = n === 2 ? b.bd - 14 : (b.bd - 14) / 2;
+      const ox = n === 2 ? (k === 0 ? -1 : 1) * (hw / 2 + 2) : (k % 2 ? 1 : -1) * (hw / 2 + 2);
+      const oz = n === 2 ? 0 : (k < 2 ? -1 : 1) * (hd / 2 + 2);
+      const h = Math.round((30 + Math.random() * 70 + mid * 110) / 4) * 4;
+      tower(b.cx + ox, b.cz + oz, hw, hd, h, pick(CITY_COLS), '#6b7079', h > 120 && Math.random() < 0.5);
+    }
+  }
+  sign('🏙️ WELCOME TO MEGA CITY', -205, 12, 60, '#fff', '#e05a8a', 4);
+  LOC.city = { x: TWR.cx, z: TWR.cz + 26 };
+}
+
+function buildBobblyTower(tx, tz) {
+  // Podium
+  S(windowBoxGeo(44, 24, 44), bmat('#e8eef5'), tx, 12, tz);
+  addCollider(tx - 22, 0, tz - 22, tx + 22, 24, tz + 22);
+  S(BOX, mat('#8fa3b8'), tx, 24.3, tz, 0, 0, 0, 45, 0.6, 45);
+  let y = 24.6;
+  for (let i = 0; i < 12; i++) {
+    const w = 32 - i * 1.5, h = 22;
+    S(windowBoxGeo(w, h, w), bmat(i % 3 === 2 ? '#bfe6ff' : '#8fc8ff'), tx, y + h / 2, tz);
+    addCollider(tx - w / 2, y, tz - w / 2, tx + w / 2, y + h, tz + w / 2);
+    y += h;
+    if (i % 3 === 2) S(BOX, mat('#ffffff'), tx, y, tz, 0, 0, 0, w + 1.2, 0.8, w + 1.2);
+  }
+  // Observation deck
+  const w = 32 - 11 * 1.5;
+  for (const [dx, dz, sx, sz] of [[0, w / 2, w, 0.15], [0, -w / 2, w, 0.15], [w / 2, 0, 0.15, w], [-w / 2, 0, 0.15, w]]) {
+    S(BOX, mat('#dfe8f5'), tx + dx, y + 0.6, tz + dz, 0, 0, 0, sx, 1.2, sz);
+    addCollider(tx + dx - sx / 2 - 0.1, y, tz + dz - sz / 2 - 0.1, tx + dx + sx / 2 + 0.1, y + 1.2, tz + dz + sz / 2 + 0.1);
+  }
+  S(CYL8, mat('#e8eef5'), tx, y + 30, tz, 0, 0, 0, 0.9, 60, 0.9);
+  addCollider(tx - 1, y, tz - 1, tx + 1, y + 60, tz + 1);
+  S(BALL_G, mat('#ff3030', { emissive: '#ff0000', emissiveIntensity: 1 }), tx, y + 61, tz, 0, 0, 0, 1.2, 1.2, 1.2);
+  sign('🏢 BOBBLY TOWER', tx, 30, tz + 24, '#fff', '#3f6fff', 4);
+  sign('🛗 Elevator to the top!', tx, 5, tz + 23, '#fff', '#46c25a', 1.8);
+  sign('🪂 Jump off & press Space for a parachute!', tx, y + 4, tz + 3, '#fff', '#ff6a1a', 2.2);
+  LOC.tower = { x: tx + 4, z: tz + 4, top: y };
+  const top = y;
+  G.interacts.push(
+    { x: tx, z: tz + 25, r: 5.5, label: () => '🛗 Ride the elevator to the top of Bobbly Tower!', action: () => { const p = G.player; if (p.held && G.dropHeld) G.dropHeld(false); p.place(tx + 4, top + 0.2, tz + 4, 0); G.toast && G.toast('🏙️ WOW! You are 290 metres up! Jump off and press Space to open your parachute 🪂', '', 7000); } },
+    { x: tx + 4, z: tz + 4, r: 5, minY: top - 2, label: () => '🛗 Take the elevator back down', action: () => { G.player.place(tx, 0, tz + 27, 0); } },
+  );
+}
+
+function buildSuburbs() {
+  const xs = [150, 240, 330, 420, 510], zs = [215, 290, 365, 435];
+  for (const x of xs) roadStrip(x, (185 + zs[zs.length - 1]) / 2, zs[zs.length - 1] - 185 + 5, false);
+  for (const z of zs) roadStrip((xs[0] + xs[xs.length - 1]) / 2, z, xs[xs.length - 1] - xs[0] + 10, true);
+  for (const x of xs) for (const z of zs) flat(x, 0.03, z, 10, 10, '#555a63');
+  const colors = ['#ffe2b8', '#cfe8ff', '#ffd6e8', '#e0ffd6', '#fff3b0', '#e6d6ff', '#ffffff', '#ffd1a8', '#c8f0f0', '#ffc8c8'];
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+    const x0 = xs[i] + 5, x1 = xs[i + 1] - 5, z0 = zs[j] + 5, z1 = zs[j + 1] - 5;
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    flat(cx, 0.025, cz, x1 - x0, z1 - z0, '#86d162');
+    for (const [lx, lz] of [[x0 + 1, z0 + 1], [x1 - 1, z1 - 1]]) extraLamps.push([lx, lz]);
+    G.locations.sidewalks.push({ x: x0 + 2, z: z0 + 2 }, { x: x1 - 2, z: z0 + 2 }, { x: x0 + 2, z: z1 - 2 }, { x: x1 - 2, z: z1 - 2 });
+    if (i === 2 && j === 1) {
+      // neighbourhood park
+      for (let k = 0; k < 8; k++) addTree(cx + rand(-30, 30), cz + rand(-22, 22), 'round');
+      flowerBed(cx, cz, 50, 40, 160);
+      trampoline(cx - 10, cz); trampoline(cx + 10, cz);
+      for (let k = 0; k < 10; k++) bushAt(cx + rand(-32, 32), cz + rand(-25, 25), rand(0.7, 1.3));
+      continue;
+    }
+    for (let k = 0; k < 3; k++) {
+      const hx = x0 + 14 + k * ((x1 - x0 - 28) / 2);
+      house(hx, z0 + 11, 3, pick(colors), Math.random() < 0.4);
+      house(hx, z1 - 11, 2, pick(colors), Math.random() < 0.4);
+    }
+    addTree(cx, cz, 'round', 1.1);
+    bushAt(cx - 6, cz, 1.2); bushAt(cx + 6, cz, 1.2);
+  }
+  sign('🏡 Sunny Suburbs', 150, 8, 200, '#fff', '#46c25a', 3);
+  LOC.suburb = { x: 155, z: 250 };
+}
+
 function buildLandmarks() {
   // Desert pyramids
   const top1 = stepPyramid(140, -720, 70, 10, '#e6c27a');
@@ -360,6 +574,7 @@ function buildLamps() {
       lampPos.push([t, r - 6]);
     }
   }
+  lampPos.push(...extraLamps);
   const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.14, 5, 6), mat('#4a4f5a'), lampPos.length);
   bulbMat = new THREE.MeshBasicMaterial({ color: '#eeeeee' });
   bulbIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 8, 6), bulbMat, lampPos.length);
@@ -380,8 +595,8 @@ function roadTexture() {
 }
 
 // ---------------------------------------------------------------- building blocks
-function house(x, z, face, color) {
-  const w = 8, d = 7, h = 4.5;
+function house(x, z, face, color, tall = false) {
+  const w = 8, d = 7, h = tall ? 7.5 : 4.5;
   S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
   S(CONE4, tmat(pick(['#c75a4a', '#8b5a44', '#4f6f9b', '#5a8a5a']), TX.roof, 'r'), x, h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
   addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.2, z + d / 2);
@@ -395,6 +610,13 @@ function house(x, z, face, color) {
   box(x + 2, h, z + 1.5, 0.8, 2.5, 0.8, '#9a6b5a', false);
   const door = { x: x + fx * (w / 2 + 3.5), z: z + fz * (d / 2 + 3.5) };
   G.locations.houses.push({ x, z, door, name: 'House #' + (G.locations.houses.length + 1) });
+  // front garden: flower beds beside the path, bushes at the front corners
+  const fd = fx ? w / 2 : d / 2, ph = fx ? d / 2 : w / 2;
+  const px = fz ? 1 : 0, pz = fx ? 1 : 0;
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 5; k++) { const a = fd + 0.8 + k * 1.1; flowerAt(x + fx * a + px * side * 1.5, z + fz * a + pz * side * 1.5); }
+    bushAt(x + fx * (fd + 0.6) + px * side * (ph + 0.6), z + fz * (fd + 0.6) + pz * side * (ph + 0.6), 0.9);
+  }
   // mailbox
   box(door.x + (fz ? 1.6 : 0), 0, door.z + (fx ? 1.6 : 0), 0.3, 1.1, 0.3, '#4a4f5a', false);
   box(door.x + (fz ? 1.6 : 0), 1.1, door.z + (fx ? 1.6 : 0), 0.5, 0.4, 0.7, '#3fa7ff', false);
@@ -524,6 +746,8 @@ export function buildWorld() {
     bench(Math.cos(a + 0.4) * 11, Math.sin(a + 0.4) * 11, -a - 0.4 + Math.PI / 2);
   }
   sign('Welcome to Bobbly Town!', 0, 7, -3, '#fff', '#e05a8a', 3.2);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; flowerBed(Math.cos(a) * 16, Math.sin(a) * 16, 3, 3, 18); bushAt(Math.cos(a + 0.2) * 20, Math.sin(a + 0.2) * 20, 1.1); }
+  flowerBed(0, 0, 9, 9, 0);
 
   // --- Pizza (60,0)
   building(70, 0, 16, 24, 8, '#fff1dc', '#d23c32');
@@ -656,9 +880,13 @@ export function buildWorld() {
   for (let i = 0; i < 16; i++) addTree(rand(-168, -156), rand(-150, 150));
 
   buildLandmarks();
+  buildMegaCity();
+  buildSuburbs();
+  buildBalloons();
   buildWilderness();
   buildTrees();
   buildLamps();
+  buildDecor();
   finalizeStatic();
 
   // Clouds

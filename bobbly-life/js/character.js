@@ -339,7 +339,7 @@ export class Character {
   flop(impulse = null, minTime = 1.5) {
     if (this.vehicle) return;
     if (!this.ragdoll) {
-      this.ragdoll = true; this.ragT = 0;
+      this.ragdoll = true; this.ragT = 0; this.chute = false;
       const h = 1 / 60;
       for (let i = 0; i < 7; i++) this.prev[i].copy(this.p[i]).addScaledVector(this.v[i], -h).addScaledVector(this.vel, -h);
       this.ragMin = minTime;
@@ -420,7 +420,7 @@ export class Character {
   locomote(dt) {
     const c = this.ctrl;
     const mlen = Math.hypot(c.mx, c.mz);
-    const speed = this.swimming ? 3.5 : c.run ? 8.5 : 5;
+    const speed = this.swimming ? 3.5 : this.chute ? 9 : c.run ? 8.5 : 5;
     const acc = this.grounded ? 32 : 9;
     const tx = c.mx * speed, tz = c.mz * speed;
     this.vel.x += clamp(tx - this.vel.x, -acc * dt, acc * dt);
@@ -433,6 +433,7 @@ export class Character {
     }
     c.jump = false;
     this.vel.y -= 24 * dt;
+    if (this.chute && this.vel.y < -3.5) this.vel.y += (-3.5 - this.vel.y) * Math.min(1, dt * 5);
     const wasGrounded = this.grounded;
     const prevVy = this.vel.y;
     this.root.addScaledVector(this.vel, dt);
@@ -444,7 +445,7 @@ export class Character {
       this.swimming = true;
       this.root.y += (WATER_Y - 0.9 - this.root.y) * Math.min(1, dt * 8);
       if (this.vel.y < 0) this.vel.y = 0;
-      this.grounded = true;
+      this.grounded = true; this.chute = false;
       if (!wasGrounded && prevVy < -6 && this.isPlayer) sfx.splash();
     } else if (this.root.y <= gh || (wasGrounded && this.vel.y <= 0 && this.root.y - gh < 0.45)) {
       if (tag === 'tramp' && prevVy < -3) {
@@ -453,7 +454,7 @@ export class Character {
       } else {
         if (!wasGrounded && prevVy < -21) { this.root.y = gh; this.flop(null, 1.5); return; }
         if (!wasGrounded && prevVy < -7 && this.isPlayer) sfx.land();
-        this.root.y = gh; this.vel.y = 0; this.grounded = true;
+        this.root.y = gh; this.vel.y = 0; this.grounded = true; this.chute = false;
       }
     } else this.grounded = false;
     if (this.root.y < -30 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500) this.respawn && this.respawn();
@@ -629,6 +630,26 @@ export class Character {
       placeBetween(this.nozzle, P[HR], _a); this.nozzle.scale.y = 0.7;
     }
     if (this.tag) this.tag.position.set(P[HEAD].x, P[HEAD].y + 0.95, P[HEAD].z);
+    // parachute
+    if (this.chute && !this.ragdoll) {
+      if (!this.chuteMesh) {
+        const g = new THREE.Group();
+        const c = document.createElement('canvas'); c.width = 128; c.height = 16;
+        const x = c.getContext('2d');
+        ['#ff5b6e', '#ffffff', '#3fa7ff', '#ffd54a', '#ff5b6e', '#ffffff', '#3fa7ff', '#ffd54a'].forEach((col, i) => { x.fillStyle = col; x.fillRect(i * 16, 0, 16, 16); });
+        const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+        const can = new THREE.Mesh(HALFBALL, new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide }));
+        can.scale.set(2.4, 1.1, 2.4); can.position.y = 3; g.add(can);
+        for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const r = new THREE.Mesh(LIMB, mat('#eeeeee')); r.scale.set(0.02, 3.2, 0.02);
+          r.position.set(sx * 1.1, 1.5, sz * 1.1); r.rotation.set(sz * 0.33, 0, -sx * 0.33); g.add(r);
+        }
+        this.chuteMesh = g; G.scene.add(g);
+      }
+      this.chuteMesh.visible = true;
+      this.chuteMesh.position.copy(P[CHE]);
+      this.chuteMesh.rotation.set(Math.sin(G.time * 2) * 0.08, this.facing, Math.cos(G.time * 1.7) * 0.08);
+    } else if (this.chuteMesh) this.chuteMesh.visible = false;
   }
 
   destroy() {
