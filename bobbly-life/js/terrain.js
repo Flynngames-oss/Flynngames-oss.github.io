@@ -43,9 +43,30 @@ export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 520, z: -640, r: 45 }, {
 const BAY = { x0: 200, x1: 520, z0: -170, z1: 170 };
 // Flat building zones: Mega City (west) and the Suburbs (north-east)
 export const ZONES = {
-  city: { x0: -660, x1: -200, z0: -190, z1: 250 },
-  suburb: { x0: 140, x1: 560, z0: 185, z1: 440 },
+  city: { x0: -660, x1: -200, z0: -190, z1: 250, h: 0 },
+  suburb: { x0: 140, x1: 560, z0: 185, z1: 440, h: 0 },
+  space: { x0: 720, x1: 940, z0: -380, z1: -170, h: 'auto' },
+  farm1: { x0: 760, x1: 960, z0: 40, z1: 220, h: 'auto' },
+  farm2: { x0: -980, x1: -800, z0: -660, z1: -500, h: 'auto' },
+  village1: { x0: -900, x1: -780, z0: -330, z1: -210, h: 'auto' },
+  village2: { x0: 1000, x1: 1120, z0: -620, z1: -500, h: 'auto' },
+  gasN: { x0: -20, x1: 10, z0: 690, z1: 730, h: 'auto' },
+  gasS: { x0: 40, x1: 70, z0: -470, z1: -430, h: 'auto' },
+  gasW: { x0: -770, x1: -730, z0: 40, z1: 70, h: 'auto' },
+  camp: { x0: -560, x1: -500, z0: 520, z1: 580, h: 'auto' },
 };
+// Rivers split the island into regions (highways cross them on bridges)
+export const RIVERS = [
+  { w: 24, pts: [[120, 1150], [60, 720], [-60, 520], [-160, 390], [-460, 335], [-820, 300], [-1340, 280]] },
+  { w: 22, pts: [[1340, 620], [920, 470], [640, 260], [560, 175]] },
+  { w: 22, pts: [[360, -175], [330, -420], [220, -560], [-60, -640], [-420, -900], [-720, -1340]] },
+];
+function polyDist(x, z, pts) {
+  let d = 1e9;
+  for (let i = 0; i < pts.length - 1; i++) d = Math.min(d, segDist(x, z, { x0: pts[i][0], z0: pts[i][1], x1: pts[i + 1][0], z1: pts[i + 1][1] }));
+  return d;
+}
+export function riverDist(x, z) { let d = 1e9; for (const r of RIVERS) d = Math.min(d, polyDist(x, z, r.pts) - r.w / 2); return d; }
 export function inZone(x, z, m = 0) {
   for (const k in ZONES) { const r = ZONES[k]; if (x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m) return k; }
   return null;
@@ -67,7 +88,7 @@ export function biome(x, z) {
   };
 }
 
-function rawHeight(x, z) {
+function rawHeight(x, z, noRiver = false, noZones = false) {
   const r = Math.max(Math.abs(x), Math.abs(z));
   const b = biome(x, z);
   const low = (fbm(x / 700 + 3, z / 700 - 7, 3) - 0.5) * 50;
@@ -85,13 +106,19 @@ function rawHeight(x, z) {
   for (const hw of HIGHWAYS) dr = Math.min(dr, segDist(x, z, hw));
   h = mix(profile, h, sm(12, 90, dr));
   // flat building zones
-  for (const k in ZONES) {
+  if (!noZones) for (const k in ZONES) {
     const r = ZONES[k];
+    if (r.h === 'auto') r.h = rawHeight((r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2, true, true);
     const zx = Math.max(r.x0 - x, 0, x - r.x1), zz = Math.max(r.z0 - z, 0, z - r.z1);
-    h = mix(0, h, sm(0, 70, Math.hypot(zx, zz)));
+    h = mix(r.h, h, sm(0, r.h ? 50 : 70, Math.hypot(zx, zz)));
   }
   // flat town in the middle
   h *= sm(LAND + 8, 330, r);
+  // rivers
+  if (!noRiver) for (const rv of RIVERS) {
+    const d = polyDist(x, z, rv.pts);
+    if (d < rv.w + 40) h = mix(h, -3.5, 1 - sm(rv.w * 0.5, rv.w * 0.5 + 26, d));
+  }
   // bay east of town (where the pier is)
   const bx = Math.max(BAY.x0 - x, 0, x - BAY.x1), bz = Math.max(BAY.z0 - z, 0, z - BAY.z1);
   h = mix(h, -4, 1 - sm(0, 12, Math.hypot(bx, bz)));
@@ -156,7 +183,9 @@ export function buildTerrainMesh(scene) {
 }
 
 // Road strips that follow the ground.
+export function roadHeight(x, z) { return Math.max(rawHeight(x, z, true), 0); }
 export function buildHighways(scene, roadMat) {
+  const bridges = [];
   for (const hw of HIGHWAYS) {
     const len = Math.hypot(hw.x1 - hw.x0, hw.z1 - hw.z0);
     const n = Math.ceil(len / 6);
@@ -167,10 +196,12 @@ export function buildHighways(scene, roadMat) {
       const t = k / n, x = hw.x0 + (hw.x1 - hw.x0) * t, z = hw.z0 + (hw.z1 - hw.z0) * t;
       for (const s of [-1, 1]) {
         const vx = x + px * s, vz = z + pz * s;
-        verts.push(vx, Math.max(heightAt(vx, vz), heightAt(x, z)) + 0.12, vz);
+        verts.push(vx, Math.max(heightAt(vx, vz), roadHeight(x, z)) + 0.12, vz);
         uvs.push(s < 0 ? 0 : 1, (len * t) / 10);
       }
       if (k < n) { const a = k * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+      const rh = roadHeight(x, z);
+      if (rh - heightAt(x, z) > 2) bridges.push({ x, z, y: rh + 0.12, dx, dz, len: len / n });
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
@@ -182,6 +213,7 @@ export function buildHighways(scene, roadMat) {
     m.receiveShadow = true;
     scene.add(m);
   }
+  return bridges;
 }
 
 // Find the highest point in an area (for the mountain summit).

@@ -481,7 +481,7 @@ export class Character {
         this.root.y = gh; this.vel.y = 0; this.grounded = true; this.chute = false;
       }
     } else this.grounded = false;
-    if (this.root.y < -30 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500) this.respawn && this.respawn();
+    if (!(this.isPlayer && G.rocketRide) && (this.root.y < -30 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500)) this.respawn && this.respawn();
   }
 
   computeTargets(dt) {

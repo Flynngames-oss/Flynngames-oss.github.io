@@ -167,7 +167,7 @@ const TRAVEL = [
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
   ['🌳', 'Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0], ['🎣', 'Pier & Beach', 180, 0, Math.PI / 2],
-  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🏜️', 'Desert Pyramids', 'pyramid', 0, Math.PI], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Desert Oasis', 'oasis'], ['🏞️', 'East Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'],
+  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🏜️', 'Desert Pyramids', 'pyramid', 0, Math.PI], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Desert Oasis', 'oasis'], ['🏞️', 'East Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'], ['🚀', 'Space Center', 'space'], ['🌾', 'Hill Farm', 'farm'], ['🏘️', 'Pinewood Village', 'village'], ['🏰', 'Old Castle', 'castle'], ['⛺', 'Campsite', 'camp'],
 ];
 
 function blasterPanel() {
@@ -366,7 +366,7 @@ export function drawMinimap() {
   };
   // far-away landmarks, drawn at a fixed size
   x.font = '16px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (const [e, k] of [['⛰️', 'peak'], ['🏜️', 'pyramid'], ['🏕️', 'cabin'], ['🌴', 'oasis'], ['✈️', 'airport'], ['🏙️', 'city'], ['🏡', 'suburb']]) {
+  for (const [e, k] of [['⛰️', 'peak'], ['🏜️', 'pyramid'], ['🏕️', 'cabin'], ['🌴', 'oasis'], ['✈️', 'airport'], ['🏙️', 'city'], ['🏡', 'suburb'], ['🚀', 'space'], ['🌾', 'farm'], ['🏘️', 'village'], ['🏰', 'castle']]) {
     const l = LOC[k]; if (!l) continue;
     const dx = l.x - P.x, dz = l.z - P.z, cs = Math.cos(G.cam.yaw), sn = Math.sin(G.cam.yaw);
     const sx = (dx * cs - dz * sn) * zoom, sy = (dx * sn + dz * cs) * zoom;
