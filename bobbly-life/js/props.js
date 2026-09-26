@@ -159,13 +159,13 @@ export const PRESENT_SPOTS = [
   [0, -3.6], [95, 95], [-95, -95], [150, -150], [-150, 150], [229, 2.5], [172, -172], [-74, 48], [-44, -74],
   [-130, 0], [70, 68], [0, -72], [-90, -120], [-60, -96], [108, 0], [-176, 0], [0, 176], [62, 126], [11, -131], [-150, -150],
   // out in the big world (some are filled in once landmarks exist)
-  'peak', 'pyramid', 'cabin', 'oasis', 'tower', [-420, 180], [-600, -120], [345, 327], [520, 420], [-240, 240], [-30, 600], [30, -600], [-600, 30], [-900, -400], [800, 300], [-300, 950], [700, -300], [-1000, 700],
+  'peak', 'pyramid', 'cabin', 'oasis', 'tower', 'castle', 'space', 'farm', 'village', 'camp', [-420, 180], [-600, -120], [345, 327], [520, 420], [-240, 240], [-30, 600], [30, -600], [-600, 30], [-900, -400], [800, 300], [-300, 950], [700, -300], [-1000, 700],
 ];
 const presentGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
 export function spawnPresents() {
   const cols = ['#ff5b6e', '#3fa7ff', '#b46cff', '#46c25a', '#ffd54a'];
   PRESENT_SPOTS.forEach((spot, i) => {
-    const L = { tower: LOC.tower, peak: LOC.peak, pyramid: LOC.pyramid && { x: 140, z: -720 }, cabin: LOC.cabin, oasis: LOC.oasis };
+    const L = { castle: LOC.castle, space: LOC.space, farm: LOC.farm, village: LOC.village, camp: LOC.camp, tower: LOC.tower, peak: LOC.peak, pyramid: LOC.pyramid && { x: 140, z: -720 }, cabin: LOC.cabin, oasis: LOC.oasis };
     const [x, z] = typeof spot === 'string' ? [L[spot].x, L[spot].z] : spot;
     if (G.save.presents.includes(i)) return;
     const g = new THREE.Group();

@@ -215,15 +215,41 @@ export class Vehicle {
     const inWater = t.boat;
     const canDrive = inWater ? true : this.onGround;
     if (canDrive) {
-      if (inp.throttle > 0) this.speed += (this.speed < 0 ? 30 : t.acc) * inp.throttle * dt;
-      else if (inp.throttle < 0) this.speed -= (this.speed > 0 ? 30 : t.acc * 0.6) * -inp.throttle * dt;
-      else this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 5 * dt);
-      if (inp.brake) this.speed *= 1 - Math.min(1, 3 * dt);
-      this.speed = clamp(this.speed, -t.max * 0.4, t.max);
-      const turnK = clamp(this.speed / 7, -1, 1) * (inp.brake ? 1.5 : 1);
-      this.yaw += inp.steer * t.turn * turnK * dt;
-      this.steerVis = lerp(this.steerVis || 0, inp.steer, 0.2);
-    }
+      const sp = this.speed, ratio = Math.min(1, Math.abs(sp) / t.max);
+      // engine: strong off the line, fading near top speed
+      if (inp.throttle > 0) {
+        if (sp < -0.5) this.speed += 26 * inp.throttle * dt;                           // braking while reversing
+        else this.speed += t.acc * (1 - ratio * ratio * 0.85) * inp.throttle * dt;
+      } else if (inp.throttle < 0) {
+        if (sp > 0.5) this.speed -= 26 * -inp.throttle * dt;                           // brakes
+        else this.speed -= t.acc * 0.5 * -inp.throttle * dt;                            // reverse
+      }
+      // rolling resistance + air drag
+      const drag = (inp.throttle === 0 ? 2.2 : 0.6) + 0.012 * sp * sp;
+      this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), drag * dt);
+      if (inp.brake) this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 9 * dt);
+      this.speed = clamp(this.speed, -t.max * 0.35, t.max);
+      // steering: the wheel turns gradually and turns less at high speed (bicycle model)
+      const maxA = (0.55 - 0.4 * ratio) * (t.scooter ? 1.15 : 1);
+      const target = inp.steer * maxA;
+      const rate = (Math.abs(target) > Math.abs(this.steerA || 0) ? 1.8 : 3.2) * dt;
+      this.steerA = (this.steerA || 0) + clamp(target - (this.steerA || 0), -rate, rate);
+      const wheelbase = Math.max(1.4, t.len * 0.6);
+      let yawRate = this.speed * Math.tan(this.steerA) / wheelbase;
+      // tyres can only hold so much sideways force (~1g), so fast cars turn wide
+      const latMax = (t.sports ? 12 : t.truck ? 7 : 10) / Math.max(1, Math.abs(this.speed));
+      yawRate = clamp(yawRate, -latMax, latMax);
+      if (inp.brake && Math.abs(this.speed) > 7) yawRate *= 1.8;                       // handbrake turn
+      this.yaw += yawRate * dt;
+      this.steerVis = this.steerA / 0.6;
+      // grip: the direction of travel catches up with where the car points
+      if (this.moveYaw === undefined) this.moveYaw = this.yaw;
+      const grip = inp.brake ? 1.8 : t.boat ? 2.5 : 9 - ratio * 3;
+      let slip = ((this.yaw - this.moveYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      this.moveYaw += slip * Math.min(1, grip * dt);
+      this.speed *= 1 - Math.min(0.5, Math.abs(slip) * 0.9 * dt);                        // sliding scrubs speed
+      this.slip = slip;
+    } else if (this.moveYaw !== undefined) this.moveYaw = angleLerp(this.moveYaw, this.yaw, 0.02);
     this.physics(dt, prevSpeed);
   }
 
@@ -303,8 +329,9 @@ export class Vehicle {
 
   physics(dt, prevSpeed = this.speed) {
     const t = this.type;
+    const my = this.moveYaw === undefined ? this.yaw : this.moveYaw;
+    this.pos.x += Math.sin(my) * this.speed * dt; this.pos.z += Math.cos(my) * this.speed * dt;
     this.forward(_f);
-    this.pos.addScaledVector(_f, this.speed * dt);
     if (t.boat) {
       const bh = baseHeight(this.pos.x, this.pos.z);
       this.vy = 0;
@@ -344,7 +371,7 @@ export class Vehicle {
       const gb = groundHeight(this.pos.x - _f.x * L, this.pos.z - _f.z * L, this.pos.y + 1.2, 0.3);
       this.pitch = lerp(this.pitch, -Math.atan2(gf - gb, L * 2), 0.3);
     } else this.pitch = lerp(this.pitch, clamp(this.vy * 0.03, -0.5, 0.4) * -1, 0.05);
-    this.roll = lerp(this.roll, (this.steerVis || 0) * this.speed * 0.01, 0.1);
+    this.roll = lerp(this.roll, clamp((this.steerA || 0) * this.speed * 0.012 + (this.slip || 0) * 0.3, -0.12, 0.12), 0.1);
     this.collideWalls(dt, prevSpeed);
   }
 
@@ -388,6 +415,7 @@ export class Vehicle {
   }
 
   addOccupant(ch, seat) {
+    if (seat === 0) { this.moveYaw = this.yaw; this.steerA = 0; }
     this.occupants[seat] = ch;
     ch.vehicle = this; ch.seat = seat;
     ch.vel.set(0, 0, 0);
@@ -492,7 +520,7 @@ export class Vehicle {
         const k = 1 - Math.exp(-dt * 12);
         this.pos.lerp(_t.set(this.net.x, this.net.y, this.net.z), k);
         if (this.pos.distanceToSquared(_t) > 400) this.pos.copy(_t);
-        this.yaw = angleLerp(this.yaw, this.net.yaw, k);
+        this.yaw = angleLerp(this.yaw, this.net.yaw, k); this.moveYaw = this.yaw;
         this.pitch = lerp(this.pitch, this.net.pitch, k); this.roll = lerp(this.roll, this.net.roll, k);
         this.speed = this.net.spd;
         if (this.type.heli) this.rotorSpeed = 1;

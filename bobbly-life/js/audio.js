@@ -141,3 +141,20 @@ export function setMusic(on) {
   if (!on && timer) { clearInterval(timer); timer = null; }
 }
 export const musicPlaying = () => musicOn;
+
+// Deep rocket rumble (looped filtered noise)
+let rum = null;
+export function rumble(level) {
+  if (!ctx) return;
+  if (!rum && level > 0) {
+    const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(f); f.connect(g); g.connect(master); src.start();
+    rum = { g };
+  }
+  if (rum) rum.g.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * 0.9, ctx.currentTime, 0.2);
+}

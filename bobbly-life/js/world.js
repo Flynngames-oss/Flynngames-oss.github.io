@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, noEmoji, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
 import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
-import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone } from './terrain.js';
+import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone, riverDist } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
 export const colliders = [];
@@ -371,6 +371,171 @@ function buildBalloons() {
     G.balloons.push(g);
   });
 }
+// ---------------------------------------------------------------- bridges, farms, villages, turbines & more
+function buildBridges(list) {
+  list.forEach((b, i) => {
+    const alongZ = Math.abs(b.dz) > Math.abs(b.dx);
+    const L = b.len + 0.3, W = 10;
+    const sx = alongZ ? W : L, sz = alongZ ? L : W;
+    addCollider(b.x - sx / 2, b.y - 1.4, b.z - sz / 2, b.x + sx / 2, b.y, b.z + sz / 2, 'bridge');
+    S(BOX, mat('#8a8680'), b.x, b.y - 0.8, b.z, 0, 0, 0, sx, 1.2, sz);
+    // side rails
+    for (const s2 of [-1, 1]) {
+      const rx = alongZ ? b.x + s2 * (W / 2 + 0.2) : b.x, rz = alongZ ? b.z : b.z + s2 * (W / 2 + 0.2);
+      S(BOX, mat('#b8b4ac'), rx, b.y + 0.5, rz, 0, 0, 0, alongZ ? 0.4 : L, 1, alongZ ? L : 0.4);
+      addCollider(rx - (alongZ ? 0.2 : L / 2), b.y - 0.2, rz - (alongZ ? L / 2 : 0.2), rx + (alongZ ? 0.2 : L / 2), b.y + 1, rz + (alongZ ? L / 2 : 0.2));
+    }
+    if (i % 4 === 0) { const gy = heightAt(b.x, b.z); const ph = b.y - 1.4 - Math.min(gy, -3); S(BOX, mat('#7a7670'), b.x, b.y - 1.4 - ph / 2, b.z, 0, 0, 0, 2, ph, 2); }
+  });
+}
+
+const zc = (k) => { const r = ZONES[k]; return { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2, y: r.h, w: r.x1 - r.x0, d: r.z1 - r.z0 }; };
+function gable(x, y, z, w, d, h, color) {
+  S(CONE4, mat(color), x, y + h / 2, z, Math.PI / 4, 0, 0, w * 0.72, h, d * 0.72);
+}
+function fenceLine(x0, z0, x1, z1, y) {
+  const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / 3));
+  for (let i = 0; i <= n; i++) S(BOX, mat('#8a6a4a'), x0 + (x1 - x0) * i / n, y + 0.6, z0 + (z1 - z0) * i / n, 0, 0, 0, 0.18, 1.2, 0.18);
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0);
+  for (const hy of [0.5, 1.0]) S(BOX, mat('#9a7a5a'), cx, y + hy, cz, ang, 0, 0, 0.08, 0.1, len);
+}
+function buildFarm(k) {
+  const Z = zc(k), y = Z.y;
+  // barn
+  const bx = Z.x - Z.w / 2 + 25, bz = Z.z - Z.d / 2 + 25;
+  box(bx, y - 2, bz, 16, 10, 12, '#8a3a2e');
+  gable(bx, y + 8, bz, 16.6, 13, 6, '#4a4f58');
+  S(BOX, mat('#e8e0d0'), bx, y + 3, bz + 6.05, 0, 0, 0, 6, 6, 0.1);
+  // silo
+  S(CYL, mat('#b8bcc0'), bx + 13, y + 9, bz, 0, 0, 0, 3.2, 18, 3.2);
+  S(new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat('#8a9098'), bx + 13, y + 18, bz, 0, 0, 0, 3.2, 2.4, 3.2);
+  addCollider(bx + 10, y - 2, bz - 3.2, bx + 16.2, y + 18, bz + 3.2);
+  // farmhouse
+  BY = y; house(bx - 4, bz + 30, 2, '#e0d6c4', true); BY = 0;
+  // fields with crop rows
+  const fx0 = Z.x - Z.w / 2 + 55, fx1 = Z.x + Z.w / 2 - 8, fz0 = Z.z - Z.d / 2 + 8, fz1 = Z.z + Z.d / 2 - 8;
+  fenceLine(fx0, fz0, fx1, fz0, y); fenceLine(fx0, fz1, fx1, fz1, y); fenceLine(fx0, fz0, fx0, fz1, y); fenceLine(fx1, fz0, fx1, fz1, y);
+  flat((fx0 + fx1) / 2, y + 0.05, (fz0 + fz1) / 2, fx1 - fx0, fz1 - fz0, '#6b5a40');
+  const crops = [];
+  const half = (fz0 + fz1) / 2;
+  for (let x = fx0 + 3; x < fx1 - 2; x += 2.2) for (let z = fz0 + 3; z < fz1 - 2; z += 1.6) crops.push([x, z, z < half]);
+  const cg = new THREE.ConeGeometry(0.35, 1.3, 5);
+  const im = new THREE.InstancedMesh(cg, new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), crops.length);
+  const col = new THREE.Color();
+  crops.forEach(([x, z, wheat], i) => { _m.makeTranslation(x, y + 0.65, z); im.setMatrixAt(i, _m); im.setColorAt(i, col.set(wheat ? '#c8a850' : '#5f8a3a')); });
+  im.computeBoundingSphere(); im.receiveShadow = true; G.scene.add(im);
+  // hay bales
+  for (let i = 0; i < 6; i++) { const hx = bx - 10 + (i % 3) * 3, hz = bz - 10 - Math.floor(i / 3) * 3; S(CYL, mat('#c8a860'), hx, y + 0.9, hz, 0, 0, Math.PI / 2, 1, 1.6, 1); addCollider(hx - 0.8, y, hz - 1, hx + 0.8, y + 1.8, hz + 1); }
+  sign(k === 'farm1' ? 'Hill Farm' : 'Oak Farm', bx, y + 16, bz + 7, '#fff', '#8a6a4a', 2.4);
+  return { x: bx, z: bz + 16 };
+}
+function buildVillage(k, name) {
+  const Z = zc(k), y = Z.y;
+  flat(Z.x, y + 0.04, Z.z, 30, 30, '#cfc6b3');
+  S(CYL, mat('#8a8680'), Z.x, y + 0.6, Z.z, 0, 0, 0, 2, 1.2, 2);
+  S(CYL, mat('#3a5a7a'), Z.x, y + 1.15, Z.z, 0, 0, 0, 1.7, 0.1, 1.7);
+  addCollider(Z.x - 2, y - 1, Z.z - 2, Z.x + 2, y + 1.2, Z.z + 2);
+  BY = y;
+  const cols = ['#e8dcc8', '#c8d0d8', '#d8c8b8', '#b8c4b0', '#e0d0b0', '#d0b8a0'];
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2, r = 36;
+    const hx = Z.x + Math.cos(a) * r, hz = Z.z + Math.sin(a) * r;
+    const face = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a)) ? (Math.cos(a) > 0 ? 1 : 0) : (Math.sin(a) > 0 ? 3 : 2);
+    house(hx, hz, face, cols[i % cols.length], i % 3 === 0);
+  }
+  BY = 0;
+  for (let i = 0; i < 10; i++) { const a = i / 10 * 6.28 + 0.3; addTree(Z.x + Math.cos(a) * 55, Z.z + Math.sin(a) * 55, 'round'); }
+  sign(name, Z.x, y + 7, Z.z, '#fff', '#6a8a55', 2.6);
+  return { x: Z.x + 16, z: Z.z };
+}
+function buildGas(k) {
+  const Z = zc(k), y = Z.y;
+  flat(Z.x, y + 0.05, Z.z, Z.w, Z.d, '#9aa0aa');
+  for (const [dx, dz] of [[-6, -5], [6, -5], [-6, 5], [6, 5]]) box(Z.x + dx, y - 1, Z.z + dz, 0.5, 6.5, 0.5, '#d8d8d8');
+  S(BOX, mat('#c83a2e'), Z.x, y + 5.8, Z.z, 0, 0, 0, 15, 0.8, 13);
+  for (const dx of [-3, 3]) box(Z.x + dx, y, Z.z, 1, 1.8, 0.7, '#e8e8e8');
+  box(Z.x, y - 1, Z.z + (Z.d / 2 - 5), 12, 5, 6, '#e0dcd4');
+  sign('FUEL', Z.x, y + 8.5, Z.z, '#fff', '#c83a2e', 2);
+}
+function buildTurbines() {
+  G.turbines = [];
+  let placed = 0, tries = 0;
+  while (placed < 12 && tries++ < 3000) {
+    const x = 600 + srand() * 650, z = -150 + srand() * 700;
+    if (inZone(x, z, 60) || riverDist(x, z) < 40) continue;
+    const y = heightAt(x, z);
+    if (y < 8 || slopeAt(x, z) > 0.35) continue;
+    if (G.turbines.some(t => Math.hypot(t.x - x, t.z - z) < 80)) continue;
+    S(CYL8, mat('#e8eaec'), x, y + 22, z, 0, 0, 0, 1, 44, 1);
+    addCollider(x - 1.2, y - 1, z - 1.2, x + 1.2, y + 44, z + 1.2);
+    const rot = new THREE.Group();
+    rot.position.set(x, y + 44, z + 1.6);
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), mat('#e8eaec')); rot.add(hub);
+    for (let b = 0; b < 3; b++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(0.8, 17, 0.25), mat('#f0f2f4')); bl.position.y = 8.5; const arm = new THREE.Group(); arm.rotation.z = b * Math.PI * 2 / 3; arm.add(bl); rot.add(arm); }
+    const nac = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 5), mat('#e8eaec')); nac.position.set(x, y + 44, z - 0.8);
+    G.scene.add(rot, nac);
+    G.turbines.push({ x, z, rot, sp: 0.5 + srand() * 0.4 });
+    placed++;
+  }
+}
+function buildCastle() {
+  const pk = findPeak(-1050, 550, -700, 900);
+  const x = pk.x, z = pk.z, y = pk.h;
+  const R = 22, wallH = 9;
+  for (const [dx, dz, sx, sz] of [[0, -R, 2 * R, 3], [0, R, 2 * R, 3], [-R, 0, 3, 2 * R], [R, 0, 3, 2 * R]]) {
+    if (dz === R) { // gate gap
+      box(x - R / 2 - 3, y - 8, z + R, R - 6, wallH + 8, 3, '#8a847a'); box(x + R / 2 + 3, y - 8, z + R, R - 6, wallH + 8, 3, '#8a847a');
+    } else box(x + dx, y - 8, z + dz, sx, wallH + 8, sz, '#8a847a');
+  }
+  for (const [dx, dz] of [[-R, -R], [R, -R], [-R, R], [R, R]]) { S(CYL, mat('#7a746a'), x + dx, y + 2, z + dz, 0, 0, 0, 4, 22, 4); S(new THREE.ConeGeometry(1, 1, 12), mat('#4a4f58'), x + dx, y + 16, z + dz, 0, 0, 0, 4.6, 6, 4.6); addCollider(x + dx - 4, y - 9, z + dz - 4, x + dx + 4, y + 13, z + dz + 4); }
+  box(x, y - 6, z - 4, 16, 22, 14, '#7a746a');
+  for (let i = -3; i <= 3; i++) S(BOX, mat('#8a847a'), x + i * 6, y + wallH + 0.8, z - R, 0, 0, 0, 2.4, 1.6, 3);
+  sign('Old Castle', x, y + 22, z + R + 2, '#fff', '#7a746a', 3);
+  return { x, z: z + R + 10, y };
+}
+function buildCamp() {
+  const Z = zc('camp'), y = Z.y;
+  for (let i = 0; i < 5; i++) { const a = i / 5 * 6.28; S(CONE4, mat(['#5a6a4a', '#6a5a4a', '#4a5a6a'][i % 3]), Z.x + Math.cos(a) * 12, y + 1.3, Z.z + Math.sin(a) * 12, a + Math.PI / 4, 0, 0, 2.6, 2.6, 2.6); }
+  for (let i = 0; i < 4; i++) S(CYL8, mat('#6b4a2b'), Z.x, y + 0.2, Z.z, i * 0.8, 0, Math.PI / 2, 0.15, 1.6, 0.15);
+  S(new THREE.ConeGeometry(0.5, 1.2, 7), mat('#ff8a2a', { emissive: '#ff5500', emissiveIntensity: 1 }), Z.x, y + 0.7, Z.z);
+  for (let i = 0; i < 3; i++) bench(Z.x + Math.cos(i * 2.1) * 4, Z.z + Math.sin(i * 2.1) * 4, -i * 2.1);
+  sign('Campsite', Z.x, y + 5, Z.z + 6, '#fff', '#5a6a4a', 2);
+  return { x: Z.x + 6, z: Z.z + 6 };
+}
+function buildSpaceCenter() {
+  const Z = zc('space'), y = Z.y;
+  flat(Z.x, y + 0.04, Z.z, Z.w, Z.d, '#9a9a96');
+  const px = Z.x + 30, pz = Z.z;
+  box(px, y - 3, pz, 34, 3.4, 34, '#8a8a86');                       // launch pad
+  S(BOX, mat('#2a2a2a'), px, y + 0.42, pz, 0, 0, 0, 10, 0.05, 30);   // flame trench
+  // lattice launch tower
+  const tx = px + 13, tz = pz, TH = 88;
+  for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) S(BOX, mat('#b8382e'), tx + dx, y + TH / 2, tz + dz, 0, 0, 0, 0.6, TH, 0.6);
+  for (let hy = 4; hy < TH; hy += 6) {
+    S(BOX, mat(hy % 12 === 4 ? '#e8e8e8' : '#b8382e'), tx, y + hy, tz - 3, 0, 0, 0, 6.6, 0.4, 0.4); S(BOX, mat('#b8382e'), tx, y + hy, tz + 3, 0, 0, 0, 6.6, 0.4, 0.4);
+    S(BOX, mat('#b8382e'), tx - 3, y + hy, tz, 0, 0, 0, 0.4, 0.4, 6.6); S(BOX, mat('#b8382e'), tx + 3, y + hy, tz, 0, 0, 0, 0.4, 0.4, 6.6);
+    S(BOX, mat('#9a2e26'), tx, y + hy + 3, tz - 3, 0, 0, 0.78, 0.25, 8.4, 0.25);
+  }
+  addCollider(tx - 3.3, y, tz - 3.3, tx + 3.3, y + TH, tz + 3.3);
+  for (const hy of [30, 62]) S(BOX, mat('#8a8a86'), tx - 7, y + hy, tz, 0, 0, 0, 8, 0.8, 2.4);  // access arms
+  // fuel tanks and control centre
+  for (const dz of [-18, 18]) { S(new THREE.SphereGeometry(1, 16, 12), mat('#e8e8e8'), Z.x - 40, y + 8, Z.z + dz, 0, 0, 0, 7, 7, 7); addCollider(Z.x - 47, y, Z.z + dz - 7, Z.x - 33, y + 15, Z.z + dz + 7); }
+  building(Z.x - 60, Z.z - 70 + 30, 30, 18, 12, '#d8d8d4', '#4a4f58');
+  sign('BOBBLY SPACE CENTER', Z.x - 60, y + 17, Z.z - 30, '#fff', '#3a6ab0', 3.4);
+  LOC.space = { x: px - 10, z: pz + 21 };
+  LOC.rocketPad = { x: px, z: pz, y: y + 0.4, towerX: tx };
+}
+function buildWildPlaces() {
+  buildSpaceCenter();
+  LOC.farm = buildFarm('farm1'); buildFarm('farm2');
+  LOC.village = buildVillage('village1', 'Pinewood'); buildVillage('village2', 'Dry Creek');
+  buildGas('gasN'); buildGas('gasS'); buildGas('gasW');
+  buildTurbines();
+  LOC.castle = buildCastle();
+  LOC.camp = buildCamp();
+}
+export function updateTurbines(dt) { for (const t of G.turbines || []) t.rot.rotation.z += dt * t.sp; }
+
 export function updateBalloons(t) {
   for (const b of G.balloons || []) {
     const u = b.userData, a = u.ph + t * u.sp;
@@ -595,19 +760,21 @@ function roadTexture() {
 }
 
 // ---------------------------------------------------------------- building blocks
+let BY = 0; // base height for houses built on raised ground
 function house(x, z, face, color, tall = false) {
   const w = 8, d = 7, h = tall ? 7.5 : 4.5;
-  S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
-  S(CONE4, tmat(pick(['#c75a4a', '#8b5a44', '#4f6f9b', '#5a8a5a']), TX.roof, 'r'), x, h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
-  addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.2, z + d / 2);
+  S(windowBoxGeo(w, h, d), bmat(color), x, BY + h / 2, z);
+  if (BY) S(BOX, mat('#8a8680'), x, BY - 1.5, z, 0, 0, 0, w + 0.4, 3, d + 0.4);
+  S(CONE4, tmat(pick(['#c75a4a', '#8b5a44', '#4f6f9b', '#5a8a5a']), TX.roof, 'r'), x, BY + h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
+  addCollider(x - w / 2, BY - 2, z - d / 2, x + w / 2, BY + h + 0.2, z + d / 2);
   // door + path
   const fx = face === 0 ? 1 : face === 1 ? -1 : 0, fz = face === 2 ? 1 : face === 3 ? -1 : 0;
   const dx = x + fx * (w / 2 + 0.05), dz = z + fz * (d / 2 + 0.05);
-  S(BOX, mat('#7a4a2b'), dx, 1.1, dz, 0, 0, 0, fx ? 0.12 : 1.4, 2.2, fz ? 0.12 : 1.4);
+  S(BOX, mat('#7a4a2b'), dx, BY + 1.1, dz, 0, 0, 0, fx ? 0.12 : 1.4, 2.2, fz ? 0.12 : 1.4);
   const pathLen = 6;
-  flat(x + fx * (w / 2 + pathLen / 2), 0.045, z + fz * (d / 2 + pathLen / 2), fx ? pathLen : 1.6, fz ? pathLen : 1.6, '#cfc6b3');
+  flat(x + fx * (w / 2 + pathLen / 2), BY + 0.045, z + fz * (d / 2 + pathLen / 2), fx ? pathLen : 1.6, fz ? pathLen : 1.6, '#cfc6b3');
   // chimney
-  box(x + 2, h, z + 1.5, 0.8, 2.5, 0.8, '#9a6b5a', false);
+  box(x + 2, BY + h, z + 1.5, 0.8, 2.5, 0.8, '#9a6b5a', false);
   const door = { x: x + fx * (w / 2 + 3.5), z: z + fz * (d / 2 + 3.5) };
   G.locations.houses.push({ x, z, door, name: 'House #' + (G.locations.houses.length + 1) });
   // front garden: flower beds beside the path, bushes at the front corners
@@ -618,8 +785,8 @@ function house(x, z, face, color, tall = false) {
     bushAt(x + fx * (fd + 0.6) + px * side * (ph + 0.6), z + fz * (fd + 0.6) + pz * side * (ph + 0.6), 0.9);
   }
   // mailbox
-  box(door.x + (fz ? 1.6 : 0), 0, door.z + (fx ? 1.6 : 0), 0.3, 1.1, 0.3, '#4a4f5a', false);
-  box(door.x + (fz ? 1.6 : 0), 1.1, door.z + (fx ? 1.6 : 0), 0.5, 0.4, 0.7, '#3fa7ff', false);
+  box(door.x + (fz ? 1.6 : 0), BY, door.z + (fx ? 1.6 : 0), 0.3, 1.1, 0.3, '#4a4f5a', false);
+  box(door.x + (fz ? 1.6 : 0), BY + 1.1, door.z + (fx ? 1.6 : 0), 0.5, 0.4, 0.7, '#3fa7ff', false);
 }
 
 function residentialBlock(cx, cz) {
@@ -723,7 +890,8 @@ export async function buildWorld(progress = () => {}) {
     S(PLANE, roadMat, 0, 0.021, r, 0, -Math.PI / 2, Math.PI / 2, 10, LAND * 2, 1);
   }
   for (const a of ROADS) for (const b of ROADS) flat(a, 0.025, b, 10, 10, '#555a63');
-  buildHighways(scene, roadMat);
+  const bridges = buildHighways(scene, roadMat);
+  buildBridges(bridges);
 
   // Sidewalk blocks
   for (const bx of BLOCKS) for (const bz of BLOCKS) {
@@ -886,6 +1054,8 @@ export async function buildWorld(progress = () => {}) {
   await progress(0.5, 'Raising Mega City');
   buildMegaCity();
   buildSuburbs();
+  await progress(0.6, 'Building farms, villages and the space center');
+  buildWildPlaces();
   await progress(0.65, 'Growing forests');
   buildWilderness();
   buildTrees();
@@ -946,6 +1116,7 @@ export function updateWorld(dt, focus) {
     G.sky.position.copy(G.camera.position);
   }
   updateBalloons(G.time);
+  updateTurbines(dt);
   if (G.waterTex) { G.waterTex.offset.x = G.time * 0.004; G.waterTex.offset.y = G.time * 0.0025; }
   G.scene.fog.color.copy(tmpC);
   sun.intensity = 0.25 + 1.7 * day;
@@ -959,4 +1130,63 @@ export function updateWorld(dt, focus) {
   if (bulbMat) bulbMat.color.setRGB(lerp(0.9, 1, night), lerp(0.9, 0.9, night), lerp(0.9, 0.5, night));
   G.night = night;
   for (const c of G.clouds) { c.position.x += dt * 2; if (c.position.x > WORLD + 100) c.position.x = -WORLD - 100; }
+  updateSpace();
+}
+
+// ---------------------------------------------------------------- space (seen when you fly very high)
+const BLACK = new THREE.Color('#000000');
+let stars, earth, glow, moon, baseFogFar = null;
+function earthTexture() {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = '#1d4f86'; x.fillRect(0, 0, 1024, 512);
+  for (let i = 0; i < 26; i++) {
+    const cx = Math.random() * 1024, cy = 90 + Math.random() * 330, r = 30 + Math.random() * 90;
+    x.fillStyle = ['#4f7a3a', '#6b7a4a', '#8a7a5a', '#3f6a34'][i % 4];
+    x.beginPath();
+    for (let k = 0; k <= 16; k++) { const a = k / 16 * Math.PI * 2, rr = r * (0.6 + Math.random() * 0.5); x.lineTo(cx + Math.cos(a) * rr * 1.4, cy + Math.sin(a) * rr); }
+    x.fill();
+  }
+  x.fillStyle = '#f0f4f8'; x.fillRect(0, 490, 1024, 22);
+  for (let i = 0; i < 90; i++) { x.fillStyle = 'rgba(255,255,255,0.55)'; x.beginPath(); x.ellipse(Math.random() * 1024, Math.random() * 512, 20 + Math.random() * 60, 6 + Math.random() * 12, 0, 0, 7); x.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function buildSpace() {
+  const n = 2500, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+    pos[i * 3] = r * Math.cos(a) * 900; pos[i * 3 + 1] = Math.abs(u) * 900 * (u > -0.2 ? 1 : -1); pos[i * 3 + 2] = r * Math.sin(a) * 900;
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  stars = new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+  stars.frustumCulled = false; stars.renderOrder = -1;
+  const ER = 40000;
+  earth = new THREE.Mesh(new THREE.SphereGeometry(ER, 96, 64), new THREE.MeshLambertMaterial({ map: earthTexture(), fog: false }));
+  earth.position.y = -ER - 2; earth.visible = false;
+  glow = new THREE.Mesh(new THREE.SphereGeometry(ER * 1.015, 64, 32), new THREE.MeshBasicMaterial({ color: '#6fb0ff', transparent: true, opacity: 0.25, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  glow.position.copy(earth.position); glow.visible = false;
+  moon = new THREE.Mesh(new THREE.SphereGeometry(2200, 32, 24), new THREE.MeshLambertMaterial({ color: '#b8b8b4', emissive: '#303030', fog: false }));
+  moon.position.set(-38000, 26000, -42000); moon.visible = false;
+  G.scene.add(stars, earth, glow, moon);
+}
+function updateSpace() {
+  if (!stars) buildSpace();
+  const cam = G.camera, alt = cam.position.y;
+  const f = clamp((alt - 700) / 6500, 0, 1);
+  G.spaceFade = f;
+  stars.position.copy(cam.position);
+  stars.material.opacity = clamp((f - 0.25) * 1.6, 0, 1);
+  earth.visible = glow.visible = moon.visible = f > 0.05;
+  if (G.water) G.water.visible = f < 0.35;
+  if (G.sky) { const u = G.sky.material.uniforms; u.top.value.lerp(BLACK, f); u.horizon.value.lerp(BLACK, Math.pow(f, 0.7)); }
+  G.scene.background.lerp(BLACK, f);
+  if (baseFogFar === null) baseFogFar = G.scene.fog.far;
+  if (f > 0) {
+    G.scene.fog.far = lerp(G.scene.fog.far, 1e6, f);
+    G.scene.fog.near = lerp(160, 1e5, f);
+    if (cam.far < 90000) { cam.far = 90000; cam.updateProjectionMatrix(); }
+  } else if (G.scene.fog.near !== 160) {
+    G.scene.fog.near = 160;
+    G.applyGraphics && G.applyGraphics();
+  }
 }

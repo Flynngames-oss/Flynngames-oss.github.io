@@ -14,6 +14,7 @@ import * as UI from './ui.js';
 import * as NET from './net.js';
 import { initAudio, sfx, setEngine, setMusic, musicPlaying } from './audio.js';
 import { initTraffic, updateTraffic } from './traffic.js';
+import { initRocket, updateRocket } from './rocket.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
 
@@ -109,6 +110,7 @@ WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color
 
 // NPCs
 initTraffic(14);
+initRocket();
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
   const n = new Character(randomOutfit(), { isNPC: true });
@@ -283,6 +285,7 @@ function nearestVehicle() {
 }
 
 function interact() {
+  if (G.rocketRide) { G.rocketE && G.rocketE(); return; }
   if (player.ragdoll) return;
   if (player.vehicle) {
     const v = player.vehicle;
@@ -637,6 +640,7 @@ function buildTitle() {
   $('nameInput').addEventListener('keydown', (e) => e.stopPropagation());
 }
 
+G.applyGraphics = () => applyGraphics();
 function applyGraphics() {
   const high = G.save.gfx !== 'low';
   renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
@@ -669,7 +673,7 @@ function startGame() {
 // ---------------------------------------------------------------- per-frame player control
 function controlPlayer(dt) {
   const p = player;
-  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started;
+  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide;
   let ix = 0, iy = 0;
   if (!blocked) {
     ix = (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + touch.mx;
@@ -745,7 +749,8 @@ function updateCamera(dt) {
     const cp = Math.cos(G.cam.pitch), sp = Math.sin(G.cam.pitch);
     const look = _u.set(-Math.sin(G.cam.yaw) * cp, -sp, -Math.cos(G.cam.yaw) * cp);
     if (v && player.seat === 0 && G.time - G.cam.lastMouse > 1.2 && Math.abs(v.speed) > 2) G.cam.yaw = angleLerp(G.cam.yaw, v.yaw + Math.PI, 1 - Math.exp(-dt * 3));
-    camera.position.set(H.x, H.y + 0.12, H.z).addScaledVector(_w.set(look.x, 0, look.z).normalize(), 0.25);
+    camera.position.set(H.x, H.y + 0.12, H.z).addScaledVector(_w.set(look.x, 0, look.z).normalize(), G.rocketRide ? 0 : 0.25);
+    if (G.camShake) camera.position.add(_w.set((Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake));
     camera.lookAt(_v.copy(camera.position).add(look));
     camTarget.copy(camera.position);
     return;
@@ -840,6 +845,7 @@ function loop(now) {
   bumpVehicles();
   updateNPCs(dt);
   for (const c of G.characters) c.update(dt);
+  updateRocket(dt);
   pushCharacters();
   for (const c of G.characters) if (!c.isRemote) kickProps(c);
   updateWeapons(dt);
