@@ -138,7 +138,7 @@ function flatGeo(w, d, tile) {
   return flatGeoCache.get(k);
 }
 const GRASSY = ['#7fae4f', '#5a8f42', '#7fae4f'];
-const PAVED = ['#d9d4c7', '#eadfc6', '#cfcfcf', '#cfc6b3', '#b9bec7', '#9aa0aa'];
+const PAVED = ['#cfcfca', '#d9d4c7', '#eadfc6', '#cfcfcf', '#cfc6b3', '#b9bec7', '#9aa0aa'];
 function flat(x, y, z, w, d, color, ry = 0) {
   if (typeof color === 'string' && TX) {
     if (GRASSY.includes(color)) return S(flatGeo(w, d, 6), tmat(color, TX.grass, 'g'), x, y, z, ry, -Math.PI / 2, 0, w, d, 1);
@@ -265,6 +265,7 @@ export function setTreeMatrix(tree, grow, lean = 0) {
 
 // Cacti and rocks: simple instanced decorations with small colliders.
 function buildInstanced(list, parts) {
+  if (!list.length) return;
   for (const [geo, color, tf] of parts) {
     const im = new THREE.InstancedMesh(geo, mat(color, { flatShading: true }), list.length);
     list.forEach((d, i) => { tf(d, _m); im.setMatrixAt(i, _m); });
@@ -291,7 +292,7 @@ function buildWilderness() {
       if (h < 115 && r < 0.035) addTree(x, z, h > 60 ? 'snow' : 'pine', 0.9 + srand() * 0.6);
       else if (r > 0.992) rocks.push({ x, z, y: h, s: 1 + srand() * 3, a: srand() * 6 });
     } else if (b.south > 0.55) {
-      if (r < 0.012) cacti.push({ x, z, y: h, s: 0.8 + srand() * 0.7, a: srand() * 6 });
+      if (r < 0.02) addTree(x, z, 'round', 0.8 + srand() * 0.6);
       else if (r > 0.996) rocks.push({ x, z, y: h, s: 1 + srand() * 2.5, a: srand() * 6 });
     } else if (r < 0.012) addTree(x, z, 'round', 0.9 + srand() * 0.5);
     else if (r > 0.997) rocks.push({ x, z, y: h, s: 1 + srand() * 2, a: srand() * 6 });
@@ -528,8 +529,8 @@ function buildSpaceCenter() {
 function buildWildPlaces() {
   buildSpaceCenter();
   LOC.farm = buildFarm('farm1'); buildFarm('farm2');
-  LOC.village = buildVillage('village1', 'Pinewood'); buildVillage('village2', 'Dry Creek');
-  buildGas('gasN'); buildGas('gasS'); buildGas('gasW');
+  LOC.village = buildVillage('village2', 'Sunset Hills');
+  buildGas('gasN'); buildGas('gasS');
   buildTurbines();
   LOC.castle = buildCastle();
   LOC.camp = buildCamp();
@@ -545,88 +546,118 @@ export function updateBalloons(t) {
 }
 
 // ---------------------------------------------------------------- Mega City & Suburbs
-let cityRoadMat = null;
-function roadStrip(x, z, len, alongX) {
+
+// ---------------------------------------------------------------- palm trees (instanced)
+const palmPos = [];
+function palmAt(x, z, s = 1) { palmPos.push([x, z, s * (0.85 + Math.random() * 0.35), Math.random() * 6.28]); }
+function buildPalms() {
+  if (!palmPos.length) return;
+  const n = palmPos.length;
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.34, 1, 7), mat('#8a7458'), n);
+  // one frond geometry: 8 drooping leaves merged
+  const leaves = [];
+  for (let k = 0; k < 8; k++) {
+    const g = new THREE.ConeGeometry(0.55, 4.2, 4);
+    g.rotateX(Math.PI / 2); g.translate(0, 0, 2.1); g.rotateX(0.35); g.scale(1, 0.25, 1); g.rotateY(k * Math.PI / 4);
+    leaves.push(g.index ? g.toNonIndexed() : g);
+  }
+  const crownG = mergeGeometries(leaves);
+  crownG.computeVertexNormals();
+  const crown = new THREE.InstancedMesh(crownG, mat('#4f7a3a', { flatShading: true, side: THREE.DoubleSide }), n);
+  palmPos.forEach(([x, z, sc, a], i) => {
+    const y = heightAt(x, z), h = 11 * sc;
+    _qq.setFromEuler(_e.set(0, a, 0.04));
+    _m.compose(_p.set(x, y + h / 2, z), _qq, _s.set(1, h, 1)); trunk.setMatrixAt(i, _m);
+    _m.compose(_p.set(x + 0.2, y + h, z), _qq, _s.set(sc, sc, sc)); crown.setMatrixAt(i, _m);
+    addCollider(x - 0.35, y - 1, z - 0.35, x + 0.35, y + h, z + 0.35, 'tree');
+  });
+  for (const im of [trunk, crown]) { im.castShadow = true; im.computeBoundingSphere(); G.scene.add(im); }
+}
+
+// ---------------------------------------------------------------- Downtown (LA-style big city)
+let cityRoadMat = null, streetMat = null;
+function roadStrip(x, z, len, alongX, w = 10, plain = false) {
   if (!cityRoadMat) cityRoadMat = new THREE.MeshLambertMaterial({ map: asphaltTexture() });
-  if (alongX) S(flatGeo(10, len, 10), cityRoadMat, x, 0.02, z, 0, -Math.PI / 2, Math.PI / 2, 10, len, 1);
-  else S(flatGeo(10, len, 10), cityRoadMat, x, 0.021, z, 0, -Math.PI / 2, 0, 10, len, 1);
+  if (!streetMat) streetMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(false), color: '#b8b8bc' });
+  const m = plain ? streetMat : cityRoadMat;
+  if (alongX) S(flatGeo(w, len, 10), m, x, 0.02, z, 0, -Math.PI / 2, Math.PI / 2, w, len, 1);
+  else S(flatGeo(w, len, 10), m, x, 0.021, z, 0, -Math.PI / 2, 0, w, len, 1);
 }
 function tower(x, z, w, d, h, color, roof = '#6b7079', antenna = false) {
   S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
   S(BOX, mat(roof), x, h + 0.4, z, 0, 0, 0, w + 0.8, 0.8, d + 0.8);
   addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.8, z + d / 2);
-  // rooftop details
   box(x - w / 4, h + 0.8, z - d / 4, Math.min(4, w / 3), 2, Math.min(4, d / 3), '#9aa4b1');
   if (antenna) { S(CYL8, mat('#dddddd'), x, h + 12, z, 0, 0, 0, 0.3, 22, 0.3); S(BALL_G, mat('#ff3030', { emissive: '#ff0000', emissiveIntensity: 1 }), x, h + 23.5, z, 0, 0, 0, 0.7, 0.7, 0.7); }
   return h;
 }
 const BALL_G = new THREE.SphereGeometry(1, 10, 8);
-const CITY_COLS = ['#b8c8d8', '#8fa8c0', '#d8d0c0', '#c0b8b0', '#a8b8c8', '#e0dcd4', '#9ab0b8', '#c8b8a8', '#7f98b0', '#b0a090'];
+const CITY_COLS = ['#b8c8d8', '#8fa8c0', '#d8d0c0', '#c0b8b0', '#a8b8c8', '#e0dcd4', '#9ab0b8', '#c8b8a8', '#7f98b0', '#b0a090', '#6f8aa6', '#d0c4b0'];
 
 function buildMegaCity() {
-  const Z = ZONES.city;
-  const xs = [-210, -270, -330, -390, -450, -510, -570, -630];
-  const zs = [-170, -110, -50, 30, 90, 150, 210];
-  // streets
+  const xs = []; for (let x = -210; x >= -990; x -= 60) xs.push(x);
+  const zs = [-460, -400, -340, -280, -220, -160, -100, -40, 30, 90, 150, 210, 270];
+  const CORE = { x: -600, z: -120 };
   for (const x of xs) roadStrip(x, (zs[0] + zs[zs.length - 1]) / 2, zs[zs.length - 1] - zs[0] + 10, false);
   for (const z of zs) if (z !== 30) roadStrip((xs[0] + xs[xs.length - 1]) / 2, z, xs[0] - xs[xs.length - 1] + 10, true);
   for (const x of xs) for (const z of zs) flat(x, 0.03, z, 10, 10, '#555a63');
-  // connect to town
   roadStrip((-185 + -210) / 2, -90, 25, true); roadStrip((-185 + -210) / 2, -30, 25, true);
-  const specials = {};
+  const blocks = [];
   for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
     const x0 = xs[i + 1] + 5, x1 = xs[i] - 5, z0 = zs[j] + 5, z1 = zs[j + 1] - 5;
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, bw = x1 - x0, bd = z1 - z0;
-    flat(cx, 0.025, cz, bw, bd, '#d9d4c7');
-    for (const [lx, lz] of [[x0 + 2, z0 + 2], [x1 - 2, z1 - 2], [x0 + 2, z1 - 2], [x1 - 2, z0 + 2]]) extraLamps.push([lx, lz]);
-    const key = i + ',' + j;
+    const b = { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, bw: x1 - x0, bd: z1 - z0, x0, x1, z0, z1 };
+    b.core = Math.hypot(b.cx - CORE.x, b.cz - CORE.z);
+    blocks.push(b);
+    flat(b.cx, 0.025, b.cz, b.bw, b.bd, '#d9d4c7');
+    extraLamps.push([x0 + 2, z0 + 2], [x1 - 2, z1 - 2]);
     G.locations.sidewalks.push({ x: x0 + 1, z: z0 + 1 }, { x: x1 - 1, z: z0 + 1 }, { x: x0 + 1, z: z1 - 1 }, { x: x1 - 1, z: z1 - 1 });
-    specials[key] = { cx, cz, bw, bd };
-    // city trees in planters along the long sides
-    for (let t = z0 + 6; t < z1 - 4; t += 12) { addTree(x0 + 1.5, t, 'round', 0.7); addTree(x1 - 1.5, t, 'round', 0.7); flowerBed(x0 + 1.5, t + 3, 1.4, 2, 5); }
+    // palm-lined sidewalks on the long sides
+    for (let t = z0 + 8; t < z1 - 4; t += 16) { palmAt(x0 + 1.6, t); palmAt(x1 - 1.6, t); }
   }
-  // Landmark blocks
-  const TWR = specials['2,2'];     // centre block (x -390..-330, z -50..30)
-  buildBobblyTower(TWR.cx, TWR.cz);
-  const TWIN = specials['4,2'];
-  for (const dz of [-17, 17]) tower(TWIN.cx, TWIN.cz + dz, 22, 22, 232, '#a8c8ec', '#50555e', true);
-  sign('🏢 Twin Bobbles', TWIN.cx, 20, TWIN.cz + 36, '#fff', '#3f6f9e', 3);
-  const CYLB = specials['5,4'];
-  const cg = new THREE.CylinderGeometry(15, 15, 190, 28);
-  const uv = cg.attributes.uv;
+  const pickNear = (x, z) => blocks.filter(b => !b.used).sort((a, b) => Math.hypot(a.cx - x, a.cz - z) - Math.hypot(b.cx - x, b.cz - z))[0];
+  // Landmarks in the core
+  const TWR = pickNear(CORE.x, CORE.z); TWR.used = true; buildBobblyTower(TWR.cx, TWR.cz);
+  const TWIN = pickNear(CORE.x + 70, CORE.z); TWIN.used = true;
+  for (const dz of [-17, 17]) tower(TWIN.cx, TWIN.cz + dz, 20, 20, 232, '#a8c0dc', '#50555e', true);
+  sign('Twin Bobbles', TWIN.cx, 20, TWIN.cz + 30, '#fff', '#3f6f9e', 3);
+  const CYLB = pickNear(CORE.x - 70, CORE.z + 60); CYLB.used = true;
+  const cg = new THREE.CylinderGeometry(15, 15, 190, 28), uv = cg.attributes.uv;
   for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * 24, uv.getY(k) * 47);
-  S(cg, bmat('#7fd6e8'), CYLB.cx, 95, CYLB.cz);
+  S(cg, bmat('#7fb8d0'), CYLB.cx, 95, CYLB.cz);
   S(new THREE.CylinderGeometry(16, 16, 1, 28), mat('#50555e'), CYLB.cx, 190.5, CYLB.cz);
   S(new THREE.ConeGeometry(12, 24, 28), mat('#e8eef5'), CYLB.cx, 203, CYLB.cz);
   addCollider(CYLB.cx - 13, 0, CYLB.cz - 13, CYLB.cx + 13, 191, CYLB.cz + 13);
-  const STEP = specials['1,4'];
+  const STEP = pickNear(CORE.x, CORE.z - 120); STEP.used = true;
   let y = 0;
-  for (const [w, h] of [[42, 70], [32, 60], [22, 55], [12, 30]]) { S(windowBoxGeo(w, h, w), bmat('#ffe2b8'), STEP.cx, y + h / 2, STEP.cz); addCollider(STEP.cx - w / 2, y, STEP.cz - w / 2, STEP.cx + w / 2, y + h, STEP.cz + w / 2); y += h; S(BOX, mat('#c8a070'), STEP.cx, y + 0.3, STEP.cz, 0, 0, 0, w + 1, 0.6, w + 1); }
+  for (const [w, h] of [[42, 70], [32, 60], [22, 55], [12, 30]]) { S(windowBoxGeo(w, h, w), bmat('#e8d8c0'), STEP.cx, y + h / 2, STEP.cz); addCollider(STEP.cx - w / 2, y, STEP.cz - w / 2, STEP.cx + w / 2, y + h, STEP.cz + w / 2); y += h; S(BOX, mat('#b89a70'), STEP.cx, y + 0.3, STEP.cz, 0, 0, 0, w + 1, 0.6, w + 1); }
   S(CYL8, mat('#dddddd'), STEP.cx, y + 20, STEP.cz, 0, 0, 0, 0.4, 40, 0.4);
-  // City park
-  const PARK = specials['3,5'];
-  flat(PARK.cx, 0.035, PARK.cz, PARK.bw - 4, PARK.bd - 4, '#7fae4f');
-  for (let k = 0; k < 10; k++) addTree(PARK.cx + rand(-20, 20), PARK.cz + rand(-20, 20), 'round');
-  flowerBed(PARK.cx, PARK.cz, 30, 30, 50);
-  for (let k = 0; k < 8; k++) bushAt(PARK.cx + rand(-22, 22), PARK.cz + rand(-22, 22), rand(0.8, 1.4));
-  S(CYL, mat('#b9c3cf'), PARK.cx, 0.4, PARK.cz, 0, 0, 0, 4, 0.8, 4);
-  S(CYL, mat('#5cc8ff'), PARK.cx, 0.72, PARK.cz, 0, 0, 0, 3.6, 0.1, 3.6);
-  addCollider(PARK.cx - 3, 0, PARK.cz - 3, PARK.cx + 3, 0.8, PARK.cz + 3);
-  // Other blocks: skyscrapers, taller toward the middle
-  for (const key in specials) {
-    if (['2,2', '4,2', '5,4', '1,4', '3,5'].includes(key)) continue;
-    const b = specials[key];
-    const mid = 1 - Math.min(1, Math.hypot(b.cx + 420, b.cz - 20) / 300);
-    const n = Math.random() < 0.5 ? 2 : 4;
+  // Parks: one big central park + a couple of small plazas
+  for (const [px, pz] of [[CORE.x - 150, CORE.z + 150], [CORE.x + 200, CORE.z - 200], [CORE.x - 250, CORE.z - 250]]) {
+    const P = pickNear(px, pz); P.used = true;
+    flat(P.cx, 0.035, P.cz, P.bw - 4, P.bd - 4, '#7fae4f');
+    for (let k = 0; k < 8; k++) palmAt(P.cx + rand(-18, 18), P.cz + rand(-18, 18), 1.1);
+    for (let k = 0; k < 6; k++) bushAt(P.cx + rand(-20, 20), P.cz + rand(-20, 20), rand(0.8, 1.4));
+    flowerBed(P.cx, P.cz, 24, 24, 30);
+    S(CYL, mat('#b9c3cf'), P.cx, 0.4, P.cz, 0, 0, 0, 4, 0.8, 4);
+    S(CYL, mat('#5c9ac8'), P.cx, 0.72, P.cz, 0, 0, 0, 3.6, 0.1, 3.6);
+    addCollider(P.cx - 3, 0, P.cz - 3, P.cx + 3, 0.8, P.cz + 3);
+    if (!LOC.cityPark) LOC.cityPark = { x: P.cx, z: P.cz + 8 };
+  }
+  // Everything else: skyscrapers in the core, mid-rises further out, low blocks at the edge
+  for (const b of blocks) {
+    if (b.used) continue;
+    const mid = Math.max(0, 1 - b.core / 420);
+    const n = mid > 0.3 ? (Math.random() < 0.5 ? 1 : 2) : 4;
     for (let k = 0; k < n; k++) {
-      const hw = n === 2 ? (b.bw - 12) / 2 : (b.bw - 14) / 2, hd = n === 2 ? b.bd - 14 : (b.bd - 14) / 2;
-      const ox = n === 2 ? (k === 0 ? -1 : 1) * (hw / 2 + 2) : (k % 2 ? 1 : -1) * (hw / 2 + 2);
-      const oz = n === 2 ? 0 : (k < 2 ? -1 : 1) * (hd / 2 + 2);
-      const h = Math.round((30 + Math.random() * 70 + mid * 110) / 4) * 4;
-      tower(b.cx + ox, b.cz + oz, hw, hd, h, pick(CITY_COLS), '#6b7079', h > 120 && Math.random() < 0.5);
+      let hw, hd, ox, oz;
+      if (n === 1) { hw = b.bw - 14; hd = b.bd - 14; ox = 0; oz = 0; }
+      else if (n === 2) { hw = (b.bw - 14) / 2; hd = b.bd - 14; ox = (k ? 1 : -1) * (hw / 2 + 2); oz = 0; }
+      else { hw = (b.bw - 14) / 2; hd = (b.bd - 14) / 2; ox = (k % 2 ? 1 : -1) * (hw / 2 + 2); oz = (k < 2 ? -1 : 1) * (hd / 2 + 2); }
+      const h = Math.round((12 + Math.random() * 30 + mid * mid * 230 + (mid > 0.5 ? Math.random() * 60 : 0)) / 4) * 4;
+      tower(b.cx + ox, b.cz + oz, hw, hd, h, pick(CITY_COLS), '#5f646e', h > 140 && Math.random() < 0.6);
     }
   }
-  sign('🏙️ WELCOME TO MEGA CITY', -205, 12, 60, '#fff', '#e05a8a', 4);
+  sign('Downtown Bobbly', -205, 12, 60, '#fff', '#c8a040', 4);
   LOC.city = { x: TWR.cx, z: TWR.cz + 26 };
 }
 
@@ -663,48 +694,106 @@ function buildBobblyTower(tx, tz) {
   );
 }
 
-function buildSuburbs() {
-  const xs = [150, 240, 330, 420, 510], zs = [215, 290, 365, 435];
-  for (const x of xs) roadStrip(x, (185 + zs[zs.length - 1]) / 2, zs[zs.length - 1] - 185 + 5, false);
-  for (const z of zs) roadStrip((xs[0] + xs[xs.length - 1]) / 2, z, xs[xs.length - 1] - xs[0] + 10, true);
-  for (const x of xs) for (const z of zs) flat(x, 0.03, z, 10, 10, '#555a63');
-  const colors = ['#e8dcc8', '#c8d0d8', '#d8c8b8', '#b8c4b0', '#e0d0b0', '#c0b8b0', '#f0ece4', '#d0b8a0', '#a8b0b8', '#b89a88'];
-  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
-    const x0 = xs[i] + 5, x1 = xs[i + 1] - 5, z0 = zs[j] + 5, z1 = zs[j + 1] - 5;
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    flat(cx, 0.025, cz, x1 - x0, z1 - z0, '#7fae4f');
-    for (const [lx, lz] of [[x0 + 1, z0 + 1], [x1 - 1, z1 - 1]]) extraLamps.push([lx, lz]);
-    G.locations.sidewalks.push({ x: x0 + 2, z: z0 + 2 }, { x: x1 - 2, z: z0 + 2 }, { x: x0 + 2, z: z1 - 2 }, { x: x1 - 2, z: z1 - 2 });
-    if (i === 2 && j === 1) {
-      // neighbourhood park
-      for (let k = 0; k < 8; k++) addTree(cx + rand(-30, 30), cz + rand(-22, 22), 'round');
-      flowerBed(cx, cz, 50, 40, 50);
-      trampoline(cx - 10, cz); trampoline(cx + 10, cz);
-      for (let k = 0; k < 10; k++) bushAt(cx + rand(-32, 32), cz + rand(-25, 25), rand(0.7, 1.3));
-      continue;
-    }
-    for (let k = 0; k < 3; k++) {
-      const hx = x0 + 14 + k * ((x1 - x0 - 28) / 2);
-      house(hx, z0 + 11, 3, pick(colors), Math.random() < 0.4);
-      house(hx, z1 - 11, 2, pick(colors), Math.random() < 0.4);
-    }
-    addTree(cx, cz, 'round', 1.1);
-    bushAt(cx - 6, cz, 1.2); bushAt(cx + 6, cz, 1.2);
+// ---------------------------------------------------------------- suburbs (wide streets, curbs, lawns, garages)
+function tractHouse(x, z, face, color, y) {
+  // face: 2 = door toward +z, 3 = door toward -z
+  const fz = face === 2 ? 1 : -1;
+  const w = 10, d = 8, h = 6.4;
+  S(windowBoxGeo(w, h, d), bmat(color), x, y + h / 2, z);
+  S(BOX, mat('#8a8680'), x, y - 1, z, 0, 0, 0, w + 0.3, 2, d + 0.3);
+  S(CONE4, tmat('#4a4f58', TX.roof, 'r2'), x, y + h + 1.3, z, Math.PI / 4, 0, 0, w * 0.78, 2.6, d * 0.78);
+  addCollider(x - w / 2, y - 2, z - d / 2, x + w / 2, y + h + 0.2, z + d / 2);
+  // attached garage with a white roll-up door
+  const gx = x + 8, gz = z + fz * 0.5;
+  S(windowBoxGeo(6, 3.4, 7), bmat(color), gx, y + 1.7, gz);
+  S(CONE4, tmat('#4a4f58', TX.roof, 'r2'), gx, y + 4.3, gz, Math.PI / 4, 0, 0, 4.9, 1.8, 5.6);
+  addCollider(gx - 3, y - 2, gz - 3.5, gx + 3, y + 3.5, gz + 3.5);
+  S(BOX, mat('#f0f0ec'), gx, y + 1.35, gz + fz * 3.52, 0, 0, 0, 4.6, 2.7, 0.06);
+  for (let k = 1; k < 4; k++) S(BOX, mat('#d8d8d4'), gx, y + k * 0.68, gz + fz * 3.56, 0, 0, 0, 4.6, 0.05, 0.02);
+  // front door + porch light
+  S(BOX, mat('#5a4030'), x - 2, y + 1.1, z + fz * (d / 2 + 0.03), 0, 0, 0, 1.2, 2.2, 0.08);
+  // driveway and front walk to the sidewalk (sidewalk edge is 11.8 from the house centre line)
+  flat(gx, y + 0.06, z + fz * (d / 2 + 4.4), 4.8, 8.8, '#cfcfca');
+  flat(x - 2, y + 0.06, z + fz * (d / 2 + 4.4), 1.3, 8.8, '#cfcfca');
+  // lawn
+  flat(x + 1, y + 0.04, z + fz * (d / 2 + 4.4), 22, 8.8, '#7fae4f');
+  bushAt(x - 4.2, z + fz * (d / 2 + 0.8), 0.8); bushAt(x + 1.2, z + fz * (d / 2 + 0.8), 0.8);
+  const door = { x: x - 2, z: z + fz * (d / 2 + 9.5) };
+  G.locations.houses.push({ x, z, door, name: 'House #' + (G.locations.houses.length + 1) });
+  return { gx, gz, fz };
+}
+function streetSection(cx, cz, len, alongX, y) {
+  // asphalt 11 wide, curbs, grass park strip, sidewalk — like a real suburban street
+  if (!streetMat) streetMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(false), color: '#b8b8bc' });
+  const rot = alongX ? Math.PI / 2 : 0;
+  S(flatGeo(11, len, 10), streetMat, cx, y + 0.03, cz, 0, -Math.PI / 2, rot, 11, len, 1);
+  for (const sd of [-1, 1]) {
+    const o = (off) => alongX ? [cx, cz + sd * off] : [cx + sd * off, cz];
+    const [kx, kz] = o(5.65);
+    S(BOX, mat('#c8c6c0'), kx, y + 0.1, kz, 0, 0, 0, alongX ? len : 0.3, 0.2, alongX ? 0.3 : len);
+    const [gx, gz] = o(6.7);
+    flat(gx, y + 0.08, gz, alongX ? len : 1.8, alongX ? 1.8 : len, '#7fae4f');
+    const [wx, wz] = o(8.4);
+    flat(wx, y + 0.1, wz, alongX ? len : 1.6, alongX ? 1.6 : len, '#cfcfca');
   }
-  sign('🏡 Sunny Suburbs', 150, 8, 200, '#fff', '#46c25a', 3);
-  LOC.suburb = { x: 155, z: 250 };
+}
+function suburbArea(zoneKey, name, dx = 110, dz = 70) {
+  const Z = ZONES[zoneKey], y = Z.h || 0;
+  const vxs = []; for (let x = Z.x0 + 10; x <= Z.x1 - 10; x += dx) vxs.push(x);
+  const hzs = []; for (let z = Z.z0 + 25; z <= Z.z1 - 25; z += dz) hzs.push(z);
+  const colors = ['#d8ccb4', '#c8c0b0', '#b8b4a8', '#e0d8c8', '#a8a49c', '#d0c0a0', '#bcb4a4', '#c4c8c8'];
+  const xA = vxs[0], xB = vxs[vxs.length - 1], zA = hzs[0] - 25, zB = hzs[hzs.length - 1] + 25;
+  for (const z of hzs) streetSection((xA + xB) / 2, z, xB - xA, true, y);
+  for (const x of vxs) streetSection(x, (zA + zB) / 2, zB - zA, false, y);
+  G.parkedSpots = G.parkedSpots || [];
+  let n = 0;
+  for (const z of hzs) {
+    for (let x = xA + 16; x < xB - 12; x += 19) {
+      if (vxs.some(vx => Math.abs(vx - x) < 16) || vxs.some(vx => Math.abs(vx - (x + 8)) < 15)) continue;
+      for (const side of [1, -1]) {
+        const hz = z + side * 20.3;
+        if (hz < Z.z0 + 4 || hz > Z.z1 - 4) continue;
+        const face = side > 0 ? 3 : 2;
+        tractHouse(x, hz, face, colors[(n++) % colors.length], y);
+        // street furniture on the grass strip
+        const stripZ = z + side * 6.7;
+        if (n % 3 === 0) extraLamps.push([x + 4, stripZ]);
+        if (n % 5 === 0) { S(CYL8, mat('#e0c040'), x - 6, y + 0.45, stripZ, 0, 0, 0, 0.22, 0.9, 0.22); S(BALL_G, mat('#e0c040'), x - 6, y + 0.95, stripZ, 0, 0, 0, 0.2, 0.15, 0.2); }
+        if (n % 2 === 0) { box(x + 5.2, y, z + side * 6.3, 0.7, 1.1, 0.7, n % 4 ? '#2f5f9f' : '#3f6f3f', false); }
+        if (n % 4 === 1) addTree(x - 8, stripZ, 'round', 0.8);
+        if (n % 7 === 3) G.parkedSpots.push({ x: x - 3, z: z + side * 4, y, yaw: side > 0 ? Math.PI / 2 : -Math.PI / 2 });
+      }
+    }
+    G.locations.sidewalks.push({ x: xA + 2, z: z + 8.4 }, { x: xB - 2, z: z + 8.4 }, { x: xA + 2, z: z - 8.4 }, { x: xB - 2, z: z - 8.4 });
+  }
+  sign(name, Z.x0 + 20, y + 8, Z.z0 + 12, '#fff', '#6a8a55', 3);
+  return { x: vxs[0] + 9, z: hzs[0] + 9 };
+}
+function buildSuburbs() {
+  LOC.suburb = suburbArea('suburb', 'Sunny Suburbs');
+  LOC.valley = suburbArea('valley', 'Valley Suburbs');
+}
+
+function bobblywoodSign() {
+  const word = 'BOBBLYWOOD', cx = -430, cz = 640;
+  for (let i = 0; i < word.length; i++) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 160;
+    const x = c.getContext('2d');
+    x.fillStyle = '#f4f2ec'; x.font = "800 170px 'Barlow Condensed', sans-serif"; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(word[i], 64, 88);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const lx = cx + 60 - i * 13.5, lz = cz + Math.sin(i * 0.9) * 3;
+    const ly = heightAt(lx, lz);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(11, 14), new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+    m.position.set(lx, ly + 8, lz); m.rotation.y = Math.PI; m.rotation.x = -0.12;
+    G.scene.add(m);
+    for (const px of [-3, 3]) S(CYL8, mat('#8a8680'), lx + px, ly + 3, lz + 0.6, 0, 0, 0, 0.12, 8, 0.12);
+    addCollider(lx - 5.5, ly - 2, lz - 0.6, lx + 5.5, ly + 15, lz + 0.8);
+  }
+  LOC.sign = { x: cx, z: cz - 22 };
 }
 
 function buildLandmarks() {
-  // Desert pyramids
-  const top1 = stepPyramid(140, -720, 70, 10, '#e6c27a');
-  stepPyramid(260, -800, 44, 8, '#dcb56a');
-  sign('🏜️ Bobbly Pyramids', 140, top1 + 6, -720, '#fff', '#c8963e', 3);
-  LOC.pyramid = { x: 140, z: -665, top: top1 };
-  // Oasis
-  const lk = LAKES[1];
-  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; addTree(lk.x + Math.cos(a) * (lk.r + 6), lk.z + Math.sin(a) * (lk.r + 6), 'round', 1.2); }
-  LOC.oasis = { x: lk.x + lk.r + 14, z: lk.z };
   // Mountain summit
   const pk = findPeak(-400, 500, 400, 1100);
   LOC.peak = pk;
@@ -721,7 +810,7 @@ function buildLandmarks() {
   sign('🏕️ Lake Cabin', cx, cy + 9, cz, '#fff', '#5a8a3a', 2.4);
   LOC.cabin = { x: cx - 6, z: cz + 6 };
   // North lake viewpoint
-  LOC.eastLake = { x: LAKES[2].x - LAKES[2].r - 10, z: LAKES[2].z };
+  LOC.eastLake = { x: LAKES[1].x - LAKES[1].r - 10, z: LAKES[1].z };
   // Highway signs at the town exits
   sign('⛰️ Snowy Mountains ↑', -30, 6, 200, '#fff', '#3f6f9e', 2.4);
   sign('🏜️ Desert ↓', 30, 6, -200, '#fff', '#c8963e', 2.4);
@@ -744,9 +833,10 @@ function buildLamps() {
   bulbMat = new THREE.MeshBasicMaterial({ color: '#eeeeee' });
   bulbIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 8, 6), bulbMat, lampPos.length);
   lampPos.forEach(([x, z], i) => {
-    _m.makeTranslation(x, 2.5, z); pole.setMatrixAt(i, _m);
-    _m.makeTranslation(x, 5.1, z); bulbIM.setMatrixAt(i, _m);
-    addCollider(x - 0.15, 0, z - 0.15, x + 0.15, 5, z + 0.15);
+    const gy = heightAt(x, z);
+    _m.makeTranslation(x, gy + 2.5, z); pole.setMatrixAt(i, _m);
+    _m.makeTranslation(x, gy + 5.1, z); bulbIM.setMatrixAt(i, _m);
+    addCollider(x - 0.15, gy, z - 0.15, x + 0.15, gy + 5, z + 0.15);
   });
   pole.castShadow = true;
   G.scene.add(pole, bulbIM);
@@ -1051,6 +1141,7 @@ export async function buildWorld(progress = () => {}) {
 
   await progress(0.4, 'Building the town');
   buildLandmarks();
+  bobblywoodSign();
   await progress(0.5, 'Raising Mega City');
   buildMegaCity();
   buildSuburbs();
@@ -1059,6 +1150,7 @@ export async function buildWorld(progress = () => {}) {
   await progress(0.65, 'Growing forests');
   buildWilderness();
   buildTrees();
+  buildPalms();
   buildLamps();
   buildDecor();
   await progress(0.8, 'Finishing touches');

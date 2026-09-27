@@ -51,7 +51,7 @@ export function pavingTexture() {
   return tex(c);
 }
 
-export function asphaltTexture() {
+export function asphaltTexture(lines = true) {
   const n = 128, [c, x] = canvas(n);
   x.fillStyle = '#5a5f68'; x.fillRect(0, 0, n, n);
   for (let i = 0; i < 2500; i++) {
@@ -60,8 +60,8 @@ export function asphaltTexture() {
     x.fillRect(rnd() * n, rnd() * n, 1 + rnd() * 2, 1 + rnd() * 2);
   }
   // lane markings
-  x.fillStyle = '#ffd54a'; x.fillRect(61, 8, 6, 56);
-  x.fillStyle = '#eeeeee'; x.fillRect(4, 0, 4, n); x.fillRect(n - 8, 0, 4, n);
+  if (lines) { x.fillStyle = '#ffd54a'; x.fillRect(61, 8, 6, 56);
+  x.fillStyle = '#eeeeee'; x.fillRect(4, 0, 4, n); x.fillRect(n - 8, 0, 4, n); }
   // a few cracks
   x.strokeStyle = 'rgba(40,40,45,0.5)'; x.lineWidth = 1;
   for (let i = 0; i < 4; i++) { let px = 15 + rnd() * 100, py = rnd() * n; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 5; k++) { px += (rnd() - 0.5) * 12; py += rnd() * 10; x.lineTo(px, py); } x.stroke(); }

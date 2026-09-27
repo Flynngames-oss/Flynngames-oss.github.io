@@ -18,9 +18,26 @@ export const VTYPES = {
   boat:      { name: 'Speed Boat', emo: '🚤', price: 1000, len: 5.0, wid: 2.2, h: 0.9, wr: 0, max: 24, acc: 12, turn: 1.6, color: '#ffffff', seats: 2, boat: true },
   biplane:   { name: 'Biplane', emo: '🛩️', price: 2000, len: 5.4, wid: 1.4, h: 1.6, wr: 0.4, max: 40, acc: 10, turn: 1.3, color: '#ff5b6e', seats: 1, plane: true, takeoff: 16 },
   jet:       { name: 'Jet Plane', emo: '✈️', price: 5000, len: 8.0, wid: 1.6, h: 1.8, wr: 0.4, max: 70, acc: 16, turn: 1.1, color: '#e8eef5', seats: 1, plane: true, takeoff: 24 },
+  // Electric dirt bikes (colours: frame, plastics, accent, forks)
+  eb_shadow:  { name: 'Shadow E-Moto', emo: '🏍️', price: 900, bike: { frame: '#1c1c1e', plastic: '#232326', accent: '#3a3a3e', fork: '#1a1a1a', shock: '#2a2a2a' } },
+  eb_stealth: { name: 'Stealth Runner', emo: '🏍️', price: 950, bike: { frame: '#18181a', plastic: '#1c1c1e', accent: '#c83030', fork: '#222', shock: '#c83030' } },
+  eb_hornet:  { name: 'Hornet Volt', emo: '🏍️', price: 1200, bike: { frame: '#1a1a1c', plastic: '#1c1c1e', accent: '#e8d830', fork: '#1a1a1a', shock: '#e8d830' } },
+  eb_goldfork:{ name: 'Goldfork Pro', emo: '🏍️', price: 1500, bike: { frame: '#16161a', plastic: '#1a1a1e', accent: '#c8a040', fork: '#c8a040', shock: '#c8a040' }, max: 27 },
+  eb_sting:   { name: 'Carbon Sting', emo: '🏍️', price: 1400, bike: { frame: '#1f2a24', plastic: '#1f2622', accent: '#3a4a40', fork: '#c8a040', shock: '#222' } },
+  eb_limited: { name: 'Hornet Limited', emo: '🏍️', price: 1800, bike: { frame: '#1a1a1c', plastic: '#1c1c1e', accent: '#8a5ad8', fork: '#1a1a1a', shock: '#8a5ad8' }, max: 28 },
+  eb_redline: { name: 'Redline Racer', emo: '🏍️', price: 1300, bike: { frame: '#1a1a1c', plastic: '#eeeeee', accent: '#d02828', fork: '#d8d8d8', shock: '#d02828' } },
+  eb_blackout:{ name: 'Blackout', emo: '🏍️', price: 1100, bike: { frame: '#0f0f10', plastic: '#141416', accent: '#f0f0f0', fork: '#141416', shock: '#141416' } },
+  eb_crimson: { name: 'Crimson Enduro', emo: '🏍️', price: 1400, bike: { frame: '#1a1a1c', plastic: '#d02828', accent: '#1a1a1c', fork: '#e0e0e0', shock: '#d02828' } },
+  eb_titan:   { name: 'Titan Gold', emo: '🏍️', price: 2200, bike: { frame: '#141416', plastic: '#18181a', accent: '#c8a040', fork: '#c8a040', shock: '#c8a040', scale: 1.08 }, max: 30, acc: 20 },
+  eb_mini:    { name: 'Blackout Mini', emo: '🏍️', price: 600, bike: { frame: '#18181a', plastic: '#1c1c1e', accent: '#555', fork: '#222', shock: '#222', scale: 0.82 }, max: 18, acc: 13 },
+  eb_apex:    { name: 'Apex Trail', emo: '🏍️', price: 2000, bike: { frame: '#141416', plastic: '#1a1a1c', accent: '#2a2a2e', fork: '#1a1a1a', shock: '#3a3a3a', scale: 1.12 }, max: 29, acc: 19 },
   heli:      { name: 'Helicopter', emo: '🚁', price: 3000, len: 5.0, wid: 2.2, h: 1.8, wr: 0, max: 30, acc: 14, turn: 1.6, color: '#ff8a3d', seats: 2, heli: true },
 };
 
+for (const t of Object.values(VTYPES)) if (t.bike) {
+  const sc = t.bike.scale || 1;
+  Object.assign(t, { len: 2.1 * sc, wid: 0.8, h: 1.1, wr: 0.36 * sc, max: t.max || 24, acc: t.acc || 17, turn: 2, color: t.bike.plastic, seats: 1, open: true, isBike: true });
+}
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const WHEEL = new THREE.CylinderGeometry(1, 1, 1, 14);
 WHEEL.rotateZ(Math.PI / 2);
@@ -41,7 +58,52 @@ function buildMesh(v) {
   const L = t.len, W = t.wid, H = t.h, wr = t.wr;
   const base = wr + 0.1;
   const glass = { transparent: true, opacity: 0.55 };
-  if (t.plane && t.name === 'Biplane') {
+  if (t.isBike) {
+    const B = t.bike, sc = B.scale || 1, wb = 1.45 * sc, r = t.wr;
+    const bike = new THREE.Group();       // pivot at the rear contact patch (for wheelies)
+    bike.position.z = -wb / 2;
+    body.add(bike);
+    const tireG = new THREE.TorusGeometry(r - 0.07, 0.08, 8, 22);
+    const knobs = new THREE.TorusGeometry(r - 0.02, 0.035, 4, 22);
+    const mkWheel = (z) => {
+      const w = new THREE.Group(); w.position.set(0, r, z);
+      const tyre = new THREE.Mesh(tireG, mat('#141414')); tyre.rotation.y = Math.PI / 2; w.add(tyre);
+      const kn = new THREE.Mesh(knobs, mat('#1c1c1c')); kn.rotation.y = Math.PI / 2; w.add(kn);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(r - 0.16, 0.02, 4, 22), mat('#8a8a8e')); rim.rotation.y = Math.PI / 2; w.add(rim);
+      for (let k = 0; k < 6; k++) { const sp = part(w, '#9a9aa0', 0, 0, 0, 0.012, (r - 0.16) * 2, 0.012); sp.rotation.x = k * Math.PI / 6; }
+      part(w, '#2a2a2e', 0, 0, 0, 0.12, 0.1, 0.1, WHEEL);
+      const disc = part(w, '#b0b0b4', 0.08, 0, 0, 0.02, 0.13, 0.13, WHEEL);
+      void disc;
+      bike.add(w); v.wheels.push(w); return w;
+    };
+    mkWheel(0); v.frontWheel = mkWheel(wb);
+    const tilt = (m, rx) => { m.rotation.x = rx; return m; };
+    // frame + battery box
+    tilt(part(bike, B.frame, 0, r + 0.42, wb * 0.52, 0.2, 0.55, 0.12), 0.5);
+    part(bike, B.frame, 0, r + 0.26, wb * 0.45, 0.24, 0.42, 0.62);
+    part(bike, B.accent, 0.125, r + 0.28, wb * 0.45, 0.01, 0.3, 0.46);
+    part(bike, B.accent, -0.125, r + 0.28, wb * 0.45, 0.01, 0.3, 0.46);
+    // swingarm + shock
+    tilt(part(bike, '#2a2a2e', 0, r + 0.08, wb * 0.18, 0.18, 0.06, 0.62), -0.12);
+    tilt(part(bike, B.shock, 0, r + 0.36, wb * 0.3, 0.07, 0.36, 0.07, WHEEL.clone().rotateZ(-Math.PI / 2)), -0.6);
+    // seat + rear fender
+    tilt(part(bike, '#111', 0, r + 0.68, wb * 0.3, 0.22, 0.08, 0.72), 0.06);
+    tilt(part(bike, B.plastic, 0, r + 0.66, wb * -0.02, 0.2, 0.05, 0.5), 0.35);
+    // side panels & tank cover
+    tilt(part(bike, B.plastic, 0, r + 0.6, wb * 0.62, 0.3, 0.2, 0.42), -0.15);
+    // forks + bars + number plate + front fender
+    const fk = new THREE.Group(); fk.position.set(0, r, wb); fk.rotation.x = -0.42; bike.add(fk);
+    for (const sx of [-1, 1]) { part(fk, B.fork, sx * 0.1, 0.55, 0, 0.045, 0.72, 0.045, WHEEL.clone().rotateZ(-Math.PI / 2)); part(fk, '#1a1a1a', sx * 0.1, 0.12, 0, 0.035, 0.3, 0.035, WHEEL.clone().rotateZ(-Math.PI / 2)); }
+    part(fk, '#1a1a1a', 0, 0.95, 0, 0.26, 0.05, 0.08);
+    part(fk, '#1a1a1a', 0, 1.02, -0.06, 0.72, 0.03, 0.03);
+    part(fk, B.plastic, 0, 0.82, 0.1, 0.24, 0.22, 0.03);
+    part(fk, '#fff6d0', 0, 0.82, 0.12, 0.1, 0.06, 0.02, BOX, { emissive: '#ffffff', emissiveIntensity: 0.6 });
+    tilt(part(fk, B.plastic, 0, r + 0.04, 0.18, 0.16, 0.03, 0.46), 0.2);
+    // foot pegs
+    part(bike, '#555', 0, r + 0.06, wb * 0.46, 0.5, 0.03, 0.05);
+    v.bikeWb = wb;
+    v.seats = [[0, r + 0.2, -0.1 * sc]];
+  } else if (t.plane && t.name === 'Biplane') {
     part(body, c, 0, 1.2, 0, 1.1, 1.1, 5);
     const eng = part(body, '#4a4f5a', 0, 1.2, 2.65, 0.6, 0.4, 0.6, new THREE.CylinderGeometry(1, 1, 1, 12)); eng.rotation.x = Math.PI / 2;
     v.prop = new THREE.Group(); v.prop.position.set(0, 1.2, 2.95);
@@ -196,6 +258,14 @@ export class Vehicle {
   seatPos(i, out) {
     const s = this.seats[Math.min(i, this.seats.length - 1)];
     const c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
+    if (this.type.isBike) {
+      const wb = this.bikeWb, p = -this.pitch;          // p > 0 = front up
+      const lz = s[2] + wb / 2, ly = s[1];
+      const rz = lz * Math.cos(p) - ly * Math.sin(p) - wb / 2, ry = lz * Math.sin(p) + ly * Math.cos(p);
+      const lx = -ry * Math.sin(this.roll) * 0.5;
+      out.set(this.pos.x + lx * c + rz * sn, this.pos.y + ry * Math.cos(this.roll) + this.bounce, this.pos.z - lx * sn + rz * c);
+      return out;
+    }
     out.set(this.pos.x + s[0] * c + s[2] * sn, this.pos.y + s[1] + this.bounce, this.pos.z - s[0] * sn + s[2] * c);
     return out;
   }
@@ -211,6 +281,7 @@ export class Vehicle {
     const t = this.type;
     if (t.heli) return this.fly(dt, inp);
     if (t.plane) return this.planeFly(dt, inp);
+    if (t.isBike) return this.ride(dt, inp);
     const prevSpeed = this.speed;
     const inWater = t.boat;
     const canDrive = inWater ? true : this.onGround;
@@ -272,6 +343,74 @@ export class Vehicle {
     this.collideWalls(dt, 0);
     this.pitch = lerp(this.pitch, this.speed / t.max * 0.25, 0.1);
     this.roll = lerp(this.roll, -inp.steer * 0.2, 0.1);
+  }
+
+  // Motorbike: lean-to-turn, torquey electric motor, wheelies, air pitch control, crashes.
+  ride(dt, inp) {
+    const t = this.type, sp = this.speed, ratio = Math.min(1, Math.abs(sp) / t.max);
+    this.wheelie = this.wheelie || 0; this.wv = this.wv || 0;
+    const prevSpeed = sp;
+    if (this.onGround) {
+      if (inp.throttle > 0) this.speed += (sp < -0.5 ? 20 : t.acc * (1 - ratio * ratio * 0.8)) * inp.throttle * dt;
+      else if (inp.throttle < 0) this.speed -= (sp > 0.5 ? 18 : t.acc * 0.4) * -inp.throttle * dt;
+      const drag = (inp.throttle === 0 ? 1.6 : 0.4) + 0.01 * sp * sp;
+      this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), drag * dt);
+      this.speed = clamp(this.speed, -4, t.max);
+      if (inp.jump) { this.vy = 6.5; this.onGround = false; this.pos.y += 0.1; }
+    }
+    // lean into turns; turn rate from lean like a real bike (g·tanθ / v)
+    const leanT = -inp.steer * clamp(Math.abs(this.speed) / 6, 0, 1) * 0.75;
+    this.roll += (leanT - this.roll) * Math.min(1, dt * 5);
+    let yawRate;
+    if (Math.abs(this.speed) > 4) yawRate = 9.8 * Math.tan(-this.roll) / this.speed;
+    else yawRate = inp.steer * this.speed * 0.45;
+    if (this.onGround) this.yaw += yawRate * dt * (this.wheelie > 0.25 ? 0.5 : 1);
+    this.moveYaw = this.yaw;
+    // wheelie physics: motor torque + rider weight vs gravity; past the balance point you loop out
+    if (this.onGround) {
+      const back = inp.back ? 1 : 0, fwd = inp.fwd ? 1 : 0;
+      const thr = Math.max(0, inp.throttle);
+      // motor torque lifts the front; it fades as the bike nears its balance point, so a held wheelie hovers
+      let torque = thr * (1.0 + back * 3.4) * clamp(1.15 - ratio * 0.8, 0.3, 1) * clamp((1.02 - this.wheelie) / 0.35, 0, 1);
+      // a hard launch from low speed can still flip you
+      if (back && thr > 0 && Math.abs(sp) < 6 && !this.popped) { this.wv += 1.6; this.popped = true; }
+      if (!back || thr === 0) this.popped = false;
+      torque -= fwd * 4 + (inp.throttle < 0 ? 6 : 0);
+      const grav = 4.2 * Math.sin(1.12 - this.wheelie);
+      this.wv += (torque - grav) * dt;
+      this.wv *= 1 - Math.min(1, dt * 2.4);
+      this.wheelie += this.wv * dt;
+      if (this.wheelie <= 0) { if (this.wv < -2) this.bounceV -= 2; this.wheelie = 0; this.wv = Math.max(0, this.wv); }
+      if (this.wheelie > 1.5) return this.bikeCrash('Looped it!');
+      this.pitch = -this.wheelie;
+    } else {
+      // in the air: shift weight to rotate the bike
+      const air = (inp.back ? 1 : 0) - (inp.fwd ? 1 : 0);
+      this.wv += air * 3.2 * dt;
+      this.wv *= 1 - Math.min(1, dt * 0.8);
+      this.wheelie += this.wv * dt;
+      this.pitch = -this.wheelie;
+    }
+    const wasAir = !this.onGround;
+    this.physics(dt, prevSpeed);
+    this.pitch = (this.slopeP || 0) - this.wheelie;
+    if (wasAir && this.onGround) {
+      if (this.wheelie < -0.45 || this.wheelie > 1.1 || Math.abs(this.roll) > 0.9) return this.bikeCrash('Bad landing!');
+      if (this.wheelie < 0) this.wheelie = 0;
+      this.wv = Math.min(this.wv, 0.5);
+    }
+    this.roll = clamp(this.roll, -0.85, 0.85);
+  }
+
+  bikeCrash(msg) {
+    const d = this.driver;
+    this.wheelie = 0; this.wv = 0; this.pitch = 0; this.roll = 1.3;
+    const sp = this.speed; this.speed = 0;
+    if (d) {
+      this.ejectAll(Math.max(6, Math.abs(sp)));
+      if (d.isPlayer && G.toast) G.toast(msg, 'bad');
+    }
+    setTimeout(() => { this.roll = 0; }, 2500);
   }
 
   planeFly(dt, inp) {
@@ -369,9 +508,10 @@ export class Vehicle {
       const L = t.len * 0.4;
       const gf = groundHeight(this.pos.x + _f.x * L, this.pos.z + _f.z * L, this.pos.y + 1.2, 0.3);
       const gb = groundHeight(this.pos.x - _f.x * L, this.pos.z - _f.z * L, this.pos.y + 1.2, 0.3);
-      this.pitch = lerp(this.pitch, -Math.atan2(gf - gb, L * 2), 0.3);
+      this.slopeP = -Math.atan2(gf - gb, L * 2);
+      this.pitch = lerp(this.pitch, this.slopeP, 0.3);
     } else this.pitch = lerp(this.pitch, clamp(this.vy * 0.03, -0.5, 0.4) * -1, 0.05);
-    this.roll = lerp(this.roll, clamp((this.steerA || 0) * this.speed * 0.012 + (this.slip || 0) * 0.3, -0.12, 0.12), 0.1);
+    if (!t.isBike) this.roll = lerp(this.roll, clamp((this.steerA || 0) * this.speed * 0.012 + (this.slip || 0) * 0.3, -0.12, 0.12), 0.1);
     this.collideWalls(dt, prevSpeed);
   }
 

@@ -497,7 +497,18 @@ export class Character {
     const bob = Math.abs(s) * 0.09 * Math.min(1, spd / 3);
     this.emoteT += dt;
     if (this.vehicle) {
-      const scooter = this.vehicle.type.open;
+      const vt = this.vehicle.type, scooter = vt.open;
+      if (vt.isBike) {
+        // riding position: knees bent, hands on the bars, leaning forward
+        const up = this.vehicle.wheelie > 0.3 ? -0.15 : 0.12;
+        T(PEL, 0, 0.5, 0); T(CHE, 0, 1.0, 0.2 + up); T(HEAD, 0, 1.62, 0.35 + up);
+        T(FL, -0.26, 0.05, 0.42); T(FR, 0.26, 0.05, 0.42);
+        T(HL, -0.36, 1.02, 0.78); T(HR, 0.36, 1.02, 0.78);
+        // lean with the bike
+        const lean = this.vehicle.roll || 0, sl = Math.sin(lean);
+        for (const t of this.tgt) { const hgt = t.y - R.y; t.x += rx * (-hgt * sl); t.z += rz * (-hgt * sl); }
+        return;
+      }
       T(PEL, 0, 0.55, 0); T(CHE, 0, 1.05, 0.05); T(HEAD, 0, 1.75, 0.1);
       T(FL, -0.25, scooter ? 0.3 : 0.45, 0.6); T(FR, 0.25, scooter ? 0.3 : 0.45, 0.6);
       if (this.seat === 0) { T(HL, -0.3, 1.1, 0.6); T(HR, 0.3, 1.1, 0.6); }
