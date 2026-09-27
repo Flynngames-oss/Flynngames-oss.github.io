@@ -39,20 +39,19 @@ export const HIGHWAYS = [
   { name: 'South Highway', x0: 30, z0: -LAND, x1: 30, z1: -1050 },
   { name: 'West Highway', x0: -LAND, z0: 30, x1: -1050, z1: 30 },
 ];
-export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 520, z: -640, r: 45 }, { x: 620, z: 700, r: 90 }];
+export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 620, z: 700, r: 90 }];
 const BAY = { x0: 200, x1: 520, z0: -170, z1: 170 };
 // Flat building zones: Mega City (west) and the Suburbs (north-east)
 export const ZONES = {
-  city: { x0: -660, x1: -200, z0: -190, z1: 250, h: 0 },
+  city: { x0: -1000, x1: -200, z0: -470, z1: 280, h: 0 },
+  valley: { x0: 80, x1: 700, z0: -1000, z1: -660, h: 'auto' },
   suburb: { x0: 140, x1: 560, z0: 185, z1: 440, h: 0 },
   space: { x0: 720, x1: 940, z0: -380, z1: -170, h: 'auto' },
   farm1: { x0: 760, x1: 960, z0: 40, z1: 220, h: 'auto' },
-  farm2: { x0: -980, x1: -800, z0: -660, z1: -500, h: 'auto' },
-  village1: { x0: -900, x1: -780, z0: -330, z1: -210, h: 'auto' },
+  farm2: { x0: -980, x1: -800, z0: -700, z1: -540, h: 'auto' },
   village2: { x0: 1000, x1: 1120, z0: -620, z1: -500, h: 'auto' },
   gasN: { x0: -20, x1: 10, z0: 690, z1: 730, h: 'auto' },
   gasS: { x0: 40, x1: 70, z0: -470, z1: -430, h: 'auto' },
-  gasW: { x0: -770, x1: -730, z0: 40, z1: 70, h: 'auto' },
   camp: { x0: -560, x1: -500, z0: 520, z1: 580, h: 'auto' },
 };
 // Rivers split the island into regions (highways cross them on bridges)
@@ -99,7 +98,7 @@ function rawHeight(x, z, noRiver = false, noZones = false) {
   let h = profile;
   h += b.west * (hills - 0.3) * 60;
   h += b.north * (Math.pow(ridge, 1.3) * 330 + fbm(x / 90, z / 90, 3) * 25);
-  h += b.south * (dunes * 7 + (hills - 0.5) * 22);
+  h += b.south * ((hills - 0.4) * 50 + dunes * 0);   // golden California hills
   h += b.east * (hills - 0.5) * 22;
   // gentle corridors along the highways
   let dr = 1e9;
@@ -151,7 +150,7 @@ export function slopeAt(x, z) {
 
 // ---------------------------------------------------------------- meshes
 const C = (h) => new THREE.Color(h);
-const COL = { grass: C('#7fae4f'), forest: C('#5a8f42'), sand: C('#f2dc9a'), desert: C('#f0cf86'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f') };
+const COL = { grass: C('#7fae4f'), forest: C('#5a8f42'), sand: C('#f2dc9a'), desert: C('#b8aa6a'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f') };
 export function buildTerrainMesh(scene) {
   const segs = N - 1;
   const g = new THREE.PlaneGeometry(WORLD * 2, WORLD * 2, segs, segs);

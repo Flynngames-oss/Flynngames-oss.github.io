@@ -109,7 +109,13 @@ WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color
 });
 
 // NPCs
-initTraffic(14);
+// E-bikes ready to ride: a row by the spawn and a few at the stunt park
+[['eb_hornet', 8, -21], ['eb_goldfork', 10.5, -21], ['eb_redline', 13, -21], ['eb_crimson', 15.5, -21], ['eb_shadow', -8, -21], ['eb_titan', -10.5, -21],
+ ['eb_limited', -13, -21], ['eb_blackout', -15.5, -21], ['eb_stealth', -52, -46], ['eb_apex', -49, -46], ['eb_sting', -46, -46], ['eb_mini', -43, -46]]
+  .forEach(([t, x, z], i) => new Vehicle(t, x, z, Math.PI, { id: 'eb' + i }));
+// Cars parked along the suburban curbs
+(G.parkedSpots || []).slice(0, 24).forEach((s, i) => new Vehicle(pick(['sedan', 'sedan', 'pickup', 'sports', 'sedan']), s.x, s.z, s.yaw, { id: 'pk' + i, color: randomCarColor() }));
+initTraffic(22);
 initRocket();
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
@@ -313,7 +319,8 @@ function interact() {
     player.emote = null;
     v.addOccupant(player, seat);
     sfx.door();
-    if (seat === 0 && v.type.plane) UI.toast('✈️ W = more throttle · S = less · A/D turn · Space = nose up (take off when fast!) · Shift = nose down · E jump out', '', 8000);
+    if (seat === 0 && v.type.isBike) UI.toast('W throttle · S brake · A/D lean · hold SHIFT + W to wheelie · C/Ctrl lean forward · Space hop · E off', '', 8000);
+    else if (seat === 0 && v.type.plane) UI.toast('✈️ W = more throttle · S = less · A/D turn · Space = nose up (take off when fast!) · Shift = nose down · E jump out', '', 8000);
     else if (seat === 0 && !G.seenDriveTip) { G.seenDriveTip = true; UI.toast(v.type.heli ? '🚁 W/S forward/back · A/D turn · Space up · Shift down · E exit' : 'W/S drive · A/D steer · Space brake · Q honk · E exit'); }
   }
 }
@@ -685,7 +692,9 @@ function controlPlayer(dt) {
     p.ctrl.mx = p.ctrl.mz = 0;
     const v = p.vehicle;
     if (p.seat === 0 && !v.remoteDriver) {
-      const inp = { throttle: iy, steer: -ix, brake: !!K.Space, up: !!space, down: !!(K.ShiftLeft || K.ShiftRight) };
+      const shift = !!(K.ShiftLeft || K.ShiftRight), ctrl = !!(K.ControlLeft || K.ControlRight || K.KeyC);
+      const inp = { throttle: iy, steer: -ix, brake: !!K.Space && !v.type.isBike, up: !!space, down: shift, back: shift, fwd: ctrl, jump: v.type.isBike && space && !p.prevSpace };
+      p.prevSpace = space;
       if (isTouch && v.type.heli) { inp.up = touch.my > 0.6; }
       v.drive(dt, inp);
       v.hitThings((ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
