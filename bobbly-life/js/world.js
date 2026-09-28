@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, noEmoji, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
 import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
+import { setVehicleLighting } from './models.js';
 import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone, riverDist } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
@@ -526,8 +527,154 @@ function buildSpaceCenter() {
   LOC.space = { x: px - 10, z: pz + 21 };
   LOC.rocketPad = { x: px, z: pz, y: y + 0.4, towerX: tx };
 }
+// ---------------------------------------------------------------- airports
+let rwMat = null;
+function paved(x, y, z, w, d, material) { S(flatGeo(w, d, 10), material, x, y, z, 0, -Math.PI / 2, 0, w, d, 1); }
+// big painted letters/numbers lying on the ground; the top of the text points along heading `ry`
+function groundText(text, x, y, z, size, ry) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const g = c.getContext('2d'); g.fillStyle = '#f0f0ea'; g.font = '800 170px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 128, 136);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshLambertMaterial({ map: t, transparent: true, depthWrite: false }));
+  m.rotation.order = 'YXZ'; m.rotation.set(-Math.PI / 2, ry, 0);
+  m.position.set(x, y, z); m.renderOrder = 1;
+  G.scene.add(m);
+}
+const lampGlow = (c, e) => mat(c, { emissive: e, emissiveIntensity: 0.9 });
+// East-west runway with real markings: x0..x1 along X, centred on z
+function runway(x0, x1, z, y, W, numW, numE) {
+  const L = x1 - x0, cx = (x0 + x1) / 2, top = y + 0.08;
+  paved(cx, y + 0.05, z, L + 20, W + 14, mat('#7a7e84'));          // shoulders
+  paved(cx, y + 0.065, z, L, W, rwMat);
+  const white = mat('#ecece6');
+  for (let x = x0 + 70; x < x1 - 70; x += 50) flat(x, top, z, 30, 0.9, white);            // centreline
+  for (const s of [-1, 1]) flat(cx, top, z + s * (W / 2 - 1), L - 4, 0.8, white);         // edge lines
+  for (const [end, dir] of [[x0, 1], [x1, -1]]) {
+    const n = Math.floor((W - 8) / 4.2);
+    for (let i = 0; i < n; i++) if (Math.abs(i - (n - 1) / 2) > 0.6) flat(end + dir * 20, top, z - (n - 1) * 2.1 + i * 4.2, 28, 1.8, white);   // piano keys
+    flat(end + dir * 2, top, z, 1.2, W - 2, white);                                                             // threshold bar
+    for (const s of [-1, 1]) flat(end + dir * 150, top, z + s * W * 0.2, 44, 5, white);                        // aiming points
+    for (const k of [230, 290]) for (const s of [-1, 1]) for (const o of [0, 3]) flat(end + dir * k, top, z + s * (W * 0.2 + o), 22, 1.6, white);
+    for (let i = -W / 2; i <= W / 2 + 0.1; i += 4) {
+      S(BOX, lampGlow('#40ff70', '#20ff50'), end - dir * 1, y + 0.3, z + i, 0, 0, 0, 0.4, 0.3, 0.4);
+      S(BOX, lampGlow('#ff3030', '#ff1010'), end - dir * 3, y + 0.3, z + i, 0, 0, 0, 0.4, 0.3, 0.4);
+    }
+  }
+  for (let x = x0; x <= x1; x += 30) for (const s of [-1, 1]) S(BOX, lampGlow('#ffffff', '#fff4d0'), x, y + 0.3, z + s * (W / 2 + 1.5), 0, 0, 0, 0.35, 0.35, 0.35);
+  groundText(numW, x0 + 62, top + 0.01, z, 20, -Math.PI / 2);
+  groundText(numE, x1 - 62, top + 0.01, z, 20, Math.PI / 2);
+}
+function taxiway(x0, z0, x1, z1, y, W = 18) {
+  const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+  const L = alongX ? Math.abs(x1 - x0) : Math.abs(z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  paved(cx, y + 0.06, cz, alongX ? L + W : W, alongX ? W : L + W, rwMat);
+  flat(cx, y + 0.085, cz, alongX ? L : 0.45, alongX ? 0.45 : L, mat('#e8b418'));
+  for (let t = 0; t <= L; t += 30) {
+    const px = alongX ? Math.min(x0, x1) + t : cx, pz = alongX ? cz : Math.min(z0, z1) + t;
+    for (const s of [-1, 1]) S(BOX, lampGlow('#3a7cff', '#2060ff'), px + (alongX ? 0 : s * (W / 2 + 1)), y + 0.25, pz + (alongX ? s * (W / 2 + 1) : 0), 0, 0, 0, 0.3, 0.3, 0.3);
+  }
+}
+function glassBuilding(x, y, z, w, h, d, color = '#9fb6c6') {
+  S(windowBoxGeo(w, h, d), bmat(color), x, y + h / 2, z);
+  S(BOX, mat('#d8d8d4'), x, y + h + 0.3, z, 0, 0, 0, w + 1, 0.6, d + 1);
+  addCollider(x - w / 2, y - 1, z - d / 2, x + w / 2, y + h + 0.6, z + d / 2);
+}
+// arched-roof hangar, open door facing +z
+function hangar(x, y, z, w, d, h) {
+  const arch = new THREE.CylinderGeometry(1, 1, 1, 24, 1, true, -Math.PI / 2, Math.PI);
+  arch.rotateX(Math.PI / 2);
+  S(arch, mat('#b9bec4', { side: THREE.DoubleSide }), x, y + h - w * 0.25, z, 0, 0, 0, w / 2, w * 0.25, d);
+  S(BOX, mat('#9aa0a8'), x, y + (h - w * 0.25) / 2, z - d / 2, 0, 0, 0, w, h - w * 0.25, 0.4);
+  S(new THREE.CircleGeometry(1, 24, 0, Math.PI), mat('#9aa0a8', { side: THREE.DoubleSide }), x, y + h - w * 0.25, z - d / 2, 0, 0, 0, w / 2, w * 0.25, 1);
+  for (const sx of [-1, 1]) {
+    S(BOX, mat('#9aa0a8'), x + sx * w / 2, y + (h - w * 0.25) / 2, z, 0, 0, 0, 0.4, h - w * 0.25, d);
+    addCollider(x + sx * w / 2 - 0.3, y, z - d / 2, x + sx * w / 2 + 0.3, y + h, z + d / 2);
+  }
+  addCollider(x - w / 2, y, z - d / 2 - 0.3, x + w / 2, y + h, z - d / 2 + 0.3);
+  paved(x, y + 0.04, z, w, d, mat('#a8acb0'));
+}
+function controlTower(x, y, z, h) {
+  S(CYL, mat('#d8d4cc'), x, y + h / 2, z, 0, 0, 0, 2.6, h, 2.6);
+  S(CYL, mat('#c8c4bc'), x, y + h - 1, z, 0, 0, 0, 5, 2, 5);
+  S(new THREE.CylinderGeometry(1, 1.15, 1, 8), bmat('#6f93ad'), x, y + h + 2.5, z, 0, 0, 0, 6.2, 5, 6.2);
+  S(new THREE.CylinderGeometry(1, 1, 1, 8), mat('#4a4f58'), x, y + h + 5.3, z, 0, 0, 0, 6.8, 0.6, 6.8);
+  S(CYL8, mat('#8a8e94'), x, y + h + 8, z, 0, 0, 0, 0.12, 5, 0.12);
+  S(BOX, lampGlow('#ff3030', '#ff0000'), x, y + h + 10.6, z, 0, 0, 0, 0.4, 0.4, 0.4);
+  addCollider(x - 3, y, z - 3, x + 3, y + h + 5.6, z + 3);
+}
+function windsock(x, y, z) {
+  S(CYL8, mat('#dcdcdc'), x, y + 3.5, z, 0, 0, 0, 0.1, 7, 0.1);
+  for (let i = 0; i < 4; i++) S(new THREE.CylinderGeometry(1, 0.85, 1, 10, 1, true), mat(i % 2 ? '#ffffff' : '#ff6a1a', { side: THREE.DoubleSide }), x + 0.6 + i * 0.9, y + 6.6, z, 0, 0, -Math.PI / 2, 0.5 - i * 0.07, 0.9, 0.5 - i * 0.07);
+}
+function airportParking(x0, z0, cols, rows, y, spots) {
+  paved(x0 + cols * 1.6, y + 0.05, z0 + rows * 3.5, cols * 3.2 + 6, rows * 7 + 6, streetMat);
+  for (let r = 0; r < rows; r++) for (let c = 0; c <= cols; c++) flat(x0 + c * 3.2, y + 0.07, z0 + r * 7 + 3.5, 0.12, 5.5, mat('#ecece6'));
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if ((r * 7 + c * 3) % 4 === 0) spots.push({ x: x0 + c * 3.2 + 1.6, z: z0 + r * 7 + 3.5, y, yaw: r % 2 ? 0 : Math.PI });
+}
+function buildAirports() {
+  if (!rwMat) rwMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(false), color: '#cfcac2' });
+  if (!streetMat) streetMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(false), color: '#b8b8bc' });
+  LOC.airports = [{ name: 'Town Airfield', x: -140, z: 168, yaw: Math.PI / 2 }];
+  LOC.airportCars = [];
+  LOC.parkedPlanes = [];
+  // ===== Bobbly International (south) =====
+  {
+    const y = ZONES.intl.h;
+    runway(440, 960, -455, y, 46, '09', '27');
+    taxiway(470, -500, 930, -500, y);
+    for (const x of [470, 700, 930]) taxiway(x, -478, x, -500, y);
+    // apron + gates with jet bridges
+    paved(700, y + 0.05, -535, 380, 54, mat('#b9bec7'));
+    [560, 640, 720, 800].forEach((gx, i) => {
+      flat(gx, y + 0.09, -526, 0.5, 34, mat('#e8b418'));
+      flat(gx, y + 0.09, -547, 8, 0.5, mat('#e8b418'));
+      groundText(String(i + 1), gx + 7, y + 0.1, -540, 6, 0);
+      const bx = gx - 4.2;
+      S(CYL, mat('#c8ccd2'), bx, y + 2.6, -568, 0, 0, 0, 2.2, 5.2, 2.2);
+      S(BOX, bmat('#c8ccd2'), bx, y + 3.7, -555.5, 0, 0, 0, 3, 2.8, 23);
+      S(BOX, mat('#40444a'), bx, y + 3.7, -543.3, 0, 0, 0, 3.4, 3.2, 1.6);
+      for (const lz of [-560, -548]) S(BOX, mat('#555a60'), bx, y + 1.1, lz, 0, 0, 0, 0.5, 2.3, 0.5);
+      addCollider(bx - 1.6, y + 2.3, -568, bx + 1.6, y + 5.3, -542.5);
+      LOC.parkedPlanes.push({ t: 'airliner', x: gx, z: -526, yaw: Math.PI, livery: i % 3 });
+      S(BOX, mat('#e8b418'), gx + 11, y + 0.8, -540, 0, 0, 0, 1.6, 1.2, 2.4);
+      for (let k = 0; k < 3; k++) S(BOX, mat('#7a7f86'), gx + 11, y + 0.7, -536.5 + k * 3, 0, 0, 0, 1.5, 1.0, 2.4);
+    });
+    // terminal: long glass hall under a floating roof
+    glassBuilding(700, y, -588, 360, 16, 34, '#8fb0c4');
+    S(BOX, mat('#e8e6e0'), 700, y + 17.2, -582, 0, 0, 0, 376, 1.2, 50);
+    for (let x = 530; x <= 870; x += 34) S(CYL8, mat('#e8e6e0'), x, y + 8.6, -560, 0, 0, 0, 0.4, 17, 0.4);
+    glassBuilding(700, y + 16, -592, 120, 8, 22, '#7fa2b8');
+    sign('BOBBLY INTERNATIONAL AIRPORT', 700, y + 32, -572, '#fff', '#2f6fd6', 7);
+    paved(700, y + 0.05, -612, 380, 12, streetMat);
+    airportParking(895, -604, 16, 3, y, LOC.airportCars);
+    controlTower(905, y, -535, 42);
+    hangar(470, y, -585, 50, 44, 22);
+    windsock(975, y, -488);
+    for (const [fx, fz] of [[436, -522], [436, -548]]) { S(CYL, mat('#e8e8e4'), fx, y + 4, fz, 0, 0, 0, 7, 8, 7); addCollider(fx - 7, y, fz - 7, fx + 7, y + 8, fz + 7); }
+    LOC.intl = { x: 680, z: -548 };
+    LOC.airports.push({ name: 'Bobbly International', x: 452, z: -455, yaw: Math.PI / 2 });
+    LOC.parkedPlanes.push({ t: 'jet', x: 462, z: -580, yaw: 0 }, { t: 'biplane', x: 480, z: -590, yaw: 0 });
+  }
+  // ===== South-West Regional =====
+  {
+    const y = ZONES.swAir.h;
+    runway(-1060, -780, -1040, y, 30, '09', '27');
+    taxiway(-940, -1022, -940, -1008, y, 14);
+    paved(-905, y + 0.05, -1003, 150, 24, mat('#b9bec7'));
+    glassBuilding(-900, y, -981, 46, 9, 12, '#a9bccb');
+    sign('SW REGIONAL AIRPORT', -900, y + 13, -975, '#fff', '#2f9a5a', 4);
+    controlTower(-862, y, -984, 18);
+    hangar(-1030, y, -994, 32, 26, 14);
+    windsock(-790, y, -1016);
+    LOC.swAir = { x: -905, z: -996 };
+    LOC.airports.push({ name: 'SW Regional', x: -1050, z: -1040, yaw: Math.PI / 2 });
+    LOC.parkedPlanes.push({ t: 'airliner', x: -890, z: -1009, yaw: Math.PI / 2, livery: 2 }, { t: 'biplane', x: -1040, z: -996, yaw: 0 }, { t: 'jet', x: -1020, z: -996, yaw: 0 });
+  }
+}
+
 function buildWildPlaces() {
   buildSpaceCenter();
+  buildAirports();
   LOC.farm = buildFarm('farm1'); buildFarm('farm2');
   LOC.village = buildVillage('village2', 'Sunset Hills');
   buildGas('gasN'); buildGas('gasS');
@@ -1219,6 +1366,7 @@ export function updateWorld(dt, focus) {
   sun.target.position.copy(focus);
   const night = clamp(1 - day * 1.4, 0, 1);
   for (const m of nightMats) m.emissiveIntensity = night * 0.9;
+  setVehicleLighting(day);
   if (bulbMat) bulbMat.color.setRGB(lerp(0.9, 1, night), lerp(0.9, 0.9, night), lerp(0.9, 0.5, night));
   G.night = night;
   for (const c of G.clouds) { c.position.x += dt * 2; if (c.position.x > WORLD + 100) c.position.x = -WORLD - 100; }

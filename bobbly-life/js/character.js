@@ -444,7 +444,7 @@ export class Character {
   locomote(dt) {
     const c = this.ctrl;
     const mlen = Math.hypot(c.mx, c.mz);
-    const speed = this.swimming ? 3.5 : this.chute ? 9 : c.run ? 8.5 : 5;
+    const speed = this.swimming ? 4 : this.chute ? 10 : c.run ? 10.5 : 6;
     const acc = this.grounded ? 32 : 9;
     const tx = c.mx * speed, tz = c.mz * speed;
     this.vel.x += clamp(tx - this.vel.x, -acc * dt, acc * dt);
@@ -500,18 +500,20 @@ export class Character {
       const vt = this.vehicle.type, scooter = vt.open;
       if (vt.isBike) {
         // riding position: knees bent, hands on the bars, leaning forward
-        const up = this.vehicle.wheelie > 0.3 ? -0.15 : 0.12;
-        T(PEL, 0, 0.5, 0); T(CHE, 0, 1.0, 0.2 + up); T(HEAD, 0, 1.62, 0.35 + up);
-        T(FL, -0.26, 0.05, 0.42); T(FR, 0.26, 0.05, 0.42);
-        T(HL, -0.36, 1.02, 0.78); T(HR, 0.36, 1.02, 0.78);
+        // body position follows the rider's weight shift (Shift = back, C = forward)
+        const bl = this.vehicle.riderLean || 0, up = -bl * 0.2 + 0.08;
+        T(PEL, 0, 0.5, -bl * 0.08); T(CHE, 0, 0.98 + Math.max(0, -bl) * 0.1, 0.2 + up); T(HEAD, 0, 1.55 + Math.max(0, -bl) * 0.1, 0.36 + up);
+        T(FL, -0.21, -0.14, 0.06); T(FR, 0.21, -0.14, 0.06);
+        T(HL, -0.38, 0.74, 0.36); T(HR, 0.38, 0.74, 0.36);
         // lean with the bike
         const lean = this.vehicle.roll || 0, sl = Math.sin(lean);
         for (const t of this.tgt) { const hgt = t.y - R.y; t.x += rx * (-hgt * sl); t.z += rz * (-hgt * sl); }
         return;
       }
-      T(PEL, 0, 0.55, 0); T(CHE, 0, 1.05, 0.05); T(HEAD, 0, 1.75, 0.1);
-      T(FL, -0.25, scooter ? 0.3 : 0.45, 0.6); T(FR, 0.25, scooter ? 0.3 : 0.45, 0.6);
-      if (this.seat === 0) { T(HL, -0.3, 1.1, 0.6); T(HR, 0.3, 1.1, 0.6); }
+      if (scooter || vt.plane && !vt.airliner || vt.heli || vt.boat) { T(PEL, 0, 0.55, 0); T(CHE, 0, 1.05, 0.05); T(HEAD, 0, 1.75, 0.1); }
+      else { T(PEL, 0, 0.36, -0.05); T(CHE, 0, 0.82, -0.1); T(HEAD, 0, 1.36, -0.02); }      // sitting low in a real car seat
+      T(FL, -0.25, scooter ? 0.3 : 0.3, 0.6); T(FR, 0.25, scooter ? 0.3 : 0.3, 0.6);
+      if (this.seat === 0) { T(HL, -0.22, scooter ? 1.1 : 0.95, 0.55); T(HR, 0.22, scooter ? 1.1 : 0.95, 0.55); }
       else { T(HL, -0.5, 0.8, 0.2); T(HR, 0.5, 0.8, 0.2); }
       return;
     }
