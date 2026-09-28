@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { G, pick } from './state.js';
 import { Vehicle, randomCarColor } from './vehicles.js';
+import { airlinerModel, airlinerMaterials, meshesFrom } from './models.js';
 
 const cars = [];
 const LANE = 2.6;
@@ -28,7 +29,7 @@ export function initTraffic(n = 12) {
     const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
     const type = pick(['sedan', 'sedan', 'sedan', 'taxi', 'sports', 'pickup', 'icecream']);
     const v = new Vehicle(type, x, z, Math.atan2(b.x - a.x, b.z - a.z), { id: 't' + i, color: type === 'sedan' ? randomCarColor() : null });
-    v.traffic = { pts, idx: (start + 1) % 4, cruise: 9 + Math.random() * 3 };
+    v.traffic = { pts, idx: (start + 1) % 4, cruise: 11 + Math.random() * 4 };
     cars.push(v);
   }
 }
@@ -67,5 +68,26 @@ export function updateTraffic(dt, onRemoteHit) {
     const inp = { throttle: v.speed < target ? 1 : v.speed > target + 1 ? -0.6 : 0, steer: Math.max(-1, Math.min(1, diff * 2.5)), brake: blocked, up: false, down: false };
     v.drive(dt, inp);
     if (Math.abs(v.speed) > 4) v.hitThings(onRemoteHit);
+  }
+}
+
+// Airliners cruising over the island (scenery only)
+const sky = [];
+export function initSkyTraffic() {
+  const am = airlinerModel();
+  for (let i = 0; i < 3; i++) {
+    const m = meshesFrom(am.parts, airlinerMaterials(i), false);
+    G.scene.add(m);
+    sky.push({ m, a: i * 2.1, r: 700 + i * 170, alt: 230 + i * 60, sp: (75 + i * 8) / (700 + i * 170), dir: i % 2 ? -1 : 1 });
+  }
+}
+export function updateSkyTraffic(dt) {
+  for (const p of sky) {
+    p.a += p.sp * dt * p.dir;
+    p.m.position.set(Math.cos(p.a) * p.r, p.alt, Math.sin(p.a) * p.r);
+    // heading along the circle, banked gently into the turn
+    const vx = -Math.sin(p.a) * p.dir, vz = Math.cos(p.a) * p.dir;
+    p.m.rotation.set(0, Math.atan2(vx, vz), 0);
+    p.m.rotateZ(0.12 * p.dir);
   }
 }

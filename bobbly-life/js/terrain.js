@@ -53,6 +53,8 @@ export const ZONES = {
   gasN: { x0: -20, x1: 10, z0: 690, z1: 730, h: 'auto' },
   gasS: { x0: 40, x1: 70, z0: -470, z1: -430, h: 'auto' },
   camp: { x0: -560, x1: -500, z0: 520, z1: 580, h: 'auto' },
+  intl: { x0: 420, x1: 980, z0: -620, z1: -425, h: 'auto' },
+  swAir: { x0: -1080, x1: -760, z0: -1085, z1: -975, h: 'auto' },
 };
 // Rivers split the island into regions (highways cross them on bridges)
 export const RIVERS = [

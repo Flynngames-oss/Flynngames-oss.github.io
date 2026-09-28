@@ -13,7 +13,7 @@ import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './job
 import * as UI from './ui.js';
 import * as NET from './net.js';
 import { initAudio, sfx, setEngine, setMusic, musicPlaying } from './audio.js';
-import { initTraffic, updateTraffic } from './traffic.js';
+import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
 import { initRocket, updateRocket } from './rocket.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
@@ -115,7 +115,11 @@ WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color
   .forEach(([t, x, z], i) => new Vehicle(t, x, z, Math.PI, { id: 'eb' + i }));
 // Cars parked along the suburban curbs
 (G.parkedSpots || []).slice(0, 24).forEach((s, i) => new Vehicle(pick(['sedan', 'sedan', 'pickup', 'sports', 'sedan']), s.x, s.z, s.yaw, { id: 'pk' + i, color: randomCarColor() }));
+// Airports: airliners at the gates, small planes by the hangars, cars in the car parks
+(LOC.parkedPlanes || []).forEach((p, i) => new Vehicle(p.t, p.x, p.z, p.yaw, { id: 'ap' + i, livery: p.livery }));
+(LOC.airportCars || []).forEach((s, i) => new Vehicle(pick(['sedan', 'sedan', 'pickup', 'taxi', 'sedan', 'sports']), s.x, s.z, s.yaw, { id: 'ac' + i, color: randomCarColor() }));
 initTraffic(22);
+initSkyTraffic();
 initRocket();
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
@@ -142,9 +146,13 @@ G.spawnMyVehicle = (id) => {
     else if (nearWater) { x = player.root.x; z = Math.sign(player.root.z) * 205; }
     else { x = 205; z = 20; UI.toast('🚤 Your boat is waiting at the pier!'); G.waypoint = { x: 200, z: 20 }; }
     yaw = Math.PI / 2;
-  } else if (t.plane && Math.abs(player.root.z - 168) > 12) {
-    x = -140; z = 168; yaw = Math.PI / 2;
-    UI.toast(`${t.emo} Your plane is waiting on the airport runway!`); G.waypoint = { x: -140, z: 168 };
+  } else if (t.plane) {
+    // planes wait at the start of the nearest runway (airliners need the big international one)
+    const list = (LOC.airports || []).filter(a => !t.airliner || a.name === 'Bobbly International');
+    let a = list[0];
+    for (const b of list) if (Math.hypot(b.x - player.root.x, b.z - player.root.z) < Math.hypot(a.x - player.root.x, a.z - player.root.z)) a = b;
+    x = a.x; z = a.z; yaw = a.yaw;
+    UI.toast(`${t.emo} Your plane is waiting on the runway at ${a.name}! (Phone → Fast Travel)`); G.waypoint = { x: a.x, z: a.z };
   } else {
     x = player.root.x + Math.sin(player.facing) * (t.len / 2 + 2.5);
     z = player.root.z + Math.cos(player.facing) * (t.len / 2 + 2.5);
@@ -283,7 +291,7 @@ function nearestVehicle() {
     const d = Math.hypot(player.root.x - v.pos.x, player.root.z - v.pos.z);
     const reach = v.type.len / 2 + 2;
     if (d < reach && Math.abs(player.root.y - v.pos.y) < 3 && d < bd) {
-      const free = v.remoteDriver ? !v.occupants[1] : (!v.occupants[0] || (v.seats.length > 1 && !v.occupants[1]));
+      const free = v.occupants.some((o, i) => !o && (i > 0 || !v.remoteDriver));
       if (free) { bd = d; best = v; }
     }
   }
@@ -310,7 +318,7 @@ function interact() {
   const v = nearestVehicle();
   if (v) {
     stopFishing();
-    const seat = (!v.remoteDriver && !v.occupants[0]) ? 0 : 1;
+    const seat = v.occupants.findIndex((o, i) => !o && (i > 0 || !v.remoteDriver));
     if (player.held) {
       if (player.held.kind === 'prop') { const pr = player.held.obj; pr.held = null; pr.inVehicle = v; (v.stored ||= []).push(pr); player.held = null; }
       else dropHeld(false);
@@ -319,8 +327,8 @@ function interact() {
     player.emote = null;
     v.addOccupant(player, seat);
     sfx.door();
-    if (seat === 0 && v.type.isBike) UI.toast('W throttle · S brake · A/D lean · hold SHIFT + W to wheelie · C/Ctrl lean forward · Space hop · E off', '', 8000);
-    else if (seat === 0 && v.type.plane) UI.toast('✈️ W = more throttle · S = less · A/D turn · Space = nose up (take off when fast!) · Shift = nose down · E jump out', '', 8000);
+    if (seat === 0 && v.type.isBike) UI.toast('W throttle · S brake · A/D lean · WHEELIE: Shift (lean back) + W, then feather W and tap S/C to hold it at the balance point · Space hop · E off', '', 9000);
+    else if (seat === 0 && v.type.plane) UI.toast(`${v.type.emo} W/S throttle · ↑ nose up · ↓ nose down · ← → bank & turn · build speed on the runway, then ↑ to take off${v.type.airliner ? ' (about 170 km/h)' : ''} · E jump out`, '', 9000);
     else if (seat === 0 && !G.seenDriveTip) { G.seenDriveTip = true; UI.toast(v.type.heli ? '🚁 W/S forward/back · A/D turn · Space up · Shift down · E exit' : 'W/S drive · A/D steer · Space brake · Q honk · E exit'); }
   }
 }
@@ -693,7 +701,12 @@ function controlPlayer(dt) {
     const v = p.vehicle;
     if (p.seat === 0 && !v.remoteDriver) {
       const shift = !!(K.ShiftLeft || K.ShiftRight), ctrl = !!(K.ControlLeft || K.ControlRight || K.KeyC);
-      const inp = { throttle: iy, steer: -ix, brake: !!K.Space && !v.type.isBike, up: !!space, down: shift, back: shift, fwd: ctrl, jump: v.type.isBike && space && !p.prevSpace };
+      let inp = { throttle: iy, steer: -ix, brake: !!K.Space && !v.type.isBike, up: !!space, down: shift, back: shift, fwd: ctrl, jump: v.type.isBike && space && !p.prevSpace };
+      if (v.type.plane && !blocked) {
+        // planes: arrow keys fly (↑ nose up, ↓ nose down, ←/→ bank), W/S throttle
+        const ax = (K.ArrowRight ? 1 : 0) - (K.ArrowLeft ? 1 : 0) + (K.KeyD ? 1 : 0) - (K.KeyA ? 1 : 0) + touch.mx;
+        inp = { throttle: clamp((K.KeyW ? 1 : 0) - (K.KeyS ? 1 : 0) + touch.my, -1, 1), steer: -clamp(ax, -1, 1), up: !!K.ArrowUp || !!space, down: !!K.ArrowDown || shift };
+      }
       p.prevSpace = space;
       if (isTouch && v.type.heli) { inp.up = touch.my > 0.6; }
       v.drive(dt, inp);
@@ -751,6 +764,10 @@ function updateCamera(dt) {
     return;
   }
   const v = player.vehicle;
+  // speed makes the view stretch a little
+  const spd = v ? Math.abs(v.speed) : Math.hypot(player.vel.x, player.vel.z);
+  const fovT = 65 + clamp((spd - 7) * 0.4, 0, v && v.type.plane ? 12 : 18);
+  if (Math.abs(fovT - camera.fov) > 0.05) { camera.fov += (fovT - camera.fov) * (1 - Math.exp(-dt * 3)); camera.updateProjectionMatrix(); }
   player.head.visible = !G.cam.fp;
   if (G.cam.fp) {
     // First person: eyes inside the head, looking where the mouse points
@@ -764,10 +781,10 @@ function updateCamera(dt) {
     camTarget.copy(camera.position);
     return;
   }
-  const tgt = v ? _v.copy(v.pos).add(_w.set(0, v.type.heli || v.type.plane ? 2 : 1.4, 0)) : _v.copy(player.p[PARTS.CHE]).add(_w.set(0, 0.5, 0));
+  const tgt = v ? _v.copy(v.pos).add(_w.set(0, v.type.airliner ? 6 : v.type.heli || v.type.plane ? 2 : 1.4, 0)) : _v.copy(player.p[PARTS.CHE]).add(_w.set(0, 0.5, 0));
   camTarget.lerp(tgt, 1 - Math.exp(-dt * (v ? 12 : 10)));
   if (camTarget.distanceToSquared(tgt) > 400) camTarget.copy(tgt);
-  let dist = G.cam.dist * (v ? (v.type.plane ? 2.4 : v.type.heli ? 2.1 : v.type.truck ? 1.8 : 1.5) : (player.weapon ? 0.8 : 1));
+  let dist = G.cam.dist * (v ? (v.type.airliner ? 7.5 : v.type.plane ? 2.4 : v.type.heli ? 2.1 : v.type.truck ? 1.8 : 1.5) : (player.weapon ? 0.8 : 1));
   if (v && player.seat === 0 && G.time - G.cam.lastMouse > 1.2 && Math.abs(v.speed) > 2) {
     const behind = v.speed >= 0 ? v.yaw + Math.PI : v.yaw;
     G.cam.yaw = angleLerp(G.cam.yaw, behind, 1 - Math.exp(-dt * 2));
@@ -850,6 +867,7 @@ function loop(now) {
   controlPlayer(dt);
   if (G.started) updateGrab();
   updateTraffic(dt, (ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
+  updateSkyTraffic(dt);
   for (const v of G.vehicles) if (!(v.driver === player && player.seat === 0)) v.update(dt); else v.sync();
   bumpVehicles();
   updateNPCs(dt);
