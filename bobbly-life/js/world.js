@@ -4,6 +4,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, noEmoji, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
 import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
 import { setVehicleLighting, M as modelMat } from './models.js';
+import { chunk, smoke, sparks, fire, dust } from './debris.js';
+import { sfx } from './audio.js';
 import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone, riverDist } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
@@ -30,6 +32,8 @@ export function nearColliders(x, z) {
 
 export function addCollider(minX, minY, minZ, maxX, maxY, maxZ, tag = null) {
   const c = { minX, minY, minZ, maxX, maxY, maxZ, tag, off: false };
+  if (curB) curB.colliders.push(c);
+  if (noDamage) c.noDamage = true;
   colliders.push(c);
   gridInsert(c);
   return c;
@@ -93,26 +97,153 @@ function S(geo, material, x, y, z, ry = 0, rx = 0, rz = 0, sx = 1, sy = 1, sz = 
   const m = new THREE.Mesh(geo, material);
   m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.scale.set(sx, sy, sz);
   m.updateMatrix();
+  if (curB) m.userData.b = curB;
   statics.push(m);
   return m;
 }
 function finalizeStatic() {
-  const groups = new Map();
+  const groups = new Map(), tagged = [];
   for (const m of statics) {
     if (!groups.has(m.material)) groups.set(m.material, []);
     let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
     g.applyMatrix4(m.matrix);
     for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
-    groups.get(m.material).push(g);
+    const list = groups.get(m.material);
+    list.push(g);
+    if (m.userData.b) tagged.push({ b: m.userData.b, material: m.material, idx: list.length - 1 });
   }
+  const info = new Map();
   for (const [material, geos] of groups) {
+    const offs = []; let o = 0;
+    for (const g of geos) { offs.push(o); o += g.attributes.position.count; }
     const merged = mergeGeometries(geos, false);
     const mesh = new THREE.Mesh(merged, material);
     mesh.castShadow = true; mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     G.scene.add(mesh);
+    info.set(material, { mesh, offs, geos });
   }
+  // remember which triangles belong to each destructible building
+  for (const t of tagged) { const I = info.get(t.material); t.b.parts.push({ mesh: I.mesh, start: I.offs[t.idx], count: I.geos[t.idx].attributes.position.count }); }
   statics.length = 0;
+}
+
+// ---------------------------------------------------------------- destructible buildings
+let curB = null, noDamage = false;
+const collapsing = [], scars = [];
+function beginB(color) { curB = { parts: [], colliders: [], color, hp: 0, dead: false }; }
+function endB() {
+  const b = curB; curB = null;
+  if (!b || !b.colliders.length) return;
+  let vol = 0; b.minY = 1e9; b.maxY = -1e9; b.x0 = 1e9; b.x1 = -1e9; b.z0 = 1e9; b.z1 = -1e9;
+  for (const c of b.colliders) {
+    vol += (c.maxX - c.minX) * (c.maxY - c.minY) * (c.maxZ - c.minZ);
+    b.minY = Math.min(b.minY, c.minY); b.maxY = Math.max(b.maxY, c.maxY);
+    b.x0 = Math.min(b.x0, c.minX); b.x1 = Math.max(b.x1, c.maxX); b.z0 = Math.min(b.z0, c.minZ); b.z1 = Math.max(b.z1, c.maxZ);
+    c.b = b;
+  }
+  b.base = Math.max(b.minY, heightAt((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) - 0.5);
+  b.hp = b.maxHp = vol / 20;
+}
+let scarTex = null;
+function scarMaterial() {
+  if (scarTex) return scarTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 4, 64, 64, 62);
+  g.addColorStop(0, 'rgba(8,8,8,1)'); g.addColorStop(0.45, 'rgba(20,18,16,0.95)'); g.addColorStop(0.75, 'rgba(40,36,32,0.6)'); g.addColorStop(1, 'rgba(40,36,32,0)');
+  x.fillStyle = g; x.beginPath();
+  for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI * 2, r = 40 + Math.random() * 22; x.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); }
+  x.fill();
+  x.strokeStyle = 'rgba(10,10,10,0.8)'; x.lineWidth = 2;
+  for (let i = 0; i < 9; i++) { let px = 64, py = 64, a = Math.random() * 6.3; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 5; k++) { a += (Math.random() - 0.5) * 0.9; px += Math.cos(a) * 12; py += Math.sin(a) * 12; x.lineTo(px, py); } x.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scarTex = new THREE.MeshLambertMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  return scarTex;
+}
+const _hn = new THREE.Vector3(), _hp = new THREE.Vector3(), _hv = new THREE.Vector3();
+// Something hit a building collider at point p with the given energy (mass x speed).
+export function hitBuilding(c, p, energy, nx = null, nz = null) {
+  const b = c && c.b;
+  if (!c || c.off || c.noDamage || energy < 5) return;
+  // which face was hit: use the given normal or the side of the box nearest the point
+  if (nx === null) {
+    const d = [[p.x - c.minX, -1, 0], [c.maxX - p.x, 1, 0], [p.z - c.minZ, 0, -1], [c.maxZ - p.z, 0, 1]].sort((a, b2) => a[0] - b2[0])[0];
+    nx = d[1]; nz = d[2];
+  }
+  _hn.set(nx, 0, nz);
+  _hp.set(nx > 0 ? c.maxX : nx < 0 ? c.minX : p.x, clamp(p.y, c.minY + 0.5, c.maxY - 0.5), nz > 0 ? c.maxZ : nz < 0 ? c.minZ : p.z);
+  // chunks of wall and glass burst out of the hole
+  const color = b ? b.color : '#9a9a96', n = Math.min(26, 4 + Math.floor(energy / 12));
+  for (let i = 0; i < n; i++) {
+    _hv.copy(_hn).multiplyScalar(rand(2, 7) + Math.min(10, energy / 60)).add(new THREE.Vector3(rand(-4, 4), rand(1, 6), rand(-4, 4)));
+    if (i % 3) chunk(mat(color), rand(0.3, 1.2), rand(0.2, 0.8), rand(0.3, 1.0), _hp, _hv, 30);
+    else chunk(mat('#9fc4dc', { transparent: true, opacity: 0.7 }), rand(0.1, 0.4), 0.03, rand(0.1, 0.3), _hp, _hv, 12);
+  }
+  dust(_hp, Math.min(10, 2 + energy / 40), 1 + Math.min(2, energy / 300));
+  sparks(_hp, 12);
+  // a scorched, cracked hole where it hit
+  const s = clamp(energy / 25, 1.6, 12);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s), scarMaterial());
+  m.position.copy(_hp).addScaledVector(_hn, 0.06); m.lookAt(_hv.copy(m.position).add(_hn)); m.rotateZ(rand(0, 6.28));
+  G.scene.add(m); scars.push({ m, b });
+  if (scars.length > 90) G.scene.remove(scars.shift().m);
+  if (energy > 250) fire(_hp, 6, clamp(energy / 400, 1, 3));
+  if (G.camera && G.camera.position.distanceToSquared(_hp) < 40000) sfx.crash();
+  if (!b || b.dead) return;
+  b.hp -= energy;
+  // a big enough hit (like a plane going full speed) brings even a skyscraper down
+  if (b.hp <= 0 || (energy >= 1500 && energy >= b.maxHp * 0.12)) collapseBuilding(b, -nx, -nz);
+}
+G.hitBuilding = hitBuilding;
+export function collapseBuilding(b, lx = 0, lz = 0) {
+  if (b.dead) return;
+  b.lx = lx; b.lz = lz;   // it leans away from the side that was hit
+  b.dead = true; b.t = 0; b.dur = 1.6 + Math.min(4, (b.maxY - b.base) * 0.03);
+  for (const c of b.colliders) c.off = true;
+  for (const r of b.parts) { const a = r.mesh.geometry.attributes.position; r.orig = a.array.slice(r.start * 3, (r.start + r.count) * 3); }
+  b.cx = (b.x0 + b.x1) / 2; b.cz = (b.z0 + b.z1) / 2;
+  collapsing.push(b);
+  sfx.boom();
+  for (const s of scars) if (s.b === b) G.scene.remove(s.m);
+  for (const sp of b.extras || []) sp.visible = false;
+  for (let i = G.interacts.length - 1; i >= 0; i--) if (G.interacts[i].b === b) G.interacts.splice(i, 1);
+  // knock over anyone standing right next to it
+  for (const ch of G.characters) {
+    if (ch.vehicle || ch.isRemote || ch.ragdoll) continue;
+    const P = ch.root;
+    if (P.x > b.x0 - 4 && P.x < b.x1 + 4 && P.z > b.z0 - 4 && P.z < b.z1 + 4) ch.flop(new THREE.Vector3(Math.sign(P.x - b.cx) * 6, 6, Math.sign(P.z - b.cz) * 6), 3);
+  }
+  if (G.camera && G.camera.position.distanceTo(new THREE.Vector3(b.cx, b.base, b.cz)) < 250) G.camShake = Math.max(G.camShake || 0, 0.3);
+}
+function updateCollapses(dt) {
+  for (let i = collapsing.length - 1; i >= 0; i--) {
+    const b = collapsing[i];
+    b.t += dt;
+    const e = Math.min(1, b.t / b.dur), f = 1 - e * e * 0.93, spread = 1 + e * 0.12;
+    const H = b.maxY - b.base, lean = e * e * Math.min(0.35, 12 / Math.max(10, H)) ;
+    for (const r of b.parts) {
+      const a = r.mesh.geometry.attributes.position, arr = a.array, o = r.orig;
+      for (let k = 0; k < r.count; k++) {
+        const j = (r.start + k) * 3;
+        const hy = o[k * 3 + 1] - b.base;
+        arr[j] = b.cx + (o[k * 3] - b.cx) * spread + b.lx * hy * lean;
+        arr[j + 1] = b.base + hy * f;
+        arr[j + 2] = b.cz + (o[k * 3 + 2] - b.cz) * spread + b.lz * hy * lean;
+      }
+      a.addUpdateRange(r.start * 3, r.count * 3);
+      a.needsUpdate = true;
+    }
+    // rubble raining down the sides and a rolling dust cloud
+    const top = b.base + H * f;
+    if (Math.random() < dt * 30) chunk(mat(b.color), rand(0.5, 2), rand(0.4, 1.5), rand(0.5, 2), _hp.set(rand(b.x0, b.x1), top, rand(b.z0, b.z1)), _hv.set(rand(-5, 5), rand(0, 3), rand(-5, 5)), 40);
+    b.dustT = (b.dustT || 0) - dt;
+    if (b.dustT <= 0) { b.dustT = 0.12; dust(_hp.set(rand(b.x0 - 3, b.x1 + 3), b.base + rand(0, 3), rand(b.z0 - 3, b.z1 + 3)), 2, 1.5 + H / 40); }
+    if (e >= 1) {
+      collapsing.splice(i, 1);
+      addCollider(b.x0 + 1, b.base - 1, b.z0 + 1, b.x1 - 1, b.base + Math.max(0.6, H * 0.07) * 0.6, b.z1 - 1, 'rubble');
+    }
+  }
 }
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -187,14 +318,19 @@ function windowBoxGeo(w, h, d) {
   return g;
 }
 function building(x, z, w, d, h, color, roofColor = '#6b6f78') {
+  beginB(color);
   S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
   S(BOX, mat(roofColor), x, h + 0.25, z, 0, 0, 0, w + 0.6, 0.5, d + 0.6);
-  return addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.5, z + d / 2);
+  const c = addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.5, z + d / 2);
+  endB();
+  return c;
 }
 function sign(text, x, y, z, color = '#fff', bg = '#ff6a1a', scale = 3) {
   const sp = textSprite(noEmoji(text).toUpperCase(), { size: 64, color: '#ffffff', bg: 'rgba(16,19,26,0.88)', accent: bg, scale });
   sp.position.set(x, y, z);
   G.scene.add(sp);
+  if (curB) (curB.extras ||= []).push(sp);
+  return sp;
 }
 
 // ---------------------------------------------------------------- locations
@@ -731,11 +867,13 @@ function roadStrip(x, z, len, alongX, w = 10, plain = false) {
   else S(flatGeo(w, len, 10), m, x, 0.021, z, 0, -Math.PI / 2, 0, w, len, 1);
 }
 function tower(x, z, w, d, h, color, roof = '#6b7079', antenna = false) {
+  beginB(color);
   S(windowBoxGeo(w, h, d), bmat(color), x, h / 2, z);
   S(BOX, mat(roof), x, h + 0.4, z, 0, 0, 0, w + 0.8, 0.8, d + 0.8);
   addCollider(x - w / 2, 0, z - d / 2, x + w / 2, h + 0.8, z + d / 2);
   box(x - w / 4, h + 0.8, z - d / 4, Math.min(4, w / 3), 2, Math.min(4, d / 3), '#9aa4b1');
   if (antenna) { S(CYL8, mat('#dddddd'), x, h + 12, z, 0, 0, 0, 0.3, 22, 0.3); S(BALL_G, mat('#ff3030', { emissive: '#ff0000', emissiveIntensity: 1 }), x, h + 23.5, z, 0, 0, 0, 0.7, 0.7, 0.7); }
+  endB();
   return h;
 }
 const BALL_G = new THREE.SphereGeometry(1, 10, 8);
@@ -846,6 +984,7 @@ function twinMaterials() {
   return twinMats;
 }
 function twinTower(tx, tz, W, H, north) {
+  noDamage = true;   // the Twin Towers always stay standing
   const TM = twinMaterials();
   const c = 1.6, hw = W / 2;
   const n = 57, pitch = (W - 2 * c - 0.8) / (n - 1), floorH = H / 110, base = 21;
@@ -920,6 +1059,7 @@ function twinTower(tx, tz, W, H, north) {
     addCollider(tx - 6, H, tz - 4, tx + 6, H + 5.2, tz + 4);
     for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; S(CYL8, mat('#5a6068'), tx + Math.cos(a) * (d - 1.5), H + 2, tz + Math.sin(a) * (d - 1.5), 0, 0, 0, 0.12, 1.4, 0.12); }
   }
+  noDamage = false;
   return H + 0.9;
 }
 function buildTwinTowers(A, B, C, D) {
@@ -956,6 +1096,7 @@ function buildTwinTowers(A, B, C, D) {
 }
 
 function buildBobblyTower(tx, tz) {
+  beginB('#e8eef5');
   // Podium
   S(windowBoxGeo(44, 24, 44), bmat('#e8eef5'), tx, 12, tz);
   addCollider(tx - 22, 0, tz - 22, tx + 22, 24, tz + 22);
@@ -980,11 +1121,13 @@ function buildBobblyTower(tx, tz) {
   sign('🏢 BOBBLY TOWER', tx, 30, tz + 24, '#fff', '#3f6fff', 4);
   sign('🛗 Elevator to the top!', tx, 5, tz + 23, '#fff', '#46c25a', 1.8);
   sign('🪂 Jump off & press Space for a parachute!', tx, y + 4, tz + 3, '#fff', '#ff6a1a', 2.2);
+  const TB = curB;
+  endB();
   LOC.tower = { x: tx + 4, z: tz + 4, top: y };
   const top = y;
   G.interacts.push(
-    { x: tx, z: tz + 25, r: 5.5, label: () => '🛗 Ride the elevator to the top of Bobbly Tower!', action: () => { const p = G.player; if (p.held && G.dropHeld) G.dropHeld(false); p.place(tx + 4, top + 0.2, tz + 4, 0); G.toast && G.toast('🏙️ WOW! You are 290 metres up! Jump off and press Space to open your parachute 🪂', '', 7000); } },
-    { x: tx + 4, z: tz + 4, r: 5, minY: top - 2, label: () => '🛗 Take the elevator back down', action: () => { G.player.place(tx, 0, tz + 27, 0); } },
+    { b: TB, x: tx, z: tz + 25, r: 5.5, label: () => '🛗 Ride the elevator to the top of Bobbly Tower!', action: () => { const p = G.player; if (p.held && G.dropHeld) G.dropHeld(false); p.place(tx + 4, top + 0.2, tz + 4, 0); G.toast && G.toast('🏙️ WOW! You are 290 metres up! Jump off and press Space to open your parachute 🪂', '', 7000); } },
+    { b: TB, x: tx + 4, z: tz + 4, r: 5, minY: top - 2, label: () => '🛗 Take the elevator back down', action: () => { G.player.place(tx, 0, tz + 27, 0); } },
   );
 }
 
@@ -992,6 +1135,7 @@ function buildBobblyTower(tx, tz) {
 function tractHouse(x, z, face, color, y) {
   // face: 2 = door toward +z, 3 = door toward -z
   const fz = face === 2 ? 1 : -1;
+  beginB(color);
   const w = 10, d = 8, h = 6.4;
   S(windowBoxGeo(w, h, d), bmat(color), x, y + h / 2, z);
   S(BOX, mat('#8a8680'), x, y - 1, z, 0, 0, 0, w + 0.3, 2, d + 0.3);
@@ -1006,6 +1150,7 @@ function tractHouse(x, z, face, color, y) {
   for (let k = 1; k < 4; k++) S(BOX, mat('#d8d8d4'), gx, y + k * 0.68, gz + fz * 3.56, 0, 0, 0, 4.6, 0.05, 0.02);
   // front door + porch light
   S(BOX, mat('#5a4030'), x - 2, y + 1.1, z + fz * (d / 2 + 0.03), 0, 0, 0, 1.2, 2.2, 0.08);
+  endB();
   // driveway and front walk to the sidewalk (sidewalk edge is 11.8 from the house centre line)
   flat(gx, y + 0.06, z + fz * (d / 2 + 4.4), 4.8, 8.8, '#cfcfca');
   flat(x - 2, y + 0.06, z + fz * (d / 2 + 4.4), 1.3, 8.8, '#cfcfca');
@@ -1147,6 +1292,7 @@ function roadTexture() {
 let BY = 0; // base height for houses built on raised ground
 function house(x, z, face, color, tall = false) {
   const w = 8, d = 7, h = tall ? 7.5 : 4.5;
+  beginB(color);
   S(windowBoxGeo(w, h, d), bmat(color), x, BY + h / 2, z);
   if (BY) S(BOX, mat('#8a8680'), x, BY - 1.5, z, 0, 0, 0, w + 0.4, 3, d + 0.4);
   S(CONE4, tmat(pick(['#c75a4a', '#8b5a44', '#4f6f9b', '#5a8a5a']), TX.roof, 'r'), x, BY + h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
@@ -1159,6 +1305,7 @@ function house(x, z, face, color, tall = false) {
   flat(x + fx * (w / 2 + pathLen / 2), BY + 0.045, z + fz * (d / 2 + pathLen / 2), fx ? pathLen : 1.6, fz ? pathLen : 1.6, '#cfc6b3');
   // chimney
   box(x + 2, BY + h, z + 1.5, 0.8, 2.5, 0.8, '#9a6b5a', false);
+  endB();
   const door = { x: x + fx * (w / 2 + 3.5), z: z + fz * (d / 2 + 3.5) };
   G.locations.houses.push({ x, z, door, name: 'House #' + (G.locations.houses.length + 1) });
   // front garden: flower beds beside the path, bushes at the front corners
@@ -1502,6 +1649,7 @@ export function updateWorld(dt, focus) {
     G.sky.position.copy(G.camera.position);
   }
   updateBalloons(G.time);
+  updateCollapses(dt);
   updateTurbines(dt);
   if (G.waterTex) { G.waterTex.offset.x = G.time * 0.004; G.waterTex.offset.y = G.time * 0.0025; }
   G.scene.fog.color.copy(tmpC);
