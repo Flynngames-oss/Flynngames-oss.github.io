@@ -14,6 +14,8 @@ import * as UI from './ui.js';
 import * as NET from './net.js';
 import { initAudio, sfx, setEngine, setMusic, musicPlaying } from './audio.js';
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
+import { updateDebris } from './debris.js';
+import { updateCockpit } from './cockpit.js';
 import { initRocket, updateRocket } from './rocket.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
@@ -273,6 +275,7 @@ if (isTouch) {
 
 // ---------------------------------------------------------------- interactions
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _u = new THREE.Vector3();
+const _fpq = new THREE.Quaternion();
 
 function nearestInteract() {
   const P = player.root;
@@ -326,9 +329,10 @@ function interact() {
     G.mouse.grabLock = false; G.mouse.grab = false; player.ctrl.grab = false;
     player.emote = null;
     v.addOccupant(player, seat);
+    if (G.cam.fp && v.type.airliner) G.cam.pitch = 0.3;
     sfx.door();
     if (seat === 0 && v.type.isBike) UI.toast('W throttle · S brake · A/D lean · WHEELIE: Shift (lean back) + W, then feather W and tap S/C to hold it at the balance point · Space hop · E off', '', 9000);
-    else if (seat === 0 && v.type.plane) UI.toast(`${v.type.emo} W/S throttle · ↑ nose up · ↓ nose down · ← → bank & turn · build speed on the runway, then ↑ to take off${v.type.airliner ? ' (about 170 km/h)' : ''} · E jump out`, '', 9000);
+    else if (seat === 0 && v.type.plane) UI.toast(`${v.type.emo} W/S throttle · ↑ nose up · ↓ nose down · ← → bank & turn · build speed on the runway, then ↑ to take off at ${Math.round(v.type.takeoff * 3.6)} km/h · V = cockpit view · E jump out`, '', 9000);
     else if (seat === 0 && !G.seenDriveTip) { G.seenDriveTip = true; UI.toast(v.type.heli ? '🚁 W/S forward/back · A/D turn · Space up · Shift down · E exit' : 'W/S drive · A/D steer · Space brake · Q honk · E exit'); }
   }
 }
@@ -763,18 +767,38 @@ function updateCamera(dt) {
     if (innerWidth > 700) camera.translateX(-1.9);
     return;
   }
+  camera.up.set(0, 1, 0);
   const v = player.vehicle;
   // speed makes the view stretch a little
   const spd = v ? Math.abs(v.speed) : Math.hypot(player.vel.x, player.vel.z);
   const fovT = 65 + clamp((spd - 7) * 0.4, 0, v && v.type.plane ? 12 : 18);
   if (Math.abs(fovT - camera.fov) > 0.05) { camera.fov += (fovT - camera.fov) * (1 - Math.exp(-dt * 3)); camera.updateProjectionMatrix(); }
   player.head.visible = !G.cam.fp;
+  // in a cockpit view the arms would cover the instruments
+  const hideArms = G.cam.fp && v && v.eyes && (v.type.plane || v.type.heli);
+  for (const k of ['armL', 'armR', 'handL', 'handR']) if (player[k]) player[k].visible = !hideArms;
   if (G.cam.fp) {
     // First person: eyes inside the head, looking where the mouse points
     const H = player.p[PARTS.HEAD];
     const cp = Math.cos(G.cam.pitch), sp = Math.sin(G.cam.pitch);
     const look = _u.set(-Math.sin(G.cam.yaw) * cp, -sp, -Math.cos(G.cam.yaw) * cp);
-    if (v && player.seat === 0 && G.time - G.cam.lastMouse > 1.2 && Math.abs(v.speed) > 2) G.cam.yaw = angleLerp(G.cam.yaw, v.yaw + Math.PI, 1 - Math.exp(-dt * 3));
+    if (v && player.seat === 0 && G.time - G.cam.lastMouse > 1.2 && (Math.abs(v.speed) > 2 || v.eyes)) G.cam.yaw = angleLerp(G.cam.yaw, v.yaw + Math.PI, 1 - Math.exp(-dt * 3));
+    if (v && v.eyes && v.eyes[player.seat] && !G.rocketRide) {
+      // sit in the seat and look out through the windscreen; the view banks and pitches with the vehicle
+      const e = v.eyes[player.seat];
+      v.body.updateMatrixWorld(true);
+      camera.position.set(e[0], e[1], e[2]); v.body.localToWorld(camera.position);
+      const a = G.cam.yaw - v.yaw;
+      _w.set(-Math.sin(a) * cp, -sp, -Math.cos(a) * cp);
+      v.body.getWorldQuaternion(_fpq);
+      _w.applyQuaternion(_fpq);
+      camera.up.set(0, 1, 0).applyQuaternion(_fpq);
+      if (G.camShake) camera.position.add(_v.set((Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake));
+      camera.lookAt(_v.copy(camera.position).add(_w));
+      camTarget.copy(camera.position);
+      return;
+    }
+    camera.up.set(0, 1, 0);
     camera.position.set(H.x, H.y + 0.12, H.z).addScaledVector(_w.set(look.x, 0, look.z).normalize(), G.rocketRide ? 0 : 0.25);
     if (G.camShake) camera.position.add(_w.set((Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake));
     camera.lookAt(_v.copy(camera.position).add(look));
@@ -801,6 +825,7 @@ function updateCamera(dt) {
   const gh = groundHeight(camera.position.x, camera.position.z, camera.position.y + 0.3);
   if (camera.position.y < gh + 0.4) camera.position.y = gh + 0.4;
   camera.lookAt(camTarget);
+  if (G.camShake) camera.position.add(_w.set((Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake, (Math.random() - 0.5) * G.camShake));
 }
 
 // ---------------------------------------------------------------- misc updates
@@ -868,6 +893,7 @@ function loop(now) {
   if (G.started) updateGrab();
   updateTraffic(dt, (ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
   updateSkyTraffic(dt);
+  updateDebris(dt);
   for (const v of G.vehicles) if (!(v.driver === player && player.seat === 0)) v.update(dt); else v.sync();
   bumpVehicles();
   updateNPCs(dt);
@@ -895,6 +921,7 @@ function loop(now) {
   updateRemoteExtras();
   updateWorld(dt, player.vehicle ? player.vehicle.pos : player.pos);
   updateCamera(dt);
+  updateCockpit(dt, player);
   if (G.started) {
     UI.updateHUD();
     if (frame % 2 === 0) UI.drawMinimap();

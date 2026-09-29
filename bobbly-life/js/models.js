@@ -695,7 +695,9 @@ const LIVERIES = [
 ];
 export function airlinerModel() {
   if (airCache) return airCache;
-  const k = new Kit();
+  // separate pieces so wings, engines and the tail can break off
+  const K = { body: new Kit(), wingL: new Kit(), wingR: new Kit(), engL: new Kit(), engR: new Kit(), tail: new Kit() };
+  let k = K.body;
   const R = 2.05, L = 40, zN = 20, zT = -20;
   // fuselage lathe (profile evenly spaced along the length so the livery maps evenly)
   const prof = [];
@@ -723,10 +725,12 @@ export function airlinerModel() {
   // wings: swept, with dihedral, flap track fairings and winglets
   const wing = (s) => planSolid([[s * 1.6, 5.2], [s * 17.5, -6.6], [s * 17.9, -8.1], [s * 1.6, -2.4]], 0.34, 0.05);
   for (const s of [-1, 1]) {
+    k = s > 0 ? K.wingL : K.wingR;
     k.add(wing(s), 'white', 0, fy - 1.25, 0, 0, 0, s * 0.08);
     k.add(sideSolid([[-6.7, 0], [-8.0, 2.2], [-8.8, 2.2], [-8.2, 0]], 0.12, 0.02, { smooth: false, yb: 0 }), 'fin', s * 17.75, fy - 1.1 + 17.75 * 0.08, 0);
     for (const x of [5, 9, 13]) k.box('white', s * x, fy - 1.45 + x * 0.08, -2.2 - x * 0.35, 0.25, 0.3, 2.2, 0.1);
     // engine: nacelle, intake, fan, exhaust cone, pylon
+    k = s > 0 ? K.engL : K.engR;
     const ex = s * 6.2, ey = fy - 2.55 + 6.2 * 0.08, ez = 3.2;
     const nac = new THREE.CylinderGeometry(1.15, 1.0, 4.4, 24, 1, true); nac.rotateX(Math.PI / 2);
     k.add(nac, 'white', ex, ey, ez);
@@ -737,9 +741,11 @@ export function airlinerModel() {
     k.add(new THREE.ConeGeometry(0.55, 1.4, 16).rotateX(-Math.PI / 2), 'darkAlloy', ex, ey, ez - 2.7);
     k.box('white', ex, ey + 1.05, ez - 0.6, 0.35, 0.8, 3.6, 0.1);
   }
+  k = K.body;
   // wing-to-body fairing
   k.box('white', 0, fy - 1.55, 0.6, 3.6, 1.1, 9, 0.5);
   // horizontal tail
+  k = K.tail;
   for (const s of [-1, 1]) k.add(planSolid([[s * 0.6, -14.2], [s * 7, -18.6], [s * 7.1, -19.8], [s * 0.6, -18.6]], 0.2, 0.03), 'white', 0, fy + 0.9, 0, 0, 0, s * 0.1);
   // vertical fin
   const fin = sideSolid([[-19.8, 1.4], [-17.2, 10.8], [-15.6, 10.8], [-11.6, 1.4]], 0.34, 0.05, { smooth: false, yb: 1.4 });
@@ -747,9 +753,10 @@ export function airlinerModel() {
   k.add(new THREE.CircleGeometry(1.5, 24), 'logo', 0.23, fy + 6.2, -16.4, 0, Math.PI / 2, 0);
   k.add(new THREE.CircleGeometry(1.5, 24), 'logo', -0.23, fy + 6.2, -16.4, 0, -Math.PI / 2, 0);
   // APU exhaust, nav lights
+  k = K.body;
   k.add(cyl(10), 'darkAlloy', 0, fy + 1.5, -19.9, Math.PI / 2, 0, 0, 0.15, 0.3, 0.15);
-  k.add(SPH, 'navRed', 17.9, fy - 1.25 + 1.45, -8.1, 0, 0, 0, 0.12, 0.12, 0.12);
-  k.add(SPH, 'navGreen', -17.9, fy - 1.25 + 1.45, -8.1, 0, 0, 0, 0.12, 0.12, 0.12);
+  K.wingL.add(SPH, 'navRed', 17.9, fy - 1.25 + 1.45, -8.1, 0, 0, 0, 0.12, 0.12, 0.12);
+  K.wingR.add(SPH, 'navGreen', -17.9, fy - 1.25 + 1.45, -8.1, 0, 0, 0, 0.12, 0.12, 0.12);
   // landing gear
   const gearWheel = (x, z, rr) => { const t = new THREE.CylinderGeometry(rr, rr, 0.32, 16); t.rotateZ(Math.PI / 2); k.add(t, 'rubber', x, rr, z); k.add(new THREE.CylinderGeometry(rr * 0.55, rr * 0.55, 0.34, 12).rotateZ(Math.PI / 2), 'alloy', x, rr, z); };
   for (const s of [-1, 1]) {
@@ -759,7 +766,9 @@ export function airlinerModel() {
   }
   k.rod('alloy', [0, 0.45, 15.2], [0, fy - 1.3, 15.0], 0.1);
   for (const dx of [-0.2, 0.2]) gearWheel(dx, 15.2, 0.45);
-  airCache = { parts: k.bake(), fy };
+  const groups = {};
+  for (const name in K) groups[name] = K[name].bake();
+  airCache = { groups, parts: [].concat(...Object.values(groups)), fy };
   return airCache;
 }
 export function airlinerMaterials(i = 0) {

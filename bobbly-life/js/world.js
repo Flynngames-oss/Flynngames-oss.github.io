@@ -620,9 +620,9 @@ function buildAirports() {
   // ===== Bobbly International (south) =====
   {
     const y = ZONES.intl.h;
-    runway(440, 960, -455, y, 46, '09', '27');
-    taxiway(470, -500, 930, -500, y);
-    for (const x of [470, 700, 930]) taxiway(x, -478, x, -500, y);
+    runway(356, 978, -455, y, 50, '09', '27');
+    taxiway(390, -500, 950, -500, y);
+    for (const x of [390, 700, 950]) taxiway(x, -480, x, -500, y);
     // apron + gates with jet bridges
     paved(700, y + 0.05, -535, 380, 54, mat('#b9bec7'));
     [560, 640, 720, 800].forEach((gx, i) => {
@@ -649,16 +649,16 @@ function buildAirports() {
     airportParking(895, -604, 16, 3, y, LOC.airportCars);
     controlTower(905, y, -535, 42);
     hangar(470, y, -585, 50, 44, 22);
-    windsock(975, y, -488);
+    windsock(965, y, -520);
     for (const [fx, fz] of [[436, -522], [436, -548]]) { S(CYL, mat('#e8e8e4'), fx, y + 4, fz, 0, 0, 0, 7, 8, 7); addCollider(fx - 7, y, fz - 7, fx + 7, y + 8, fz + 7); }
     LOC.intl = { x: 680, z: -548 };
-    LOC.airports.push({ name: 'Bobbly International', x: 452, z: -455, yaw: Math.PI / 2 });
+    LOC.airports.push({ name: 'Bobbly International', x: 368, z: -455, yaw: Math.PI / 2 });
     LOC.parkedPlanes.push({ t: 'jet', x: 462, z: -580, yaw: 0 }, { t: 'biplane', x: 480, z: -590, yaw: 0 });
   }
   // ===== South-West Regional =====
   {
     const y = ZONES.swAir.h;
-    runway(-1060, -780, -1040, y, 30, '09', '27');
+    runway(-1088, -752, -1040, y, 34, '09', '27');
     taxiway(-940, -1022, -940, -1008, y, 14);
     paved(-905, y + 0.05, -1003, 150, 24, mat('#b9bec7'));
     glassBuilding(-900, y, -981, 46, 9, 12, '#a9bccb');
@@ -667,7 +667,7 @@ function buildAirports() {
     hangar(-1030, y, -994, 32, 26, 14);
     windsock(-790, y, -1016);
     LOC.swAir = { x: -905, z: -996 };
-    LOC.airports.push({ name: 'SW Regional', x: -1050, z: -1040, yaw: Math.PI / 2 });
+    LOC.airports.push({ name: 'SW Regional', x: -1078, z: -1040, yaw: Math.PI / 2 });
     LOC.parkedPlanes.push({ t: 'airliner', x: -890, z: -1009, yaw: Math.PI / 2, livery: 2 }, { t: 'biplane', x: -1040, z: -996, yaw: 0 }, { t: 'jet', x: -1020, z: -996, yaw: 0 });
   }
 }
