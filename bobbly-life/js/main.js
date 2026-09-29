@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP } from './state.js';
 import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows } from './world.js';
 import { Character, updateNPC, randomOutfit, PARTS, SKIN_TONES, HAIRS, HAIR_COLORS } from './character.js';
@@ -53,11 +54,20 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 22
 G.scene = scene; G.camera = camera; G.renderer = renderer;
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+// ambient occlusion (Ultra graphics): soft contact shadows where things meet
+const aoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+aoPass.enabled = false;
+aoPass.blendIntensity = 0.9;
+aoPass.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.5, thickness: 2, scale: 1.2, samples: 12 });
+aoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+// sprites (clouds, signs, smoke) have no depth to shade, so leave them out of the AO pass
+aoPass.overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.isSprite) o.visible = false; }); };
+composer.addPass(aoPass);
 const gradePass = new ShaderPass(GradeShader);
 composer.addPass(gradePass);
 composer.addPass(new OutputPass());
 let useGrade = true;
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); aoPass.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
 const TIPS = [
   'Hold left click to grab things — and people. Let go to throw.',
@@ -652,8 +662,9 @@ function buildTitle() {
   };
   $('btnCustom').onclick = () => $('customCard').classList.toggle('hidden');
   $('btnCustomDone').onclick = () => { readName(); $('customCard').classList.add('hidden'); };
-  const gfxLabel = () => { $('btnGfx').innerHTML = `<b>Graphics: ${G.save.gfx === 'low' ? 'Low' : 'High'}</b><small>${G.save.gfx === 'low' ? 'Faster — good for Chromebooks' : 'Shadows and sharper image'}</small>`; };
-  $('btnGfx').onclick = () => { G.save.gfx = G.save.gfx === 'low' ? 'high' : 'low'; writeSave(); applyGraphics(); gfxLabel(); };
+  const GFX = { low: ['Low', 'Faster — good for Chromebooks'], high: ['High', 'Shadows and sharper image'], ultra: ['Ultra', 'Ambient occlusion + long shadows (needs a good PC)'] };
+  const gfxLabel = () => { const g = GFX[G.save.gfx] || GFX.high; $('btnGfx').innerHTML = `<b>Graphics: ${g[0]}</b><small>${g[1]}</small>`; };
+  $('btnGfx').onclick = () => { G.save.gfx = { low: 'high', high: 'ultra', ultra: 'low' }[G.save.gfx] || 'high'; writeSave(); applyGraphics(); gfxLabel(); };
   gfxLabel();
   $('codeInput').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('btnJoin').click(); });
   $('nameInput').addEventListener('keydown', (e) => e.stopPropagation());
@@ -661,9 +672,10 @@ function buildTitle() {
 
 G.applyGraphics = () => applyGraphics();
 function applyGraphics() {
-  const high = G.save.gfx !== 'low';
+  const high = G.save.gfx !== 'low', ultra = G.save.gfx === 'ultra';
   renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
-  setShadows(high);
+  setShadows(high, ultra);
+  aoPass.enabled = ultra;
   useGrade = high;
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight);
   camera.far = high ? 2200 : 1200; camera.updateProjectionMatrix();

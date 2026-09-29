@@ -283,9 +283,21 @@ function flat(x, y, z, w, d, color, ry = 0) {
 const nightMats = [];
 const bmatCache = new Map();
 let winTex = null, winEmit = null;
+let houseTex = null, houseEmit = null;
 function makeWindowTextures() {
   const w = wallTextures();
   winTex = w.map; winEmit = w.emit;
+  const h = wallTextures('house');
+  houseTex = h.map; houseEmit = h.emit;
+}
+const hmatCache = new Map();
+function hmat(color) {
+  if (!hmatCache.has(color)) {
+    const m = new THREE.MeshLambertMaterial({ color, map: houseTex, emissive: '#ffcf6a', emissiveMap: houseEmit, emissiveIntensity: 0 });
+    nightMats.push(m);
+    hmatCache.set(color, m);
+  }
+  return hmatCache.get(color);
 }
 // Textured material cache (colour + texture)
 const tmatCache = new Map();
@@ -313,7 +325,7 @@ function windowBoxGeo(w, h, d) {
   const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
   for (let i = 0; i < uv.count; i++) {
     const f = Math.floor(i / 4);
-    uv.setXY(i, uv.getX(i) * Math.max(1, Math.round(dims[f][0] / 4)), uv.getY(i) * Math.max(1, Math.round(dims[f][1] / 4)));
+    uv.setXY(i, uv.getX(i) * Math.max(1, Math.round(dims[f][0] / 4)) / 4, uv.getY(i) * Math.max(1, Math.round(dims[f][1] / 4)) / 4);
   }
   return g;
 }
@@ -365,12 +377,42 @@ const treeDefs = [];
 function addTree(x, z, type = Math.random() < 0.5 ? 'round' : 'pine', s = rand(0.85, 1.25)) {
   treeDefs.push({ x, z, type, s, y: heightAt(x, z) });
 }
+// Leafy crown: a cluster of lumpy blobs, darker underneath and in the middle.
+function hash3(x, y, z) { const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return h - Math.floor(h); }
+function tint(g, dark, light, y0, y1) {
+  const p = g.attributes.position, cols = new Float32Array(p.count * 3), c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    const t = clamp((p.getY(i) - y0) / (y1 - y0), 0, 1) * 0.8 + hash3(p.getX(i), p.getY(i), p.getZ(i)) * 0.2;
+    c.copy(dark).lerp(light, t); cols.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  return g;
+}
+function lumpy(g, amt) {
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = 1 + (hash3(x * 3.1, y * 3.1, z * 3.1) - 0.5) * amt; p.setXYZ(i, x * k, y * k, z * k); }
+  return g;
+}
+function crownGeo() {
+  const parts = [];
+  const spots = [[0, 0.25, 0, 0.62], [0.5, 0, 0.1, 0.5], [-0.45, 0.05, 0.2, 0.52], [0.1, -0.05, -0.5, 0.5], [-0.15, 0.1, 0.5, 0.48], [0.25, 0.55, -0.2, 0.42], [-0.3, 0.5, -0.1, 0.4], [0, -0.3, 0, 0.55]];
+  for (const [x, y, z, r] of spots) { const g = lumpy(new THREE.IcosahedronGeometry(r, 2), 0.35); g.translate(x, y, z); parts.push(g); }
+  const g = mergeGeometries(parts.map(p => p.index ? p.toNonIndexed() : p));
+  g.computeVertexNormals();
+  return tint(g, new THREE.Color('#2f5a24'), new THREE.Color('#7fae4a'), -0.8, 0.9);
+}
+function pineGeo(snow) {
+  const parts = [];
+  for (let i = 0; i < 5; i++) { const r = 1 - i * 0.17, h = 0.36, g = lumpy(new THREE.ConeGeometry(r, h, 12, 1, true), 0.18); g.translate(0, -0.5 + h / 2 + i * 0.16, 0); parts.push(g.toNonIndexed()); }
+  const g = mergeGeometries(parts); g.computeVertexNormals();
+  return snow ? tint(g, new THREE.Color('#9fb0b8'), new THREE.Color('#ffffff'), -0.5, 0.5) : tint(g, new THREE.Color('#1c3a22'), new THREE.Color('#4d7a44'), -0.5, 0.5);
+}
 function buildTrees() {
   const n = treeDefs.length;
-  trunkIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.45, 1, 7), mat('#8b5a2b'), n);
-  roundIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), mat('#4f7f3a', { flatShading: true }), n);
-  pineIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#35603a', { flatShading: true }), n);
-  snowIM = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), mat('#e8f2f5', { flatShading: true }), n);
+  trunkIM = new THREE.InstancedMesh(lumpy(new THREE.CylinderGeometry(0.22, 0.42, 1, 8, 3), 0.15), mat('#5a4030'), n);
+  roundIM = new THREE.InstancedMesh(crownGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), n);
+  pineIM = new THREE.InstancedMesh(pineGeo(false), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), n);
+  snowIM = new THREE.InstancedMesh(pineGeo(true), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), n);
   for (const im of [trunkIM, roundIM, pineIM, snowIM]) { im.castShadow = true; im.receiveShadow = true; G.scene.add(im); }
   treeDefs.forEach((t, i) => {
     const tree = { x: t.x, z: t.z, y: t.y, type: t.type, s: t.s, idx: i, hp: 5, alive: true, regrow: 0, shake: 0 };
@@ -471,11 +513,11 @@ function buildDecor() {
     _m.makeTranslation(x, y + 0.52, z); head.setMatrixAt(i, _m);
     head.setColorAt(i, col.set(FLOWER_COLS[i % FLOWER_COLS.length]));
   });
-  const bush = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), bushPos.length);
+  const bush = new THREE.InstancedMesh(crownGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), bushPos.length);
   bushPos.forEach(([x, z, sc], i) => {
     _qq.identity(); _p.set(x, heightAt(x, z) + 0.45 * sc, z); _s.set(0.9 * sc, 0.75 * sc, 0.9 * sc);
     _m.compose(_p, _qq, _s); bush.setMatrixAt(i, _m);
-    bush.setColorAt(i, col.set(['#4fae45', '#5fbf4a', '#3f9e52', '#6fc85a'][i % 4]));
+    bush.setColorAt(i, col.set(['#e4f2dc', '#ffffff', '#d4e8cc', '#f0f8e8'][i % 4]));
   });
   for (const im of [stem, head, bush]) { im.receiveShadow = true; im.computeBoundingSphere(); G.scene.add(im); }
   bush.castShadow = true;
@@ -1137,13 +1179,13 @@ function tractHouse(x, z, face, color, y) {
   const fz = face === 2 ? 1 : -1;
   beginB(color);
   const w = 10, d = 8, h = 6.4;
-  S(windowBoxGeo(w, h, d), bmat(color), x, y + h / 2, z);
+  S(windowBoxGeo(w, h, d), hmat(color), x, y + h / 2, z);
   S(BOX, mat('#8a8680'), x, y - 1, z, 0, 0, 0, w + 0.3, 2, d + 0.3);
   S(CONE4, tmat('#4a4f58', TX.roof, 'r2'), x, y + h + 1.3, z, Math.PI / 4, 0, 0, w * 0.78, 2.6, d * 0.78);
   addCollider(x - w / 2, y - 2, z - d / 2, x + w / 2, y + h + 0.2, z + d / 2);
   // attached garage with a white roll-up door
   const gx = x + 8, gz = z + fz * 0.5;
-  S(windowBoxGeo(6, 3.4, 7), bmat(color), gx, y + 1.7, gz);
+  S(windowBoxGeo(6, 3.4, 7), hmat(color), gx, y + 1.7, gz);
   S(CONE4, tmat('#4a4f58', TX.roof, 'r2'), gx, y + 4.3, gz, Math.PI / 4, 0, 0, 4.9, 1.8, 5.6);
   addCollider(gx - 3, y - 2, gz - 3.5, gx + 3, y + 3.5, gz + 3.5);
   S(BOX, mat('#f0f0ec'), gx, y + 1.35, gz + fz * 3.52, 0, 0, 0, 4.6, 2.7, 0.06);
@@ -1293,7 +1335,7 @@ let BY = 0; // base height for houses built on raised ground
 function house(x, z, face, color, tall = false) {
   const w = 8, d = 7, h = tall ? 7.5 : 4.5;
   beginB(color);
-  S(windowBoxGeo(w, h, d), bmat(color), x, BY + h / 2, z);
+  S(windowBoxGeo(w, h, d), hmat(color), x, BY + h / 2, z);
   if (BY) S(BOX, mat('#8a8680'), x, BY - 1.5, z, 0, 0, 0, w + 0.4, 3, d + 0.4);
   S(CONE4, tmat(pick(['#c75a4a', '#8b5a44', '#4f6f9b', '#5a8a5a']), TX.roof, 'r'), x, BY + h + 1.4, z, Math.PI / 4, 0, 0, 6.6, 2.8, 5.8);
   addCollider(x - w / 2, BY - 2, z - d / 2, x + w / 2, BY + h + 0.2, z + d / 2);
@@ -1598,20 +1640,45 @@ export async function buildWorld(progress = () => {}) {
   finalizeStatic();
 
   // Clouds
+  // Clouds: soft billboards made from a painted cumulus texture
   G.clouds = [];
-  const cm = new THREE.MeshLambertMaterial({ color: '#e4e8ec', emissive: '#ffffff', emissiveIntensity: 0.08, transparent: true, opacity: 0.9 });
-  for (let i = 0; i < 60; i++) {
+  const cloudTex = [0, 1, 2].map(cloudTexture);
+  cloudMats = cloudTex.map(t => new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, fog: false, opacity: 0.95 }));
+  for (let i = 0; i < 70; i++) {
     const cl = new THREE.Group();
-    for (let j = 0; j < 5; j++) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(rand(4, 8), 8, 6), cm);
-      s.position.set(rand(-8, 8), rand(-1, 2), rand(-4, 4));
-      cl.add(s);
+    const w = rand(40, 110);
+    for (let j = 0; j < 4; j++) {
+      const sp = new THREE.Sprite(pick(cloudMats));
+      sp.scale.set(w * rand(0.6, 1), w * rand(0.35, 0.5), 1);
+      sp.position.set(rand(-w * 0.5, w * 0.5), rand(-4, 6), rand(-w * 0.3, w * 0.3));
+      cl.add(sp);
     }
-    cl.position.set(rand(-WORLD, WORLD), rand(90, 170), rand(-WORLD, WORLD));
-    cl.scale.setScalar(rand(1, 2.2));
+    cl.position.set(rand(-WORLD, WORLD), rand(160, 300), rand(-WORLD, WORLD));
     scene.add(cl);
     G.clouds.push(cl);
   }
+}
+let cloudMats = [];
+// Cumulus: lots of overlapping soft puffs, flatter and greyer underneath.
+function cloudTexture(seed) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  const x = c.getContext('2d');
+  let s2 = 99 + seed * 17; const r = () => { s2 = (s2 * 16807) % 2147483647; return (s2 - 1) / 2147483646; };
+  for (let i = 0; i < 90; i++) {
+    const px = 70 + r() * 372, py = 70 + r() * 110 - Math.max(0, (px - 256) ** 2 / 3000) * 0.3, rad = 25 + r() * 55;
+    if (py + rad * 0.5 > 215) continue;
+    const g = x.createRadialGradient(px, py, rad * 0.1, px, py, rad);
+    const shade = Math.min(1, 0.72 + (215 - py) / 300);
+    const v = Math.round(255 * shade);
+    g.addColorStop(0, `rgba(${v},${v},${Math.min(255, v + 6)},0.55)`); g.addColorStop(1, `rgba(${v},${v},${v},0)`);
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, rad, 0, Math.PI * 2); x.fill();
+  }
+  // flat base
+  const fade = x.createLinearGradient(0, 180, 0, 230);
+  fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+  x.globalCompositeOperation = 'destination-out'; x.fillStyle = fade; x.fillRect(0, 180, 512, 76);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 // ---------------------------------------------------------------- lighting / day-night
@@ -1619,7 +1686,16 @@ let sun, hemi, amb;
 const skyDay = new THREE.Color('#b4c8d4'), skyDusk = new THREE.Color('#d99a78'), skyNight = new THREE.Color('#141a2a');
 const tmpC = new THREE.Color();
 const WHITE = new THREE.Color('#ffffff'), skyTopDay = new THREE.Color('#4f7ca8'), skyTopNight = new THREE.Color('#0a1030');
-export function setShadows(on) { if (sun) sun.castShadow = on; }
+export function setShadows(on, big = false) {
+  if (!sun) return;
+  sun.castShadow = on;
+  // Ultra: shadows reach much further so whole buildings cast them
+  const e = big ? 170 : 60, s = sun.shadow.camera;
+  s.left = -e; s.right = e; s.top = e; s.bottom = -e; s.far = big ? 600 : 260; s.updateProjectionMatrix();
+  const sz = big ? 4096 : 2048;
+  if (sun.shadow.mapSize.x !== sz) { sun.shadow.mapSize.set(sz, sz); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  sun.userData.dist = big ? 300 : 120;
+}
 export function buildLights() {
   hemi = new THREE.HemisphereLight('#ffffff', '#6a8a5a', 0.9);
   amb = new THREE.AmbientLight('#ffffff', 0.12);
@@ -1657,7 +1733,7 @@ export function updateWorld(dt, focus) {
   hemi.intensity = 0.3 + 0.35 * day;
   sun.color.setRGB(1, lerp(0.7, 0.9, day), lerp(0.5, 0.76, day));
   const sd = new THREE.Vector3(Math.cos(a) * 0.8, Math.max(0.35, Math.abs(elev)), 0.45).normalize();
-  sun.position.copy(focus).addScaledVector(sd, 120);
+  sun.position.copy(focus).addScaledVector(sd, sun.userData.dist || 120);
   sun.target.position.copy(focus);
   const night = clamp(1 - day * 1.4, 0, 1);
   for (const m of nightMats) m.emissiveIntensity = night * 0.9;
@@ -1665,6 +1741,7 @@ export function updateWorld(dt, focus) {
   if (bulbMat) bulbMat.color.setRGB(lerp(0.9, 1, night), lerp(0.9, 0.9, night), lerp(0.9, 0.5, night));
   G.night = night;
   for (const c of G.clouds) { c.position.x += dt * 2; if (c.position.x > WORLD + 100) c.position.x = -WORLD - 100; }
+  for (const m of cloudMats) m.color.setRGB(lerp(0.18, 1, day) + dusk * 0.2, lerp(0.2, 1, day) + dusk * 0.05, lerp(0.28, 1, day));
   updateSpace();
 }
 
