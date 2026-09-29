@@ -1,6 +1,6 @@
 // Bobbly Space Center: board the rocket, count down, launch in first person and reach space.
 import * as THREE from 'three';
-import { G, mat, clamp, rand } from './state.js';
+import { G, mat, clamp, rand, textSprite } from './state.js';
 import { LOC } from './world.js';
 import { sfx, rumble } from './audio.js';
 
@@ -61,8 +61,14 @@ export function initRocket() {
   hud.style.cssText = 'position:fixed;top:18%;left:50%;transform:translateX(-50%);text-align:center;color:#fff;font-family:"Barlow Condensed",sans-serif;text-shadow:0 2px 8px rgba(0,0,0,.8);pointer-events:none;display:none;z-index:5';
   document.body.appendChild(hud);
 
+  // glowing boarding marker + sign so it's easy to find
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 3, 32), new THREE.MeshBasicMaterial({ color: '#40d0ff', transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(pad.x - 10, pad.y + 0.1, pad.z + 18); G.scene.add(ring);
+  const sp = textSprite('PRESS E TO BOARD THE ROCKET', { size: 64, color: '#ffffff', bg: 'rgba(16,19,26,0.88)', accent: '#40d0ff', scale: 2.6 });
+  sp.position.set(pad.x - 10, pad.y + 5, pad.z + 18); G.scene.add(sp);
+  // you can board from anywhere around the rocket, not just the marker
   G.interacts.push({
-    x: pad.x - 10, z: pad.z + 18, r: 7,
+    x: pad.x, z: pad.z, r: 26,
     label: () => R.state === 'idle' ? 'Board the rocket and launch to space' : 'Rocket is busy — wait for it to return',
     action: board,
   });
