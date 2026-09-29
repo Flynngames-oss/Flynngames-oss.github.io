@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, noEmoji, rand, pick, clamp, lerp, LAND, WATER_Y } from './state.js';
 import { grassDetail, pavingTexture, asphaltTexture, wallTextures, roofTexture, waterTexture, makeSky } from './textures.js';
-import { setVehicleLighting } from './models.js';
+import { setVehicleLighting, M as modelMat } from './models.js';
 import { buildHeights, heightAt, buildTerrainMesh, buildHighways, biome, slopeAt, findPeak, srand, LAKES, WORLD, ZONES, inZone, riverDist } from './terrain.js';
 
 // ---------------------------------------------------------------- collision
@@ -764,9 +764,18 @@ function buildMegaCity() {
   const pickNear = (x, z) => blocks.filter(b => !b.used).sort((a, b) => Math.hypot(a.cx - x, a.cz - z) - Math.hypot(b.cx - x, b.cz - z))[0];
   // Landmarks in the core
   const TWR = pickNear(CORE.x, CORE.z); TWR.used = true; buildBobblyTower(TWR.cx, TWR.cz);
-  const TWIN = pickNear(CORE.x + 70, CORE.z); TWIN.used = true;
-  for (const dz of [-17, 17]) tower(TWIN.cx, TWIN.cz + dz, 20, 20, 232, '#a8c0dc', '#50555e', true);
-  sign('Twin Bobbles', TWIN.cx, 20, TWIN.cz + 30, '#fff', '#3f6f9e', 3);
+  // Twin Towers on four blocks: the two towers on one diagonal, the plaza and a low-rise on the other
+  {
+    const A = pickNear(CORE.x + 90, CORE.z + 20);
+    const at = (x, z) => blocks.find(b => !b.used && Math.abs(b.cx - x) < 2 && Math.abs(b.cz - z) < 40 && Math.sign(b.cz - A.cz) === Math.sign(z - A.cz));
+    let set = null;
+    for (const [dx, dz] of [[60, 60], [60, -60], [-60, 60], [-60, -60]]) {
+      const B = at(A.cx + dx, A.cz + dz), C = at(A.cx + dx, A.cz), D = at(A.cx, A.cz + dz);
+      if (B && C && D) { set = [A, B, C, D]; break; }
+    }
+    for (const b of set) b.used = true;
+    buildTwinTowers(...set);
+  }
   const CYLB = pickNear(CORE.x - 70, CORE.z + 60); CYLB.used = true;
   const cg = new THREE.CylinderGeometry(15, 15, 190, 28), uv = cg.attributes.uv;
   for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * 24, uv.getY(k) * 47);
@@ -806,6 +815,144 @@ function buildMegaCity() {
   }
   sign('Downtown Bobbly', -205, 12, 60, '#fff', '#c8a040', 4);
   LOC.city = { x: TWR.cx, z: TWR.cz + 26 };
+}
+
+// ---------------------------------------------------------------- the Twin Towers
+// Modelled on the real towers: a chamfered square shaft wrapped in 57 narrow protruding steel columns
+// per face, grey louvred mechanical-floor bands, pointed "trident" arches at the base, a plain parapet,
+// the North Tower's broadcast antenna and the South Tower's rooftop observation deck.
+let twinMats = null;
+function twinMaterials() {
+  if (twinMats) return twinMats;
+  // dark glass between the columns, with office lights at night
+  const mk = (lit) => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d');
+    x.fillStyle = lit ? '#000' : '#39414b'; x.fillRect(0, 0, 256, 256);
+    for (let f = 0; f < 8; f++) for (let k = 0; k < 8; k++) {
+      if (lit) { if (Math.random() < 0.45) { x.fillStyle = `rgba(255,${200 + Math.random() * 40 | 0},${130 + Math.random() * 60 | 0},${0.5 + Math.random() * 0.5})`; x.fillRect(k * 32, f * 32 + 4, 32, 26); } }
+      else { const v = 50 + Math.random() * 25 | 0; x.fillStyle = `rgb(${v},${v + 6},${v + 14})`; x.fillRect(k * 32, f * 32 + 4, 32, 26); }
+    }
+    if (!lit) { x.fillStyle = 'rgba(200,210,220,0.18)'; for (let f = 0; f < 8; f++) x.fillRect(0, f * 32, 256, 4); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return t;
+  };
+  const glass = new THREE.MeshLambertMaterial({ map: mk(false), emissive: '#ffffff', emissiveMap: mk(true), emissiveIntensity: 0 });
+  nightMats.push(glass);
+  const lc = document.createElement('canvas'); lc.width = 64; lc.height = 64;
+  const lx = lc.getContext('2d'); lx.fillStyle = '#8c9298'; lx.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 64; i += 8) { lx.fillStyle = '#5c6268'; lx.fillRect(0, i + 5, 64, 3); }
+  const lt = new THREE.CanvasTexture(lc); lt.wrapS = lt.wrapT = THREE.RepeatWrapping; lt.colorSpace = THREE.SRGBColorSpace;
+  twinMats = { glass, louvre: (reps) => { const t = lt.clone(); t.needsUpdate = true; t.repeat.set(1, reps); return new THREE.MeshLambertMaterial({ map: t }); }, steel: modelMat('alloy') };
+  return twinMats;
+}
+function twinTower(tx, tz, W, H, north) {
+  const TM = twinMaterials();
+  const c = 1.6, hw = W / 2;
+  const n = 57, pitch = (W - 2 * c - 0.8) / (n - 1), floorH = H / 110, base = 21;
+  // chamfered glass shaft
+  const sh = new THREE.Shape();
+  const e = hw - 0.3;
+  sh.moveTo(-e + c, -e); sh.lineTo(e - c, -e); sh.lineTo(e, -e + c); sh.lineTo(e, e - c); sh.lineTo(e - c, e); sh.lineTo(-e + c, e); sh.lineTo(-e, e - c); sh.lineTo(-e, -e + c); sh.lineTo(-e + c, -e);
+  const core = new THREE.ExtrudeGeometry(sh, { depth: H, bevelEnabled: false, UVGenerator: {
+    generateTopUV: (g, v, a, b, cc) => [new THREE.Vector2(0, 0), new THREE.Vector2(0, 0), new THREE.Vector2(0, 0)],
+    generateSideWallUV: (g, v, a, b, cc, d) => {
+      const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2], bx = v[b * 3], by = v[b * 3 + 1], bz = v[b * 3 + 2];
+      const cx = v[cc * 3], cy = v[cc * 3 + 1], cz = v[cc * 3 + 2], dx = v[d * 3], dy = v[d * 3 + 1], dz = v[d * 3 + 2];
+      const U = (x, y) => (Math.abs(ay - by) < Math.abs(ax - bx) ? x : y) / (8 * pitch), V = (z) => z / (8 * floorH);
+      return [new THREE.Vector2(U(ax, ay), V(az)), new THREE.Vector2(U(bx, by), V(bz)), new THREE.Vector2(U(cx, cy), V(cz)), new THREE.Vector2(U(dx, dy), V(dz))];
+    },
+  } });
+  core.rotateX(-Math.PI / 2);
+  S(core, TM.glass, tx, 0, tz);
+  addCollider(tx - hw, 0, tz - hw, tx + hw, H + 0.9, tz + hw);
+  // the steel columns ("pinstripes") on all four faces
+  const faces = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [fx, fz] of faces) {
+    for (let i = 0; i < n; i++) {
+      const along = -hw + c + 0.4 + i * pitch;
+      const px = fx ? tx + fx * (hw - 0.05) : tx + along, pz = fz ? tz + fz * (hw - 0.05) : tz + along;
+      const sx = fx ? 0.62 : 0.44, sz = fx ? 0.44 : 0.62;
+      S(BOX, TM.steel, px, base + (H - base) / 2, pz, 0, 0, 0, sx, H - base, sz);
+      // at the base every third column carries on down as a wide column
+      if (i % 3 === 1) S(BOX, TM.steel, fx ? px + fx * 0.1 : px, (base - 6) / 2, fz ? pz + fz * 0.1 : pz, 0, 0, 0, fx ? 0.9 : 1.3, base - 6, fx ? 1.3 : 0.9);
+    }
+    // pointed "trident" arches between the wide base columns
+    for (let i = 1; i + 3 < n; i += 3) {
+      const a0 = -hw + c + 0.4 + i * pitch + 0.65, a1 = -hw + c + 0.4 + (i + 3) * pitch - 0.65, mid = (a0 + a1) / 2, w2 = (a1 - a0) / 2;
+      const sp = new THREE.Shape();
+      sp.moveTo(a0, 0);
+      sp.quadraticCurveTo(a0, 3.6, mid, 5.2);
+      sp.quadraticCurveTo(a1, 3.6, a1, 0);
+      sp.lineTo(a1 + 0.66, 0); sp.lineTo(a1 + 0.66, 6); sp.lineTo(a0 - 0.66, 6); sp.lineTo(a0 - 0.66, 0); sp.lineTo(a0, 0);
+      void w2;
+      const g = new THREE.ExtrudeGeometry(sp, { depth: 0.7, bevelEnabled: false, curveSegments: 6 });
+      g.translate(0, 0, -0.35);
+      if (fx) g.rotateY(Math.PI / 2);
+      S(g, TM.steel, fx ? tx + fx * (hw - 0.05) : tx, base - 6, fz ? tz + fz * (hw - 0.05) : tz);
+    }
+  }
+  // mechanical floors: grey louvred bands (floors 7-8, 41-42, 75-76 and 108-110)
+  for (const [f0, f1] of [[7, 9], [41, 43], [75, 77], [107, 110]]) {
+    const y0 = f0 * floorH, h = (f1 - f0) * floorH;
+    S(BOX, TM.louvre(Math.round(h / 0.45)), tx, y0 + h / 2, tz, 0, 0, 0, W - 0.25, h, W - 0.25);
+  }
+  // parapet + roof
+  for (const [dx, dz, sx, sz] of [[0, hw, W + 0.5, 0.7], [0, -hw, W + 0.5, 0.7], [hw, 0, 0.7, W + 0.5], [-hw, 0, 0.7, W + 0.5]]) S(BOX, TM.steel, tx + dx, H + 0.8, tz + dz, 0, 0, 0, sx, 1.6, sz);
+  S(BOX, mat('#6f757c'), tx, H + 0.45, tz, 0, 0, 0, W - 0.6, 0.9, W - 0.6);
+  if (north) {
+    // broadcast antenna
+    S(BOX, mat('#9aa0a6'), tx, H + 4, tz, 0, 0, 0, 14, 7, 14);
+    S(new THREE.CylinderGeometry(0.55, 1.6, 1, 12), mat('#c8ccd0'), tx, H + 7 + 45, tz, 0, 0, 0, 1, 90, 1);
+    for (const hy of [20, 42, 62, 78]) S(new THREE.CylinderGeometry(1, 1, 1, 12), mat('#a8adb2'), tx, H + 7 + hy, tz, 0, 0, 0, 2.6 - hy * 0.02, 1.2, 2.6 - hy * 0.02);
+    for (const [ox, oz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) S(CYL8, mat('#8a9096'), tx + ox * 1.2, H + 7 + 16, tz + oz * 1.2, 0, 0, 0, 0.18, 32, 0.18);
+    S(BALL_G, mat('#ff3030', { emissive: '#ff0000', emissiveIntensity: 1 }), tx, H + 97.5, tz, 0, 0, 0, 0.8, 0.8, 0.8);
+    addCollider(tx - 7, H, tz - 7, tx + 7, H + 7.5, tz + 7);
+    addCollider(tx - 1.6, H, tz - 1.6, tx + 1.6, H + 97, tz + 1.6);
+  } else {
+    // rooftop observation deck: walkway with railings, inset from the edge
+    const d = W / 2 - 6;
+    S(BOX, mat('#b8bcc0'), tx, H + 0.8, tz, 0, 0, 0, 2 * d + 2, 0.2, 2 * d + 2);
+    for (const [dx, dz, sx, sz] of [[0, d, 2 * d, 0.12], [0, -d, 2 * d, 0.12], [d, 0, 0.12, 2 * d], [-d, 0, 0.12, 2 * d]]) {
+      S(BOX, mat('#dfe3e6'), tx + dx, H + 1.5, tz + dz, 0, 0, 0, sx, 1.2, sz);
+      addCollider(tx + dx - sx / 2 - 0.1, H, tz + dz - sz / 2 - 0.1, tx + dx + sx / 2 + 0.1, H + 2.1, tz + dz + sz / 2 + 0.1);
+    }
+    S(BOX, mat('#7a8088'), tx, H + 3, tz, 0, 0, 0, 12, 4.5, 8);
+    addCollider(tx - 6, H, tz - 4, tx + 6, H + 5.2, tz + 4);
+    for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; S(CYL8, mat('#5a6068'), tx + Math.cos(a) * (d - 1.5), H + 2, tz + Math.sin(a) * (d - 1.5), 0, 0, 0, 0.12, 1.4, 0.12); }
+  }
+  return H + 0.9;
+}
+function buildTwinTowers(A, B, C, D) {
+  const W = 48, H = 330;
+  const north = A.cz > B.cz ? A : B, south = north === A ? B : A;
+  twinTower(north.cx, north.cz, W, H, true);
+  const top = twinTower(south.cx, south.cz, W, H, false);
+  for (const b of [A, B]) flat(b.cx, 0.036, b.cz, b.bw, b.bd, '#cfc6b3');
+  // the plaza: granite paving, a fountain with the big bronze sphere sculpture, benches and trees
+  const P = C;
+  flat(P.cx, 0.036, P.cz, P.bw, P.bd, '#cfc6b3');
+  S(CYL, mat('#8a8680'), P.cx, 0.45, P.cz, 0, 0, 0, 11, 0.9, 11);
+  S(CYL, mat('#4f86b0'), P.cx, 0.82, P.cz, 0, 0, 0, 10.3, 0.1, 10.3);
+  addCollider(P.cx - 9, 0, P.cz - 9, P.cx + 9, 0.9, P.cz + 9);
+  S(CYL, mat('#6a6560'), P.cx, 2.2, P.cz, 0, 0, 0, 1.2, 3, 1.2);
+  const bronze = new THREE.MeshStandardMaterial({ color: '#8a6a3a', metalness: 0.8, roughness: 0.45 });
+  S(new THREE.SphereGeometry(4.2, 28, 20), bronze, P.cx, 7.8, P.cz);
+  S(new THREE.TorusGeometry(4.25, 0.18, 6, 32), bronze, P.cx, 7.8, P.cz, 0, 0.5, 0);
+  addCollider(P.cx - 4, 3.6, P.cz - 4, P.cx + 4, 12, P.cz + 4);
+  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; S(BOX, mat('#6b4a2b'), P.cx + Math.cos(a) * 16, 0.45, P.cz + Math.sin(a) * 16, -a, 0, 0, 0.6, 0.5, 3); addTree(P.cx + Math.cos(a + 0.5) * 20, P.cz + Math.sin(a + 0.5) * 20, 'round'); }
+  // low dark office block on the fourth corner
+  S(windowBoxGeo(D.bw - 8, 30, D.bd - 8), bmat('#6a6e75'), D.cx, 15, D.cz);
+  S(BOX, mat('#4a4e55'), D.cx, 30.3, D.cz, 0, 0, 0, D.bw - 7, 0.6, D.bd - 7);
+  addCollider(D.cx - (D.bw - 8) / 2, 0, D.cz - (D.bd - 8) / 2, D.cx + (D.bw - 8) / 2, 30.6, D.cz + (D.bd - 8) / 2);
+  sign('TWIN TOWERS', P.cx, 16, P.cz, '#fff', '#3f6f9e', 4);
+  LOC.twin = { x: P.cx, z: P.cz + 14 };
+  LOC.twinTop = { x: south.cx + 10, z: south.cz + 10, top };
+  const sx = south.cx, sz = south.cz, door = { x: sx + (P.cx > sx ? W / 2 + 2 : -W / 2 - 2), z: sz };
+  sign('Elevator to the observation deck', door.x, 5, door.z, '#fff', '#46c25a', 1.6);
+  G.interacts.push(
+    { x: door.x, z: door.z, r: 5, label: () => '🛗 Ride up to the rooftop observation deck', action: () => { const p = G.player; if (p.held && G.dropHeld) G.dropHeld(false); p.place(sx + 10, top + 0.3, sz + 10, 0); G.toast && G.toast(`🏙️ You are ${H} metres up on the South Tower. Jump off and press Space for your parachute 🪂`, '', 7000); } },
+    { x: sx + 10, z: sz + 10, r: 5, minY: top - 2, label: () => '🛗 Take the elevator back down', action: () => { G.player.place(door.x, 0, door.z, 0); } },
+  );
 }
 
 function buildBobblyTower(tx, tz) {
