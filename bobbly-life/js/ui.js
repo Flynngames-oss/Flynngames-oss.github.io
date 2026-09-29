@@ -163,7 +163,7 @@ function dealerPanel() {
 
 // [emoji, name, x, z, facing]
 const TRAVEL = [
-  ['🛫', 'Bobbly International Airport', 'intl'], ['🛩️', 'SW Regional Airport', 'swAir'],
+  ['🏙️', 'Twin Towers', 'twin'], ['🛗', 'Twin Towers — rooftop deck', 'twinTop'], ['🛫', 'Bobbly International Airport', 'intl'], ['🛩️', 'SW Regional Airport', 'swAir'],
   ['✈️', 'Town Airfield', -130, 158, Math.PI / 2], ['⛲', 'Town Square', 0, -14, Math.PI], ['🔫', 'Blaster Shop', -70, -48, -Math.PI / 2],
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
@@ -367,7 +367,7 @@ export function drawMinimap() {
   };
   // far-away landmarks, drawn at a fixed size
   x.font = '16px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (const [e, k] of [['⛰️', 'peak'], ['🎬', 'sign'], ['🏕️', 'cabin'], ['🌴', 'valley'], ['✈️', 'airport'], ['🛫', 'intl'], ['🛩️', 'swAir'], ['🏙️', 'city'], ['🏡', 'suburb'], ['🚀', 'space'], ['🌾', 'farm'], ['🏘️', 'village'], ['🏰', 'castle']]) {
+  for (const [e, k] of [['⛰️', 'peak'], ['🎬', 'sign'], ['🏕️', 'cabin'], ['🌴', 'valley'], ['🗼', 'twin'], ['✈️', 'airport'], ['🛫', 'intl'], ['🛩️', 'swAir'], ['🏙️', 'city'], ['🏡', 'suburb'], ['🚀', 'space'], ['🌾', 'farm'], ['🏘️', 'village'], ['🏰', 'castle']]) {
     const l = LOC[k]; if (!l) continue;
     const dx = l.x - P.x, dz = l.z - P.z, cs = Math.cos(G.cam.yaw), sn = Math.sin(G.cam.yaw);
     const sx = (dx * cs - dz * sn) * zoom, sy = (dx * sn + dz * cs) * zoom;
