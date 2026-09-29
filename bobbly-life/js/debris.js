@@ -52,6 +52,9 @@ const _v = new THREE.Vector3();
 export function smoke(pos, amount = 1, dark = true) {
   for (let i = 0; i < amount; i++) puff(_v.set(pos.x + rand(-0.5, 0.5), pos.y + rand(0, 0.6), pos.z + rand(-0.5, 0.5)), new THREE.Vector3(rand(-0.6, 0.6), rand(1.5, 3.5), rand(-0.6, 0.6)), dark ? '#2a2a2c' : '#bfbfbf', rand(0.8, 1.6), rand(1.2, 2.2), rand(2.5, 4.5));
 }
+export function dust(pos, amount = 3, size = 1) {
+  for (let i = 0; i < amount; i++) puff(_v.set(pos.x + rand(-1, 1) * size, pos.y + rand(0, 1), pos.z + rand(-1, 1) * size), new THREE.Vector3(rand(-3, 3), rand(0.5, 2.5), rand(-3, 3)).multiplyScalar(size), Math.random() < 0.5 ? '#b8ab94' : '#9a9080', rand(1.5, 3) * size, 1.2, rand(3, 6));
+}
 export function sparks(pos, n = 12) {
   for (let i = 0; i < n; i++) puff(pos, new THREE.Vector3(rand(-7, 7), rand(2, 8), rand(-7, 7)), '#ffc060', 0.18, -0.05, rand(0.3, 0.7), true);
 }

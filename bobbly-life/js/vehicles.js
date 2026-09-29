@@ -505,7 +505,10 @@ export class Vehicle {
       if (pc.lost) continue;
       for (const p of pc.pts) {
         _t.set(p[0], p[1], p[2]); this.body.localToWorld(_t);
-        if (pointHitsWorld(_t)) {
+        const hitW = pointHitsWorld(_t);
+        if (hitW) {
+          // whatever this part of the plane hit takes damage depending on which part it was
+          if (hitW !== true && G.hitBuilding) G.hitBuilding(hitW, _t, Math.abs(this.speed) * massOf(this.type) * (PART_HIT[name] || 0.4));
           if (pc.fatal) { this.planeCrash(false); return; }
           this.losePiece(name, _t);
           break;
@@ -725,6 +728,12 @@ export class Vehicle {
       const hit = h1 || h2;
       const along = Math.abs(_f.x * hit.nx + _f.z * hit.nz);
       const impact = Math.abs(prevSpeed) * along;
+      // the building takes damage too (and may come down)
+      if (impact > 5 && hit.c && G.hitBuilding) {
+        const sg = (_f.x * hit.nx + _f.z * hit.nz) < 0 ? 1 : -1;
+        _t.copy(this.pos).addScaledVector(_f, sg * t.len * 0.5); _t.y += t.airliner ? 3.5 : t.h * 0.5;
+        G.hitBuilding(hit.c, _t, impact * massOf(t), hit.nx, hit.nz);
+      }
       if (impact > 4) {
         this.speed *= -0.25;
         this.bounceV += 3;
@@ -968,9 +977,12 @@ function pointHitsWorld(p) {
   const h = baseHeight(p.x, p.z);
   if (p.y < h - 0.05) return true;
   if (p.y < WATER_Y - 0.2 && h < WATER_Y) return true;
-  for (const c of nearColliders(p.x, p.z)) if (!c.off && c.tag !== 'tree' && p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ && p.y > c.minY && p.y < c.maxY) return true;
+  for (const c of nearColliders(p.x, p.z)) if (!c.off && c.tag !== 'tree' && p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ && p.y > c.minY && p.y < c.maxY) return c;
   return false;
 }
+// how heavy each vehicle is when it slams into a building, and how hard each plane part hits
+function massOf(t) { return t.airliner ? 50 : t.plane ? (t.name === 'Biplane' ? 4 : 8) : t.heli ? 4 : t.truck ? 3 : t.wr > 0.8 ? 2.5 : t.isBike ? 0.4 : t.scooter ? 0.5 : 1.2; }
+const PART_HIT = { body: 1, engL: 0.5, engR: 0.5, engine: 0.5, wingL: 0.35, wingR: 0.35, tail: 0.3 };
 let _charMat = null;
 function charMat() { return _charMat || (_charMat = new THREE.MeshStandardMaterial({ color: '#1c1a18', roughness: 0.95, metalness: 0.1 })); }
 
