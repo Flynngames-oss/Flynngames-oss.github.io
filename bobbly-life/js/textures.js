@@ -69,34 +69,78 @@ export function asphaltTexture(lines = true) {
 }
 
 // Building walls: plaster with framed four-pane windows. White-ish so material colour tints it.
-export function wallTextures() {
-  const n = 256, [c, x] = canvas(n);
-  x.fillStyle = '#f4f4f4'; x.fillRect(0, 0, n, n);
-  speckle(x, n, 2, 3000, 215, 255, 0.4);
-  // subtle horizontal siding lines
-  x.fillStyle = 'rgba(0,0,0,0.05)';
-  for (let k = 0; k < n; k += 16) x.fillRect(0, k, n, 2);
-  // window
-  const wx = 64, wy = 52, ww = 128, wh = 120;
-  x.fillStyle = '#d0d0d0'; x.fillRect(wx - 10, wy - 10, ww + 20, wh + 20);           // frame shadow
-  x.fillStyle = '#ffffff'; x.fillRect(wx - 8, wy - 8, ww + 16, wh + 16);             // frame
-  const g = x.createLinearGradient(wx, wy, wx + ww, wy + wh);
-  g.addColorStop(0, '#bfe3ff'); g.addColorStop(0.45, '#7fb2e0'); g.addColorStop(0.55, '#a8d2f5'); g.addColorStop(1, '#5d8fc4');
-  x.fillStyle = g; x.fillRect(wx, wy, ww, wh);
-  x.fillStyle = 'rgba(255,255,255,0.35)';
-  x.beginPath(); x.moveTo(wx + 10, wy + wh - 10); x.lineTo(wx + 50, wy + 10); x.lineTo(wx + 70, wy + 10); x.lineTo(wx + 30, wy + wh - 10); x.fill();
-  x.fillStyle = '#ffffff'; x.fillRect(wx + ww / 2 - 4, wy, 8, wh); x.fillRect(wx, wy + wh / 2 - 4, ww, 8);
-  x.fillStyle = '#c8c8c8'; x.fillRect(wx - 14, wy + wh + 8, ww + 28, 10);            // sill
-  x.fillStyle = '#e8e8e8'; x.fillRect(wx - 14, wy + wh + 6, ww + 28, 5);
-  const map = tex(c);
+// Building facade: a 4 x 4 block of window bays (each bay 4 m) so windows vary — some blinds down,
+// different reflections, and at night only some offices have their lights on.
+export function wallTextures(kind = 'office') {
+  if (kind === 'house') return houseTextures();
+  const n = 512, bay = 128, [c, x] = canvas(n);
+  x.fillStyle = '#e9e7e2'; x.fillRect(0, 0, n, n);
+  speckle(x, n, 2, 9000, 205, 250, 0.35);
   const [e, y] = canvas(n);
   y.fillStyle = '#000'; y.fillRect(0, 0, n, n);
-  const eg = y.createLinearGradient(0, wy, 0, wy + wh);
-  eg.addColorStop(0, '#ffe7a8'); eg.addColorStop(1, '#ffb84a');
-  y.fillStyle = eg; y.fillRect(wx, wy, ww, wh);
-  y.fillStyle = '#000'; y.fillRect(wx + ww / 2 - 4, wy, 8, wh); y.fillRect(wx, wy + wh / 2 - 4, ww, 8);
-  const emit = tex(e);
+  for (let r = 0; r < 4; r++) {
+    // floor slab line
+    x.fillStyle = 'rgba(0,0,0,0.07)'; x.fillRect(0, r * bay + 114, n, 4);
+    for (let k = 0; k < 4; k++) {
+      const bx = k * bay, by = r * bay, wx = bx + 24, wy = by + 26, ww = bay - 48, wh = 70;
+      // dirt streak under the sill
+      const dg = x.createLinearGradient(0, wy + wh, 0, wy + wh + 30);
+      dg.addColorStop(0, 'rgba(60,55,50,0.10)'); dg.addColorStop(1, 'rgba(60,55,50,0)');
+      x.fillStyle = dg; x.fillRect(wx + 6, wy + wh, ww - 12, 30);
+      // frame
+      x.fillStyle = '#4a4e54'; x.fillRect(wx - 3, wy - 3, ww + 6, wh + 6);
+      // glass: sky reflection fading down into the dark interior
+      const tint = rnd();
+      const g = x.createLinearGradient(wx, wy, wx + ww * 0.3, wy + wh);
+      g.addColorStop(0, `rgb(${178 + tint * 30 | 0},${196 + tint * 25 | 0},${212 + tint * 20 | 0})`);
+      g.addColorStop(0.5, `rgb(${104 + tint * 25 | 0},${122 + tint * 25 | 0},${140 + tint * 25 | 0})`);
+      g.addColorStop(1, `rgb(${58 + tint * 15 | 0},${68 + tint * 15 | 0},${80 + tint * 15 | 0})`);
+      x.fillStyle = g; x.fillRect(wx, wy, ww, wh);
+      // blinds pulled part way down in some windows
+      const blind = rnd() < 0.35 ? rnd() * 0.7 : 0;
+      if (blind) { x.fillStyle = rnd() < 0.5 ? '#d8d2c4' : '#bfc3c6'; x.fillRect(wx, wy, ww, wh * blind); x.fillStyle = 'rgba(0,0,0,0.08)'; for (let l = wy + 3; l < wy + wh * blind; l += 4) x.fillRect(wx, l, ww, 1); }
+      // soft diagonal glare
+      x.fillStyle = 'rgba(255,255,255,0.08)';
+      x.beginPath(); x.moveTo(wx + ww * 0.15, wy + wh); x.lineTo(wx + ww * 0.45, wy); x.lineTo(wx + ww * 0.6, wy); x.lineTo(wx + ww * 0.3, wy + wh); x.fill();
+      // mullion + transom
+      x.fillStyle = '#4a4e54'; x.fillRect(wx + ww / 2 - 1.5, wy, 3, wh); x.fillRect(wx, wy + wh * 0.72, ww, 2);
+      // sill
+      x.fillStyle = '#cfcbc4'; x.fillRect(wx - 5, wy + wh + 3, ww + 10, 4);
+      // night: roughly 40% of offices lit, warm or cool light
+      if (rnd() < 0.42) {
+        const warm = rnd() < 0.7, b2 = 0.55 + rnd() * 0.45;
+        y.fillStyle = warm ? `rgba(255,${205 + rnd() * 30 | 0},${140 + rnd() * 40 | 0},${b2})` : `rgba(210,230,255,${b2})`;
+        y.fillRect(wx, wy + wh * blind, ww, wh * (1 - blind));
+        if (blind) { y.fillStyle = `rgba(255,220,170,${b2 * 0.4})`; y.fillRect(wx, wy, ww, wh * blind); }
+        y.fillStyle = '#000'; y.fillRect(wx + ww / 2 - 1.5, wy, 3, wh);
+      }
+    }
+  }
+  const map = tex(c), emit = tex(e);
   return { map, emit };
+}
+
+// Houses: painted lap siding and smaller windows with white trim, one per 4 m bay.
+function houseTextures() {
+  const n = 512, bay = 128, [c, x] = canvas(n);
+  x.fillStyle = '#efece6'; x.fillRect(0, 0, n, n);
+  for (let yy = 0; yy < n; yy += 8) { x.fillStyle = 'rgba(0,0,0,0.07)'; x.fillRect(0, yy + 6, n, 2); x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(0, yy, n, 1); }
+  speckle(x, n, 2, 4000, 215, 250, 0.25);
+  const [e, y] = canvas(n);
+  y.fillStyle = '#000'; y.fillRect(0, 0, n, n);
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
+    const bx = k * bay, by = r * bay, ww = 50, wh = 58, wx = bx + (bay - ww) / 2, wy = by + 30;
+    x.fillStyle = '#fbfbf8'; x.fillRect(wx - 6, wy - 6, ww + 12, wh + 12);          // trim
+    x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(wx - 6, wy + wh + 6, ww + 12, 3);
+    const g = x.createLinearGradient(wx, wy, wx + 20, wy + wh);
+    g.addColorStop(0, '#b8cad8'); g.addColorStop(0.55, '#6c7f90'); g.addColorStop(1, '#3a4652');
+    x.fillStyle = g; x.fillRect(wx, wy, ww, wh);
+    if (rnd() < 0.4) { x.fillStyle = '#f2ece0'; x.fillRect(wx, wy, ww, wh * (0.3 + rnd() * 0.4)); }   // curtains/blinds
+    x.fillStyle = '#fbfbf8'; x.fillRect(wx + ww / 2 - 2, wy, 4, wh); x.fillRect(wx, wy + wh / 2 - 2, ww, 4);
+    if (rnd() < 0.3) { x.fillStyle = 'rgba(60,70,80,0.9)'; x.fillRect(wx - 20, wy - 4, 12, wh + 8); x.fillRect(wx + ww + 8, wy - 4, 12, wh + 8); }  // shutters
+    if (rnd() < 0.5) { y.fillStyle = `rgba(255,${200 + rnd() * 40 | 0},140,${0.6 + rnd() * 0.4})`; y.fillRect(wx, wy, ww, wh); y.fillStyle = '#000'; y.fillRect(wx + ww / 2 - 2, wy, 4, wh); y.fillRect(wx, wy + wh / 2 - 2, ww, 4); }
+  }
+  return { map: tex(c), emit: tex(e) };
 }
 
 export function roofTexture() {
