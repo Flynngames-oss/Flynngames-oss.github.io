@@ -510,7 +510,7 @@ export class Character {
         for (const t of this.tgt) { const hgt = t.y - R.y; t.x += rx * (-hgt * sl); t.z += rz * (-hgt * sl); }
         return;
       }
-      if (scooter || vt.plane && !vt.airliner || vt.heli || vt.boat) { T(PEL, 0, 0.55, 0); T(CHE, 0, 1.05, 0.05); T(HEAD, 0, 1.75, 0.1); }
+      if (scooter || vt.heli || vt.boat) { T(PEL, 0, 0.55, 0); T(CHE, 0, 1.05, 0.05); T(HEAD, 0, 1.75, 0.1); }
       else { T(PEL, 0, 0.36, -0.05); T(CHE, 0, 0.82, -0.1); T(HEAD, 0, 1.36, -0.02); }      // sitting low in a real car seat
       T(FL, -0.25, scooter ? 0.3 : 0.3, 0.6); T(FR, 0.25, scooter ? 0.3 : 0.3, 0.6);
       if (this.seat === 0) { T(HL, -0.22, scooter ? 1.1 : 0.95, 0.55); T(HR, 0.22, scooter ? 1.1 : 0.95, 0.55); }

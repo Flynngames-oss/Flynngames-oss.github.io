@@ -398,7 +398,14 @@ export function updateHUD() {
     if (!G.job && G.waypoint && d < 8) { G.waypoint = null; toast('📍 You arrived!'); }
   } else $('objDist').classList.add('hidden');
   const v = G.player.vehicle;
-  if (v && G.player.seat === 0) { $('speedo').classList.remove('hidden'); $('speedo').textContent = Math.round(Math.abs(v.speed) * 3.6) + ' km/h' + (v.type.heli ? ` · ${Math.round(v.pos.y)}m up` : ''); }
+  if (v && G.player.seat === 0) {
+    $('speedo').classList.remove('hidden');
+    let txt = Math.round(Math.abs(v.speed) * 3.6) + ' km/h' + (v.type.heli || v.type.plane ? ` · ${Math.round(v.pos.y)}m up` : '');
+    if (v.type.plane && v.onGround && !v.wrecked) txt += v.speed > v.type.takeoff ? ' · ✈️ PULL ↑ NOW TO TAKE OFF!' : ` · take-off at ${Math.round(v.type.takeoff * 3.6)} km/h`;
+    if (v.wrecked) txt = '💥 WRECKED — press E to get out';
+    else if (v.flipped) txt = '🙃 Flipped! Hang on…';
+    $('speedo').textContent = txt;
+  }
   else $('speedo').classList.add('hidden');
 }
 

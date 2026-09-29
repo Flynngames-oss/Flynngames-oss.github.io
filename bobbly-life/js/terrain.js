@@ -54,7 +54,8 @@ export const ZONES = {
   gasS: { x0: 40, x1: 70, z0: -470, z1: -430, h: 'auto' },
   camp: { x0: -560, x1: -500, z0: 520, z1: 580, h: 'auto' },
   intl: { x0: 420, x1: 980, z0: -620, z1: -425, h: 'auto' },
-  swAir: { x0: -1080, x1: -760, z0: -1085, z1: -975, h: 'auto' },
+  swAir: { x0: -1095, x1: -745, z0: -1085, z1: -975, h: 'auto' },
+  intlRw: { x0: 346, x1: 985, z0: -490, z1: -420, h: 'intl' },   // the long international runway
 };
 // Rivers split the island into regions (highways cross them on bridges)
 export const RIVERS = [
@@ -110,6 +111,7 @@ function rawHeight(x, z, noRiver = false, noZones = false) {
   if (!noZones) for (const k in ZONES) {
     const r = ZONES[k];
     if (r.h === 'auto') r.h = rawHeight((r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2, true, true);
+    else if (typeof r.h === 'string') r.h = ZONES[r.h].h;
     const zx = Math.max(r.x0 - x, 0, x - r.x1), zz = Math.max(r.z0 - z, 0, z - r.z1);
     h = mix(r.h, h, sm(0, r.h ? 50 : 70, Math.hypot(zx, zz)));
   }

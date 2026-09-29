@@ -1,7 +1,8 @@
 // Drivable vehicles: arcade car physics, ramps launch you, crashes eject you.
 import * as THREE from 'three';
 import { G, mat, clamp, lerp, angleLerp, WATER_Y, rand, pick } from './state.js';
-import { groundHeight, resolveWalls, baseHeight, getGroundTag } from './world.js';
+import { groundHeight, resolveWalls, baseHeight, getGroundTag, nearColliders } from './world.js';
+import { detach, chunk, sparks, smoke, fire, explosion } from './debris.js';
 import { sfx } from './audio.js';
 import { carModel, truckModel, bikeModel, bikeMaterials, airlinerModel, airlinerMaterials, LIVERY_COUNT, wheelModel, meshesFrom, paintMat, M } from './models.js';
 
@@ -19,7 +20,7 @@ export const VTYPES = {
   boat:      { name: 'Speed Boat', emo: '🚤', price: 1000, len: 5.0, wid: 2.2, h: 0.9, wr: 0, max: 30, acc: 15, turn: 1.6, color: '#ffffff', seats: 2, boat: true },
   biplane:   { name: 'Biplane', emo: '🛩️', price: 2000, len: 5.4, wid: 1.4, h: 1.6, wr: 0.4, max: 48, acc: 12, turn: 1.3, color: '#ff5b6e', seats: 1, plane: true, takeoff: 16 },
   jet:       { name: 'Jet Plane', emo: '✈️', price: 5000, len: 8.0, wid: 1.6, h: 1.8, wr: 0.4, max: 85, acc: 20, turn: 1.1, color: '#e8eef5', seats: 1, plane: true, takeoff: 26 },
-  airliner:  { name: 'Airliner', emo: '🛫', price: 25000, len: 40, wid: 4.2, h: 7, wr: 0.6, max: 90, acc: 3.2, turn: 0.38, color: '#f4f6f8', seats: 8, plane: true, airliner: true, takeoff: 48 },
+  airliner:  { name: 'Airliner', emo: '🛫', price: 25000, len: 40, wid: 4.2, h: 7, wr: 0.6, max: 90, acc: 4.0, turn: 0.38, color: '#f4f6f8', seats: 8, plane: true, airliner: true, takeoff: 44 },
   // Electric dirt bikes (original designs)
   eb_shadow:  { name: 'Shadow E-Moto', emo: '🏍️', price: 900, bike: { frame: '#1c1c1e', plastic: '#232326', accent: '#3a3a3e', fork: '#1a1a1a', shock: '#2a2a2a' } },
   eb_stealth: { name: 'Stealth Runner', emo: '🏍️', price: 950, bike: { frame: '#18181a', plastic: '#1c1c1e', accent: '#c83030', fork: '#222', shock: '#c83030' } },
@@ -111,49 +112,66 @@ function buildMesh(v) {
   } else if (t.airliner) {
     const am = airlinerModel();
     let h = 0; for (const ch of v.id) h = (h * 31 + ch.charCodeAt(0)) | 0;
-    body.add(meshesFrom(am.parts, airlinerMaterials(v.livery ?? Math.abs(h) % LIVERY_COUNT)));
-    const fy = am.fy;
+    const M8 = airlinerMaterials(v.livery ?? Math.abs(h) % LIVERY_COUNT);
+    const fy = am.fy, ey = fy - 2.55 + 6.2 * 0.08;
+    const hits = {
+      body: [[0, fy, 20.1], [0, fy + 2, 12], [0, fy - 2, 12], [0, fy + 2.4, -8]],
+      wingL: [[17.9, fy + 0.2, -8], [11, fy - 0.4, -3.5]], wingR: [[-17.9, fy + 0.2, -8], [-11, fy - 0.4, -3.5]],
+      engL: [[6.2, ey - 1.15, 3.2], [6.2, ey, 5.4]], engR: [[-6.2, ey - 1.15, 3.2], [-6.2, ey, 5.4]],
+      tail: [[0, fy + 10.8, -16.5], [7, fy + 1.6, -19], [-7, fy + 1.6, -19]],
+    };
+    v.pieces = {};
+    for (const name in am.groups) { const g = meshesFrom(am.groups[name], M8); body.add(g); v.pieces[name] = { g, pts: hits[name], fatal: name === 'body' }; }
     part(body, '#2a2b2e', 0, fy - 0.9, 17.6, 1.9, 0.5, 0.6);
-    v.seats = [[0.55, fy - 1.75, 16.4], [-0.55, fy - 1.75, 16.4]];
+    v.seats = [[0.55, fy - 1.55, 16.4], [-0.55, fy - 1.55, 16.4]];
     for (const z of [10, 7, 4]) v.seats.push([1.0, fy - 1.85, z], [-1.0, fy - 1.85, z]);
   } else if (t.isBike) {
     const B = t.bike, sc = B.scale || 1;
     const bm = bikeModel(sc);
     const bike = new THREE.Group();       // pivot at the rear contact patch (for wheelies)
     bike.position.z = -bm.wb / 2;
-    body.add(bike);
+    body.add(bike); v.bikeGroup = bike;
     bike.add(meshesFrom(bm.parts, bikeMaterials(B)));
     const mkWheel = (z, parts) => { const w = new THREE.Group(); w.position.set(0, bm.r, z); w.add(meshesFrom(parts)); bike.add(w); v.wheels.push(w); return w; };
     mkWheel(0, bm.wheels[0]); v.frontWheel = mkWheel(bm.wb, bm.wheels[1]);
     v.bikeWb = bm.wb;
     v.seats = [[0, 1.12 * sc - 0.5, (0.5 - 0.65) * sc]];
+    v.eyes = [[0, 1.95 * sc, -0.2 * sc]];
   } else if (t.plane && t.name === 'Biplane') {
-    part(body, c, 0, 1.2, 0, 1.1, 1.1, 5);
-    const eng = part(body, '#4a4f5a', 0, 1.2, 2.65, 0.6, 0.4, 0.6, new THREE.CylinderGeometry(1, 1, 1, 12)); eng.rotation.x = Math.PI / 2;
+    const grp = (name, pts, fatal = false) => { const g = new THREE.Group(); body.add(g); (v.pieces ||= {})[name] = { g, pts, fatal }; return g; };
+    const fus = grp('body', [[0, 1.2, 3.1], [0, 1.75, 0]], true), eng = grp('engine', [[0, 1.2, 3.0], [0, 2.4, 2.95], [0, 0, 2.95]]);
+    const wl = grp('wingL', [[4.4, 2.4, 0.9], [4.4, 0.75, 0.9]]), wr = grp('wingR', [[-4.4, 2.4, 0.9], [-4.4, 0.75, 0.9]]), tail = grp('tail', [[0, 2.6, -2.4], [1.5, 1.4, -2.3], [-1.5, 1.4, -2.3]]);
+    part(fus, c, 0, 1.2, 0, 1.1, 1.1, 5);
+    const e = part(eng, '#4a4f5a', 0, 1.2, 2.65, 0.6, 0.4, 0.6, new THREE.CylinderGeometry(1, 1, 1, 12)); e.rotation.x = Math.PI / 2;
     v.prop = new THREE.Group(); v.prop.position.set(0, 1.2, 2.95);
     part(v.prop, '#6b4a2b', 0, 0, 0, 0.18, 2.6, 0.06); part(v.prop, '#6b4a2b', 0, 0, 0, 2.6, 0.18, 0.06);
-    body.add(v.prop);
-    part(body, '#ffd54a', 0, 0.75, 0.9, 9, 0.12, 1.4);
-    part(body, '#ffd54a', 0, 2.4, 0.9, 9, 0.12, 1.4);
-    for (const x of [-3.2, 3.2]) for (const z of [0.4, 1.4]) part(body, '#6b4a2b', x, 1.58, z, 0.08, 1.6, 0.08);
-    part(body, c, 0, 1.4, -2.3, 3, 0.1, 0.8);
-    part(body, c, 0, 2.0, -2.35, 0.1, 1.2, 0.8);
-    for (const x of [-0.8, 0.8]) { v.wheels.push(part(body, '#222', x, 0.4, 1.3, 0.2, 0.4, 0.4, WHEEL)); part(body, '#4a4f5a', x * 0.7, 0.6, 1.3, 0.08, 0.5, 0.08); }
-    part(body, '#222', 0, 0.2, -2.3, 0.1, 0.2, 0.2, WHEEL);
-    part(body, '#bfe6ff', 0, 1.95, 0.4, 0.9, 0.4, 0.06, BOX, glass);
+    eng.add(v.prop);
+    for (const [g, sx] of [[wl, 1], [wr, -1]]) {
+      part(g, '#ffd54a', sx * 2.3, 0.75, 0.9, 4.5, 0.12, 1.4);
+      part(g, '#ffd54a', sx * 2.3, 2.4, 0.9, 4.5, 0.12, 1.4);
+      for (const z of [0.4, 1.4]) part(g, '#6b4a2b', sx * 3.2, 1.58, z, 0.08, 1.6, 0.08);
+    }
+    part(tail, c, 0, 1.4, -2.3, 3, 0.1, 0.8);
+    part(tail, c, 0, 2.0, -2.35, 0.1, 1.2, 0.8);
+    for (const x of [-0.8, 0.8]) { v.wheels.push(part(fus, '#222', x, 0.4, 1.3, 0.2, 0.4, 0.4, WHEEL)); part(fus, '#4a4f5a', x * 0.7, 0.6, 1.3, 0.08, 0.5, 0.08); }
+    part(tail, '#222', 0, 0.2, -2.3, 0.1, 0.2, 0.2, WHEEL);
+    part(fus, '#bfe6ff', 0, 1.95, 0.4, 0.9, 0.4, 0.06, BOX, glass);
     v.seats = [[0, 0.9, -0.4]];
   } else if (t.plane) {
-    part(body, c, 0, 1.3, 0, 1.3, 1.2, 7);
-    const nose = part(body, c, 0, 1.3, 4.3, 0.65, 1.6, 0.6, new THREE.ConeGeometry(1, 1, 12)); nose.rotation.x = Math.PI / 2;
-    part(body, '#8fd3ff', 0, 1.95, 1.4, 0.9, 0.7, 2.2, new THREE.SphereGeometry(0.5, 14, 10), glass);
+    const grp = (name, pts, fatal = false) => { const g = new THREE.Group(); body.add(g); (v.pieces ||= {})[name] = { g, pts, fatal }; return g; };
+    const fus = grp('body', [[0, 1.3, 4.6], [0, 2.0, 1.4]], true), tail = grp('tail', [[0, 3.3, -3.1], [2.0, 1.45, -3.4], [-2.0, 1.45, -3.4]]);
+    part(fus, c, 0, 1.3, 0, 1.3, 1.2, 7);
+    const nose = part(fus, c, 0, 1.3, 4.3, 0.65, 1.6, 0.6, new THREE.ConeGeometry(1, 1, 12)); nose.rotation.x = Math.PI / 2;
+    part(fus, '#8fd3ff', 0, 1.95, 1.4, 0.9, 0.7, 2.2, new THREE.SphereGeometry(0.5, 14, 10), glass);
     for (const sx of [-1, 1]) {
-      const w = part(body, '#3fa7ff', sx * 2.6, 1.15, -0.4, 4.4, 0.15, 2.2); w.rotation.y = -sx * 0.35;
-      const st = part(body, '#3fa7ff', sx * 1.1, 1.45, -3.1, 1.8, 0.12, 1); st.rotation.y = -sx * 0.3;
+      const wg = grp(sx > 0 ? 'wingL' : 'wingR', [[sx * 4.7, 1.15, -1.3], [sx * 3, 1.15, -0.8]]);
+      const w = part(wg, '#3fa7ff', sx * 2.6, 1.15, -0.4, 4.4, 0.15, 2.2); w.rotation.y = -sx * 0.35;
+      const st = part(tail, '#3fa7ff', sx * 1.1, 1.45, -3.1, 1.8, 0.12, 1); st.rotation.y = -sx * 0.3;
     }
-    part(body, '#3fa7ff', 0, 2.4, -3.1, 0.15, 1.8, 1.4);
-    part(body, '#ff8a3d', 0, 1.3, -3.6, 0.5, 0.5, 0.3, new THREE.CylinderGeometry(1, 1, 1, 12), { emissive: '#ff5500', emissiveIntensity: 0.8 }).rotation.x = Math.PI / 2;
-    for (const [x, z] of [[-0.9, -0.5], [0.9, -0.5], [0, 2.8]]) { v.wheels.push(part(body, '#222', x, 0.4, z, 0.2, 0.4, 0.4, WHEEL)); part(body, '#4a4f5a', x, 0.65, z, 0.08, 0.5, 0.08); }
-    v.seats = [[0, 1.0, 1.2]];
+    part(tail, '#3fa7ff', 0, 2.4, -3.1, 0.15, 1.8, 1.4);
+    part(fus, '#ff8a3d', 0, 1.3, -3.6, 0.5, 0.5, 0.3, new THREE.CylinderGeometry(1, 1, 1, 12), { emissive: '#ff5500', emissiveIntensity: 0.8 }).rotation.x = Math.PI / 2;
+    for (const [x, z] of [[-0.9, -0.5], [0.9, -0.5], [0, 2.8]]) { v.wheels.push(part(fus, '#222', x, 0.4, z, 0.2, 0.4, 0.4, WHEEL)); part(fus, '#4a4f5a', x, 0.65, z, 0.08, 0.5, 0.08); }
+    v.seats = [[0, 0.8, 1.2]];
   } else if (t.heli) {
     part(body, c, 0, 1.4, 0.3, 2.0, 1.8, 3.0, new THREE.SphereGeometry(0.5, 16, 12));
     part(body, '#bfe6ff', 0, 1.6, 1.3, 1.6, 1.2, 1.2, new THREE.SphereGeometry(0.5, 14, 10), glass);
@@ -186,6 +204,8 @@ function buildMesh(v) {
     part(body, '#e84a3f', 0, 1.23, -0.65, 0.4, 0.02, 0.4);
     v.seats = [[0, 0.25, -0.2]];
   }
+  // first-person eye points for each seat (in body space)
+  if (!t.isBike && !t.scooter && !t.boat && v.seats) v.eyes = v.seats.map(s => [s[0], s[1] + (t.heli ? 1.8 : 1.41), s[2] - 0.02]);
   v.body = body;
   return root;
 }
@@ -209,6 +229,8 @@ export class Vehicle {
     this.rotorSpeed = 0;
     this.cargo = [];
     this.remoteDriver = null; this.netT = 0;
+    this.damage = 0; this.lost = {}; this.lostWheels = 0; this.pull = 0;
+    const T = this.type; this.carLike = !T.isBike && !T.plane && !T.heli && !T.boat;
     this.mesh = buildMesh(this);
     this.occupants = this.seats.map(() => null);
     G.scene.add(this.mesh);
@@ -247,6 +269,15 @@ export class Vehicle {
     if (t.plane) return this.planeFly(dt, inp);
     if (t.isBike) return this.ride(dt, inp);
     const prevSpeed = this.speed;
+    if (this.carLike) {
+      if (this.tumbling) return this.physics(dt, prevSpeed);
+      if (this.flipped) {
+        this.flipT += dt; this.speed *= 1 - Math.min(1, dt * 3);
+        if (this.flipT > 2.5 && !this.wrecked) this.unflip();
+        return this.physics(dt, prevSpeed);
+      }
+      if (this.wrecked) { this.speed *= 1 - Math.min(1, dt * 2); return this.physics(dt, prevSpeed); }
+    }
     const inWater = t.boat;
     const canDrive = inWater ? true : this.onGround;
     if (canDrive) {
@@ -276,6 +307,12 @@ export class Vehicle {
       yawRate = clamp(yawRate, -latMax, latMax);
       if (inp.brake && Math.abs(this.speed) > 7) yawRate *= 1.8;                       // handbrake turn
       this.yaw += yawRate * dt;
+      if (this.lostWheels) {
+        // a missing wheel drags the car to one side and grinds sparks off the road
+        this.yaw += this.pull * dt * clamp(Math.abs(this.speed) / 10, 0, 1);
+        this.speed = Math.min(this.speed, t.max * Math.max(0.25, 1 - 0.3 * this.lostWheels));
+        if (Math.abs(this.speed) > 3 && Math.random() < dt * 25) sparks(this.pos, 3);
+      }
       this.steerVis = this.steerA / 0.6;
       // grip: the direction of travel catches up with where the car points
       if (this.moveYaw === undefined) this.moveYaw = this.yaw;
@@ -389,6 +426,7 @@ export class Vehicle {
 
   bikeCrash(msg) {
     const d = this.driver;
+    if (Math.abs(this.speed) > 8) { this.forward(_f); for (let i = 0; i < 5; i++) chunk(M('trim'), 0.3, 0.05, 0.2, _c1.copy(this.pos).setY(this.pos.y + 0.6), _t.copy(_f).multiplyScalar(this.speed * 0.4).add(_c2.set(rand(-3, 3), rand(2, 6), rand(-3, 3)))); sparks(this.pos, 16); }
     this.wheelie = 0; this.wv = 0; this.pitch = 0; this.roll = 1.3;
     const sp = this.speed; this.speed = 0;
     if (d) {
@@ -399,10 +437,12 @@ export class Vehicle {
   }
 
   planeFly(dt, inp) {
-    const t = this.type;
+    const t = this.type, L = this.lost;
+    if (this.wrecked) inp = { throttle: -1, steer: 0 };
     this.throttle = clamp((this.throttle || 0) + inp.throttle * dt * 0.7, 0, 1);
     let fp = this.fp || 0;
-    const target = this.throttle * t.max;
+    const thrustK = t.airliner ? 1 - 0.45 * ((L.engL ? 1 : 0) + (L.engR ? 1 : 0)) : (L.engine ? 0 : 1);
+    const target = this.throttle * t.max * thrustK;
     this.speed += clamp(target - this.speed, -5 * dt, t.acc * dt);
     if (this.onGround) {
       if (inp.throttle < 0) this.speed = Math.max(0, this.speed - 14 * dt);
@@ -412,15 +452,21 @@ export class Vehicle {
       else fp = lerp(fp, 0, 0.2);
     } else {
       const big = !!t.airliner, bankMax = big ? 0.5 : 0.85;
-      fp += ((inp.up ? 1 : 0) - (inp.down ? 1 : 0)) * (big ? 0.4 : 1.1) * dt;
+      fp += ((inp.up ? 1 : 0) - (inp.down ? 1 : 0)) * (big ? 0.4 : 1.1) * dt * (L.tail ? 0.3 : 1);
+      if (L.tail) { fp -= 0.7 * dt; this.yaw += Math.sin(G.time * 3.1) * 0.7 * dt; }
       if (!inp.up && !inp.down) fp *= 1 - Math.min(1, dt * 0.5); // gently levels out
       if (this.speed < t.takeoff * 0.8) fp -= 0.9 * dt;
       fp = clamp(fp, -1.1, big ? 0.3 : 1.0);
       // bank to turn: the plane rolls first, and the turn follows the bank angle
       this.roll = lerp(this.roll, -inp.steer * bankMax, 1 - Math.exp(-dt * (big ? 1.3 : 3)));
-      this.yaw += -this.roll / bankMax * t.turn * dt;
+      // a missing wing: that side drops and the plane spirals down
+      const lostW = (L.wingL ? 1 : 0) + (L.wingR ? 1 : 0);
+      this.roll += ((L.wingR ? 1 : 0) - (L.wingL ? 1 : 0)) * 5 * dt;
+      this.yaw += -Math.sin(this.roll) / bankMax * t.turn * dt;
+      if (lostW) { this.pos.y -= lostW * 8 * dt; fp -= lostW * 0.25 * dt; }
     }
     this.fp = fp;
+    if (this.wrecked && !this.onGround) { this.fallV = (this.fallV || 0) - 22 * dt; this.pos.y += this.fallV * dt; } else this.fallV = 0;
     const cp = Math.cos(fp);
     this.pos.x += Math.sin(this.yaw) * cp * this.speed * dt;
     this.pos.z += Math.cos(this.yaw) * cp * this.speed * dt;
@@ -442,19 +488,180 @@ export class Vehicle {
     this.pitch = -this.fp;
     const before = this.speed;
     this.collideWalls(dt, before);
-    if (!this.onGround && Math.abs(this.speed) < Math.abs(before) * 0.5) this.planeCrash(false);
+    if (!this.onGround && !this.wrecked && Math.abs(this.speed) < Math.abs(before) * 0.5) return this.planeCrash(false);
+    if (!this.onGround && !this.wrecked) this.checkPieces();
+    // engines on fire trail smoke
+    if ((L.engL || L.engR || L.engine || L.wingL || L.wingR) && !this.onGround && Math.random() < dt * 30) smoke(this.pos, 1, true);
+  }
+
+  // Wing tips, engines, tail and nose each check whether they hit the ground or a building.
+  checkPieces() {
+    if (!this.pieces) return;
+    this.mesh.position.copy(this.pos); this.mesh.rotation.set(0, this.yaw, 0);
+    this.body.position.set(0, this.bounce, 0); this.body.rotation.set(this.pitch, 0, this.roll);
+    this.mesh.updateMatrixWorld(true);
+    for (const name in this.pieces) {
+      const pc = this.pieces[name];
+      if (pc.lost) continue;
+      for (const p of pc.pts) {
+        _t.set(p[0], p[1], p[2]); this.body.localToWorld(_t);
+        if (pointHitsWorld(_t)) {
+          if (pc.fatal) { this.planeCrash(false); return; }
+          this.losePiece(name, _t);
+          break;
+        }
+      }
+    }
+  }
+  losePiece(name, at) {
+    const pc = this.pieces && this.pieces[name];
+    if (!pc || pc.lost) return;
+    pc.lost = true; this.lost[name] = true;
+    this.forward(_f);
+    const v = _c1.copy(_f).multiplyScalar(this.speed * 0.75).add(_c2.set(rand(-6, 6), rand(2, 7), rand(-6, 6)));
+    v.y += this.vy * 0.5;
+    detach(pc.g, v, _c2.set(rand(-3, 3), rand(-3, 3), rand(-3, 3)), 90);
+    if (name === 'engine') this.prop = null;
+    const p = at || this.pos;
+    sparks(p, 25); fire(p, 6, 1.5); smoke(p, 4, true);
+    if (G.camera && G.camera.position.distanceToSquared(p) < 40000) sfx.crash();
+    const nice = { wingL: 'left wing', wingR: 'right wing', engL: 'left engine', engR: 'right engine', tail: 'tail', engine: 'engine' }[name] || name;
+    if (this.driver && this.driver.isPlayer && G.toast) G.toast(`💥 Your ${nice} broke off!`, 'bad');
   }
 
   planeCrash(water) {
-    if (G.fx) G.fx.boom(this.pos, !water);
-    this.fp = 0; this.roll = 0; this.throttle = 0;
-    this.speed = 0;
+    if (this.wrecked) { this.onGround = true; return; }
+    this.throttle = 0;
     this.onGround = true;
-    if (this.occupants.some(Boolean)) this.ejectAll(14);
+    const sp = Math.abs(this.speed);
+    if (water) {
+      smoke(this.pos, 6, false);
+      this.fp = 0; this.roll = 0; this.speed = 0;
+      if (this.occupants.some(Boolean)) this.ejectAll(14);
+      return;
+    }
+    // the plane breaks up: every piece flies off and the fuselage burns
+    explosion(_c1.copy(this.pos).setY(this.pos.y + 2), this.type.airliner ? 2.2 : 1.2);
+    if (this.pieces) for (const name in this.pieces) if (name !== 'body') this.losePiece(name);
+    this.wrecked = true; this.burnT = 25;
+    this.charBody();
+    if (this.occupants.some(Boolean)) this.ejectAll(Math.max(14, sp * 0.6));
+    this.speed = sp * 0.25; this.fp = 0; this.roll = clamp(this.roll, -0.5, 0.5);
+    this.blast(this.type.airliner ? 14 : 7);
+  }
+  // knock over anyone near an explosion
+  blast(R) {
+    for (const ch of G.characters) {
+      if (ch.vehicle || ch.isRemote) continue;
+      const P = ch.ragdoll ? ch.p[0] : ch.root;
+      const d = P.distanceTo(this.pos);
+      if (d < R && !ch.ragdoll) { _t.subVectors(P, this.pos).setY(0).normalize().multiplyScalar(14 * (1 - d / R) + 4); _t.y = 8; ch.flop(_t, 3); }
+    }
+  }
+  charBody() {
+    const burnt = charMat();
+    this.body.traverse(o => { if (o.isMesh) { if (o.material && o.material.transparent) o.visible = false; else o.material = burnt; } });
+  }
+
+  // ------------------------------------------------ crashes for cars, trucks and bikes
+  crash(impact, hit) {
+    const t = this.type;
+    if (t.plane || t.heli || t.boat) return;
+    if ((this.crashCD || 0) > G.time) return;
+    this.crashCD = G.time + 0.35;
+    this.damage += impact * (t.truck ? 0.55 : 1);
+    this.forward(_f);
+    const frontHit = hit ? (_f.x * hit.nx + _f.z * hit.nz) < 0 : this.speed >= 0;
+    const sgn = frontHit ? 1 : -1;
+    const at = _c1.copy(this.pos).addScaledVector(_f, sgn * t.len * 0.45); at.y += t.h * 0.35;
+    const n = Math.min(18, Math.floor(impact / 1.6));
+    const body = paintMat(this.color), glass = M('glass'), trim = M('trim');
+    for (let i = 0; i < n; i++) {
+      const k = Math.random();
+      const v = _c2.copy(_f).multiplyScalar(this.speed * 0.3 + sgn * rand(-2, 1)).add(_t.set(rand(-4, 4), rand(2, 4 + impact * 0.25), rand(-4, 4)));
+      if (hit) v.addScaledVector(_t.set(hit.nx, 0, hit.nz), impact * 0.15);
+      if (k < 0.45) chunk(body, rand(0.3, 0.8), 0.05, rand(0.2, 0.6), at, v);
+      else if (k < 0.75) chunk(glass, rand(0.06, 0.18), 0.02, rand(0.05, 0.15), at, v, 12);
+      else chunk(trim, rand(0.3, 1.1), 0.1, 0.12, at, v);
+    }
+    sparks(at, 8 + Math.floor(impact));
+    if (t.isBike) { if (impact > 9 && this.driver) this.bikeCrash('Crashed!'); return; }
+    // wheels come off on big hits
+    if (impact > 14 && this.wheels.length > 2 && Math.random() < 0.35 + (impact - 14) * 0.04) this.loseWheel(frontHit);
+    if (impact > 20 && this.wheels.length > 2 && Math.random() < 0.3) this.loseWheel(!frontHit);
+    // hard hits send the car rolling
+    if (impact > 18 || (impact > 12 && Math.random() < 0.5)) this.tumble(impact);
+    if (this.damage > 170 && !this.wrecked) this.explode();
+  }
+  loseWheel(front) {
+    const cand = this.wheels.filter(w => w.parent && ((w.parent.position.z > 0) === front));
+    const w = pick(cand.length ? cand : this.wheels);
+    if (!w) return;
+    this.wheels.splice(this.wheels.indexOf(w), 1);
+    const side = w.parent.position.x >= 0 ? 1 : -1;
+    this.forward(_f);
+    const v = _c1.copy(_f).multiplyScalar(this.speed * 0.8).add(_c2.set(Math.cos(this.yaw) * side * rand(3, 7), rand(3, 7), -Math.sin(this.yaw) * side * rand(3, 7)));
+    detach(w, v, _c2.set(rand(8, 18), rand(-3, 3), rand(-3, 3)), 60);
+    this.lostWheels++; this.pull += side * 0.35;
+  }
+  tumble(impact) {
+    this.tumbling = true; this.onGround = false; this.flipped = false;
+    this.vy = Math.min(13, 3 + impact * 0.32);
+    this.rollV = (Math.random() < 0.5 ? -1 : 1) * rand(0.5, 1) * impact * 0.28;
+    this.pitchV = rand(-1, 1) * impact * 0.12;
+    this.yawV = rand(-2.5, 2.5);
+    this.pos.y += 0.3;
+    if (this.occupants.some(Boolean)) this.ejectAll(impact * 1.2);   // everyone goes flying
+  }
+  unflip() {
+    this.flipped = false; this.tumbling = true; this.onGround = false;
+    this.vy = 7.5; this.rollV = -wrapA(this.roll) / 0.57; this.pitchV = -wrapA(this.pitch) / 0.57; this.yawV = 0;
+    this.pos.y += 0.2;
+  }
+  explode() {
+    const hadPlayer = this.occupants.some(o => o && o.isPlayer);
+    this.wrecked = true; this.burnT = 25;
+    explosion(_c1.copy(this.pos).setY(this.pos.y + 1), 1.2);
+    this.charBody();
+    if (this.occupants.some(Boolean)) this.ejectAll(26);
+    this.blast(8);
+    while (this.wheels.length > 1 && Math.random() < 0.7) this.loseWheel(Math.random() < 0.5);
+    this.tumble(26);
+    if (hadPlayer && G.toast) G.toast('💥 KABOOM! Your ride blew up!', 'bad');
+  }
+  tumblePhysics(dt, prevSpeed) {
+    const my = this.moveYaw === undefined ? this.yaw : this.moveYaw;
+    this.pos.x += Math.sin(my) * this.speed * dt; this.pos.z += Math.cos(my) * this.speed * dt;
+    this.vy -= 26 * dt; this.pos.y += this.vy * dt;
+    this.roll += this.rollV * dt; this.pitch += this.pitchV * dt; this.yaw += (this.yawV || 0) * dt; this.moveYaw = my;
+    this.speed *= 1 - Math.min(1, dt * 0.3);
+    const gh = groundHeight(this.pos.x, this.pos.z, this.pos.y + 1.5, 0.6);
+    if (this.pos.y <= gh) {
+      this.pos.y = gh;
+      this.roll = wrapA(this.roll); this.pitch = wrapA(this.pitch);
+      const spin = Math.abs(this.rollV) + Math.abs(this.pitchV);
+      const upright = Math.abs(this.roll) < 0.6 && Math.abs(this.pitch) < 0.6;
+      if ((this.vy < -4 || spin > 3.5) && !(upright && this.vy > -9)) {
+        // bounce and keep rolling
+        this.vy = Math.min(9, -this.vy * 0.35 + spin * 0.35 + 1);
+        this.rollV *= 0.62; this.pitchV *= 0.5; this.yawV = (this.yawV || 0) * 0.6;
+        this.speed *= 0.72; this.damage += 3;
+        sparks(this.pos, 10);
+        if (Math.random() < 0.4) this.crash(8, null);
+        if (G.camera && G.camera.position.distanceToSquared(this.pos) < 3600) sfx.crash();
+      } else {
+        this.tumbling = false; this.rollV = this.pitchV = this.yawV = 0; this.vy = 0; this.onGround = true;
+        const r = Math.abs(this.roll), p = Math.abs(this.pitch);
+        if (r < 0.9 && p < 0.9) { this.roll = 0; this.pitch = 0; }
+        else { this.flipped = true; this.flipT = 0; this.roll = (r > 2.2 || p > 2.2) ? Math.PI : Math.sign(this.roll || 1) * Math.PI / 2; this.pitch = 0; }
+      }
+    } else this.onGround = false;
+    this.collideWalls(dt, prevSpeed);
   }
 
   physics(dt, prevSpeed = this.speed) {
     const t = this.type;
+    if (this.tumbling) return this.tumblePhysics(dt, prevSpeed);
     const my = this.moveYaw === undefined ? this.yaw : this.moveYaw;
     this.pos.x += Math.sin(my) * this.speed * dt; this.pos.z += Math.cos(my) * this.speed * dt;
     this.forward(_f);
@@ -496,9 +703,9 @@ export class Vehicle {
       const gf = groundHeight(this.pos.x + _f.x * L, this.pos.z + _f.z * L, this.pos.y + 1.2, 0.3);
       const gb = groundHeight(this.pos.x - _f.x * L, this.pos.z - _f.z * L, this.pos.y + 1.2, 0.3);
       this.slopeP = -Math.atan2(gf - gb, L * 2);
-      this.pitch = lerp(this.pitch, this.slopeP, 0.3);
-    } else this.pitch = lerp(this.pitch, clamp(this.vy * 0.03, -0.5, 0.4) * -1, 0.05);
-    if (!t.isBike) this.roll = lerp(this.roll, clamp((this.steerA || 0) * this.speed * 0.012 + (this.slip || 0) * 0.3, -0.12, 0.12), 0.1);
+      if (!this.flipped) this.pitch = lerp(this.pitch, this.slopeP, 0.3);
+    } else if (!this.flipped) this.pitch = lerp(this.pitch, clamp(this.vy * 0.03, -0.5, 0.4) * -1, 0.05);
+    if (!t.isBike && !this.flipped) this.roll = lerp(this.roll, clamp((this.steerA || 0) * this.speed * 0.012 + (this.slip || 0) * 0.3, -0.12, 0.12), 0.1);
     this.collideWalls(dt, prevSpeed);
   }
 
@@ -522,7 +729,8 @@ export class Vehicle {
         this.speed *= -0.25;
         this.bounceV += 3;
         if (this.driver && this.driver.isPlayer) sfx.crash();
-        if (impact > 17 && this.driver && !t.heli) this.ejectAll(impact);
+        if (impact > 7) this.crash(impact, hit);
+        if (impact > 17 && this.driver && !t.heli && !t.plane) this.ejectAll(impact * 1.3);
       } else this.speed *= 1 - along * 0.5;
       if (t.heli && this.hvel) this.speed *= 0.5;
     }
@@ -533,7 +741,7 @@ export class Vehicle {
     for (const ch of [...this.occupants]) {
       if (!ch) continue;
       this.removeOccupant(ch);
-      _t.copy(_f).multiplyScalar(force * 0.7); _t.y = 7;
+      _t.copy(_f).multiplyScalar(force * 0.8); _t.y = 7 + force * 0.25;
       ch.root.y += 1.2;
       for (const p of ch.p) p.y += 1.2;
       ch.flop(_t, 2.5);
@@ -625,8 +833,13 @@ export class Vehicle {
     if (this.steerWheels) for (const p of this.steerWheels) p.rotation.y = (this.steerA || 0) * 0.9;
     m.position.copy(this.pos);
     m.rotation.set(0, this.yaw, 0);
-    this.body.position.y = this.bounce;
     this.body.rotation.set(this.pitch, 0, this.roll);
+    if (this.carLike) {
+      // cars roll over around their middle, so a car on its roof sits on its roof
+      const hc = this.type.h * 0.5;
+      _t.set(0, hc, 0).applyEuler(this.body.rotation);
+      this.body.position.set(-_t.x, this.bounce + hc - _t.y, -_t.z);
+    } else this.body.position.set(0, this.bounce, 0);
     for (const w of this.wheels) w.rotation.x += this.speed * 0.016 / Math.max(0.3, this.type.wr);
     if (this.prop) this.prop.rotation.z += (this.driver || this.remoteDriver ? 0.3 + (this.throttle || 0) * 0.8 + Math.abs(this.speed) * 0.02 : 0);
     if (this.rotor) { this.rotor.rotation.y += this.rotorSpeed * 0.5; this.tailRotor.rotation.x += this.rotorSpeed * 0.6; }
@@ -648,6 +861,7 @@ export class Vehicle {
   }
 
   update(dt) {
+    this.effects(dt);
     if (this.remoteDriver) {
       if (this.net) {
         const k = 1 - Math.exp(-dt * 12);
@@ -675,6 +889,35 @@ export class Vehicle {
         if (Math.abs(this.bounce) < 0.001 && Math.abs(this.bounceV) < 0.01) { this.bounce = 0; this.bounceV = 0; }
       }
     }
+    this.sync();
+  }
+
+  effects(dt) {
+    const hurt = this.damage > 80 || this.wrecked || this.lostWheels || Object.keys(this.lost).length;
+    if (!hurt) { this.idleT = 0; return; }
+    const cam = G.camera, d2 = cam ? cam.position.distanceToSquared(this.pos) : 0;
+    this.fxT = (this.fxT || 0) - dt;
+    if (this.burnT > 0) this.burnT -= dt;
+    if ((this.damage > 80 || this.wrecked) && this.fxT <= 0 && d2 < 90000) {
+      this.fxT = this.wrecked ? 0.09 : 0.25;
+      this.forward(_f);
+      _c1.copy(this.pos).addScaledVector(_f, this.type.plane ? 0 : this.type.len * 0.3); _c1.y += this.type.h * 0.6;
+      if (this.wrecked && this.burnT > 0) fire(_c1, 2, this.type.airliner ? 3 : 1);
+      smoke(_c1, 1, this.damage > 120 || this.wrecked);
+    }
+    // wrecks get towed away (repaired) once nobody is using them and nobody is watching
+    if (!this.driver && !this.remoteDriver) {
+      this.idleT = (this.idleT || 0) + dt;
+      if (this.idleT > 45 && d2 > 8100) this.repair();
+    } else this.idleT = 0;
+  }
+  repair() {
+    G.scene.remove(this.mesh);
+    this.wheels = []; this.steerWheels = null; this.pieces = null; this.prop = null; this.frontWheel = null; this.siren = null; this.cockpit = null;
+    this.mesh = buildMesh(this);
+    G.scene.add(this.mesh);
+    this.damage = 0; this.wrecked = false; this.flipped = false; this.tumbling = false; this.lostWheels = 0; this.pull = 0; this.lost = {};
+    this.roll = 0; this.pitch = 0; this.fp = 0; this.idleT = 0; this.burnT = 0; this.speed = 0;
     this.sync();
   }
 
@@ -706,12 +949,30 @@ export function bumpVehicles() {
       const am = a.remoteDriver ? 0 : 1, bm = b.remoteDriver ? 0 : 1;
       a.pos.x -= dx * push * am; a.pos.z -= dz * push * am;
       b.pos.x += dx * push * bm; b.pos.z += dz * push * bm;
+      const nx = dx / d, nz = dz / d;
+      const closing = (Math.sin(a.yaw) * a.speed - Math.sin(b.yaw) * b.speed) * nx + (Math.cos(a.yaw) * a.speed - Math.cos(b.yaw) * b.speed) * nz;
+      if (closing > 9 && !a.type.plane && !b.type.plane) {
+        if (am) a.crash(closing * 0.8, { nx: -nx, nz: -nz });
+        if (bm) b.crash(closing * 0.8, { nx, nz });
+        if (closing > 16) for (const v of [a, b]) if (v.driver && !v.remoteDriver) v.ejectAll(closing);
+      }
       const avg = (a.speed + b.speed) * 0.5;
       if (am) a.speed = lerp(a.speed, avg, 0.5);
       if (bm) b.speed = lerp(b.speed, avg, 0.5);
     }
   }
 }
+
+function wrapA(a) { return ((a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; }
+function pointHitsWorld(p) {
+  const h = baseHeight(p.x, p.z);
+  if (p.y < h - 0.05) return true;
+  if (p.y < WATER_Y - 0.2 && h < WATER_Y) return true;
+  for (const c of nearColliders(p.x, p.z)) if (!c.off && c.tag !== 'tree' && p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ && p.y > c.minY && p.y < c.maxY) return true;
+  return false;
+}
+let _charMat = null;
+function charMat() { return _charMat || (_charMat = new THREE.MeshStandardMaterial({ color: '#1c1a18', roughness: 0.95, metalness: 0.1 })); }
 
 export function randomCarColor() {
   return pick(['#3fa7ff', '#ff5b6e', '#46c25a', '#b46cff', '#ffffff', '#4a4f5a', '#ff8a3d', '#3fd6d0']);
