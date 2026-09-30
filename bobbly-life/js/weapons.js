@@ -117,7 +117,7 @@ export function applyHit(ch, dir, w) {
   _t.copy(dir).setY(0).normalize().multiplyScalar(w.push);
   _t.y = w.push * 0.35 + 1;
   if (ch.ragdoll) { for (const p of ch.prev) p.addScaledVector(_t, -1 / 60 * 0.4); return; }
-  if (ch.soak >= 1) { ch.soak = 0; ch.flop(_t, 2); }
+  if (ch.soak >= 1) { ch.soak = 0; ch.flop(_t, 2); if (!ch.isPlayer && G.crime) G.crime(ch.cop ? 'Blasting a police officer' : 'Blasting people', ch.cop ? 3 : 1); }
   else { ch.vel.x += _t.x * 0.25; ch.vel.z += _t.z * 0.25; for (const v of ch.v) v.addScaledVector(dir, w.push * 0.4); }
 }
 

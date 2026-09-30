@@ -17,6 +17,8 @@ import { initAudio, sfx, setEngine, setMusic, musicPlaying } from './audio.js';
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
 import { updateDebris } from './debris.js';
 import { updateCockpit } from './cockpit.js';
+import { initQuests, updateQuests, fireCannon } from './quests.js';
+import { initPolice, updatePolice } from './police.js';
 import { initRocket, updateRocket } from './rocket.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
@@ -133,6 +135,8 @@ WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color
 initTraffic(22);
 initSkyTraffic();
 initRocket();
+initPolice();
+initQuests();
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
   const n = new Character(randomOutfit(), { isNPC: true });
@@ -229,6 +233,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (!G.started || G.ui.panel || G.ui.help) return;
   if (!document.pointerLockElement && !isTouch) { canvas.requestPointerLock && canvas.requestPointerLock(); }
   if (e.button === 0 && player.weapon && !player.vehicle) { G.mouse.fire = true; return; }
+  if (e.button === 0 && player.vehicle && player.vehicle.type.fighter) { G.mouse.fire = true; return; }
   if (e.button === 0 || e.button === 2) {
     if (G.mouse.grabLock) { G.mouse.grabLock = false; }
     G.mouse.grab = true;
@@ -312,6 +317,7 @@ function nearestVehicle() {
 }
 
 function interact() {
+  if (G.arrested) return;
   if (G.rocketRide) { G.rocketE && G.rocketE(); return; }
   if (player.ragdoll) return;
   if (player.vehicle) {
@@ -671,6 +677,7 @@ function buildTitle() {
 }
 
 G.applyGraphics = () => applyGraphics();
+G.writeSave = writeSave;
 function applyGraphics() {
   const high = G.save.gfx !== 'low', ultra = G.save.gfx === 'ultra';
   renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
@@ -704,7 +711,7 @@ function startGame() {
 // ---------------------------------------------------------------- per-frame player control
 function controlPlayer(dt) {
   const p = player;
-  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide;
+  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested;
   let ix = 0, iy = 0;
   if (!blocked) {
     ix = (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + touch.mx;
@@ -726,6 +733,7 @@ function controlPlayer(dt) {
       p.prevSpace = space;
       if (isTouch && v.type.heli) { inp.up = touch.my > 0.6; }
       v.drive(dt, inp);
+      if (v.type.fighter && !blocked && (K.KeyF || G.mouse.fire)) fireCannon(v);
       v.hitThings((ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
       v.catchCargo();
     }
@@ -909,6 +917,8 @@ function loop(now) {
   for (const v of G.vehicles) if (!(v.driver === player && player.seat === 0)) v.update(dt); else v.sync();
   bumpVehicles();
   updateNPCs(dt);
+  updatePolice(dt);
+  updateQuests(dt);
   for (const c of G.characters) c.update(dt);
   updateRocket(dt);
   pushCharacters();

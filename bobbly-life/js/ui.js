@@ -88,7 +88,7 @@ function clothingPanel(title) {
     if (tab === 'skins') {
       html += `<p class="small">A skin changes your whole look! You can still change hats and colors after.</p><div class="grid">${SKINS.map(sk => {
         const owned = G.save.ownedSkins.includes(sk.id);
-        return `<div class="item ${owned ? 'owned' : ''}" data-skin="${sk.id}"><span class="emo">${sk.emo}</span>${sk.name}<div class="price">${owned ? 'Owned — wear it' : '$' + sk.price}</div></div>`;
+        return `<div class="item ${owned ? 'owned' : ''}" data-skin="${sk.id}"><span class="emo">${sk.emo}</span>${sk.name}<div class="price">${owned ? 'Owned — wear it' : sk.quest ? '🔒 Secret character' : '$' + sk.price}</div>${!owned && sk.quest ? `<div class="small">${sk.quest}</div>` : ''}</div>`;
       }).join('')}</div>`;
     }
     if (tab === 'hats') html += itemGrid(HATS, 'ownedHats', 'hat');
@@ -107,6 +107,7 @@ function clothingPanel(title) {
     el.innerHTML = html;
     el.querySelectorAll('[data-skin]').forEach(it => it.onclick = () => {
       const sk = SKINS.find(x => x.id === it.dataset.skin);
+      if (!G.save.ownedSkins.includes(sk.id) && sk.quest) { toast(`🔒 ${sk.quest}`, 'bad', 6000); return; }
       if (!G.save.ownedSkins.includes(sk.id)) {
         if (G.save.money < sk.price) { toast('Not enough money! Do some jobs 💼', 'bad'); sfx.bad(); return; }
         addMoney(-sk.price, `Bought the ${sk.name} skin!`);

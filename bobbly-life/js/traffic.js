@@ -30,6 +30,7 @@ export function initTraffic(n = 12) {
     const type = pick(['sedan', 'sedan', 'sedan', 'taxi', 'sports', 'pickup', 'icecream']);
     const v = new Vehicle(type, x, z, Math.atan2(b.x - a.x, b.z - a.z), { id: 't' + i, color: type === 'sedan' ? randomCarColor() : null });
     v.traffic = { pts, idx: (start + 1) % 4, cruise: 11 + Math.random() * 4 };
+    v.aiDriven = true;
     cars.push(v);
   }
 }
@@ -40,7 +41,7 @@ export function updateTraffic(dt, onRemoteHit) {
     const T = v.traffic;
     if (!T) continue;
     // someone took it: it becomes a normal car
-    if (v.driver || v.remoteDriver) { v.traffic = null; continue; }
+    if (v.driver || v.remoteDriver) { if (v.driver && v.driver.isPlayer && G.crime) G.crime('Stealing a car', 2); v.traffic = null; v.aiDriven = false; continue; }
     const p = T.pts[T.idx];
     const dx = p.x - v.pos.x, dz = p.z - v.pos.z;
     if (Math.hypot(dx, dz) < 3.5) T.idx = (T.idx + 1) % T.pts.length;

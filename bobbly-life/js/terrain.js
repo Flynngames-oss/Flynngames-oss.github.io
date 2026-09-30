@@ -55,6 +55,7 @@ export const ZONES = {
   camp: { x0: -560, x1: -500, z0: 520, z1: 580, h: 'auto' },
   intl: { x0: 420, x1: 980, z0: -620, z1: -425, h: 'auto' },
   swAir: { x0: -1095, x1: -745, z0: -1085, z1: -975, h: 'auto' },
+  jail: { x0: -175, x1: -105, z0: -305, z1: -235, h: 0 },
   intlRw: { x0: 346, x1: 985, z0: -490, z1: -420, h: 'intl' },   // the long international runway
 };
 // Rivers split the island into regions (highways cross them on bridges)
