@@ -179,6 +179,10 @@ export const SKINS = [
   { id: 'cowboy', name: 'Cowboy', emo: '🤠', price: 250, o: { skin: '#f2c9a0', shirt: '#b8322a', pants: '#3f5f8b', hat: 'cowboy', glasses: 'none', eyes: 'round', extras: [] } },
   { id: 'viking', name: 'Viking', emo: '⚔️', price: 350, o: { skin: '#f2c9a0', shirt: '#8b5a2b', pants: '#4a2b1a', hat: 'viking', glasses: 'none', eyes: 'angry', extras: ['cape:#6b4a2b'] } },
   { id: 'gold', name: 'Golden Bobbler', emo: '🏆', price: 2000, o: { skin: '#ffcc22', shirt: '#ffcc22', pants: '#e6b400', hat: 'crown', glasses: 'diamond', eyes: 'happy', extras: [] } },
+  // special characters you unlock by finding them and doing their missions
+  { id: 'flynn', name: 'King Flynn', emo: '🤴', price: 0, quest: 'Collect every present, then visit King Flynn at his castle', o: { skin: '#f2c9a0', shirt: '#7a1020', pants: '#2a1a40', hat: 'crown', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#8a5a2b', extras: ['cape:#b0122a', 'belly:#f4e6c0'] } },
+  { id: 'george', name: 'George', emo: '🤪', price: 0, quest: 'Find George in his secret treehouse and do his mission', o: { skin: '#f2c9a0', shirt: '#ffcf4a', pants: '#3fa7ff', hat: 'propeller', glasses: 'nerd', eyes: 'happy', hair: 'curly', hairColor: '#c9a060', extras: ['nose:#ff5b6e'] } },
+  { id: 'jacob', name: 'Jacob', emo: '🪂', price: 0, quest: 'Find Jacob on top of the Twin Towers and bring him the crystal', o: { skin: '#e0ac86', shirt: '#ff6a1a', pants: '#ff6a1a', hat: 'none', glasses: 'sun', eyes: 'round', hair: 'short', hairColor: '#1c1512', extras: ['backpack:#2a2a2e'] } },
   { id: 'shadow', name: 'Shadow', emo: '🌑', price: 800, o: { skin: '#1a1a22', shirt: '#1a1a22', pants: '#1a1a22', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['visor:#ff2040'] } },
 ];
 
@@ -246,7 +250,7 @@ export const SKIN_TONES = ['#f6d7c3', '#eec4a5', '#e0ac86', '#c68b62', '#a86f4a'
 const SHIRTS = ['#2f3e5c', '#3a3a40', '#6b2f3a', '#4a5a3a', '#d9d2c3', '#f0f0f0', '#1f1f24', '#4f6f8f', '#8a6a4a', '#a33a3a', '#2f5f5f', '#c77a2a', '#5a4a6a'];
 const PANTS = ['#2c3e5c', '#1f2328', '#4a4f58', '#8a7a5a', '#3b4a66', '#555a44', '#6a5a4a'];
 export function randomOutfit() {
-  if (Math.random() < 0.1) { const sk = pick(SKINS.slice(1)); return { ...sk.o, extras: [...sk.o.extras] }; }
+  if (Math.random() < 0.1) { const sk = pick(SKINS.slice(1).filter(s => !s.quest)); return { ...sk.o, extras: [...sk.o.extras] }; }
   return {
     skin: pick(SKIN_TONES), shirt: pick(SHIRTS), pants: pick(PANTS),
     hair: pick(['short', 'short', 'buzz', 'swept', 'curly', 'long', 'ponytail', 'bun', 'none']), hairColor: pick(HAIR_COLORS),
@@ -534,6 +538,7 @@ export class Character {
       T(HL, -0.6, 1.6 + Math.sin(t) * 0.3, 0.4 + Math.cos(t) * 0.3);
       T(HR, 0.6, 1.6 + Math.sin(t + Math.PI) * 0.3, 0.4 + Math.cos(t + Math.PI) * 0.3);
     }
+    if (this.cuffed) { T(HL, -0.14, 0.85, -0.32); T(HR, 0.14, 0.85, -0.32); T(HEAD, 0, 1.9, 0.12); }
     if (this.emote && spd < 0.5) {
       const t = this.emoteT;
       if (this.emote === 'wave') { T(HR, 0.55, 2.3, 0.1 + Math.sin(t * 10) * 0.25); }

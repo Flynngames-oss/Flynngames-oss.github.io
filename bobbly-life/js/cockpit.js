@@ -198,7 +198,8 @@ function bikeCockpit(v, g) {
 // ----- biplane / jet: analog six-pack
 function smallPlaneCockpit(v, g) {
   const jet = v.type.name !== 'Biplane';
-  const y = jet ? 1.96 : 1.9, z = jet ? 1.95 : 0.2, w = jet ? 0.6 : 0.82;
+  const fighter = !!v.type.fighter;
+  const y = fighter ? 1.95 : jet ? 1.96 : 1.9, z = fighter ? 2.8 : jet ? 1.95 : 0.2, w = jet ? 0.6 : 0.82;
   const six = panel(w, w * 0.5, 1024, 512, (x, W, H) => {
     const d = flightData(v);
     x.fillStyle = '#26282c'; x.fillRect(0, 0, W, H);

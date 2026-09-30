@@ -20,6 +20,7 @@ export const VTYPES = {
   boat:      { name: 'Speed Boat', emo: '🚤', price: 1000, len: 5.0, wid: 2.2, h: 0.9, wr: 0, max: 30, acc: 15, turn: 1.6, color: '#ffffff', seats: 2, boat: true },
   biplane:   { name: 'Biplane', emo: '🛩️', price: 2000, len: 5.4, wid: 1.4, h: 1.6, wr: 0.4, max: 48, acc: 12, turn: 1.3, color: '#ff5b6e', seats: 1, plane: true, takeoff: 16 },
   jet:       { name: 'Jet Plane', emo: '✈️', price: 5000, len: 8.0, wid: 1.6, h: 1.8, wr: 0.4, max: 85, acc: 20, turn: 1.1, color: '#e8eef5', seats: 1, plane: true, takeoff: 26 },
+  fighter:   { name: 'Fighter Jet', emo: '🛩️', price: 12000, len: 10, wid: 1.8, h: 2, wr: 0.4, max: 135, acc: 32, turn: 1.6, color: '#7d8791', seats: 1, plane: true, fighter: true, takeoff: 30 },
   airliner:  { name: 'Airliner', emo: '🛫', price: 25000, len: 40, wid: 4.2, h: 7, wr: 0.6, max: 90, acc: 4.0, turn: 0.38, color: '#f4f6f8', seats: 8, plane: true, airliner: true, takeoff: 44 },
   // Electric dirt bikes (original designs)
   eb_shadow:  { name: 'Shadow E-Moto', emo: '🏍️', price: 900, bike: { frame: '#1c1c1e', plastic: '#232326', accent: '#3a3a3e', fork: '#1a1a1a', shock: '#2a2a2a' } },
@@ -137,6 +138,28 @@ function buildMesh(v) {
     v.bikeWb = bm.wb;
     v.seats = [[0, 1.12 * sc - 0.5, (0.5 - 0.65) * sc]];
     v.eyes = [[0, 1.95 * sc, -0.2 * sc]];
+  } else if (t.fighter) {
+    const grp = (name, pts, fatal = false) => { const g = new THREE.Group(); body.add(g); (v.pieces ||= {})[name] = { g, pts, fatal }; return g; };
+    const fus = grp('body', [[0, 1.3, 5.6], [0, 2.1, 1.6]], true), tail = grp('tail', [[1.3, 3.2, -4.2], [-1.3, 3.2, -4.2], [2.4, 1.3, -4.4], [-2.4, 1.3, -4.4]]);
+    const grey = '#7d8791', dark = '#3a4048';
+    part(fus, grey, 0, 1.3, 0, 1.3, 1.0, 8.5);
+    part(fus, grey, 0, 1.15, -1.2, 2.2, 0.7, 4.5);                        // wide rear body
+    const nose = part(fus, grey, 0, 1.3, 5.3, 0.62, 2.4, 0.52, new THREE.ConeGeometry(1, 1, 16)); nose.rotation.x = Math.PI / 2;
+    part(fus, '#9fd3ff', 0, 1.95, 2.2, 0.8, 0.65, 2.4, new THREE.SphereGeometry(0.5, 16, 10), glass);   // canopy
+    for (const sx of [-1, 1]) {
+      part(fus, dark, sx * 0.85, 1.05, 1.5, 0.45, 0.6, 2.2);             // intakes
+      const wg = grp(sx > 0 ? 'wingL' : 'wingR', [[sx * 4.6, 1.2, -2.6], [sx * 3, 1.2, -1.2]]);
+      const sh = new THREE.Shape(); sh.moveTo(0, 2.2); sh.lineTo(sx * 4.6, -2.2); sh.lineTo(sx * 4.6, -3.2); sh.lineTo(0, -3.4); sh.lineTo(0, 2.2);
+      const wgGeo = new THREE.ExtrudeGeometry(sh, { depth: 0.14, bevelEnabled: false }); wgGeo.rotateX(Math.PI / 2);
+      const w = new THREE.Mesh(wgGeo, mat(grey)); w.position.set(sx * 0.5, 1.25, 0); w.castShadow = true; wg.add(w);
+      part(wg, '#e8e8e8', sx * 3.4, 0.95, -1.0, 0.18, 0.18, 2.4, new THREE.CylinderGeometry(1, 1, 1, 8)).rotation.x = Math.PI / 2;   // missile
+      part(wg, '#c02020', sx * 3.4, 0.95, 0.25, 0.12, 0.2, 0.12, new THREE.ConeGeometry(1, 1, 8)).rotation.x = Math.PI / 2;
+      const fin = part(tail, grey, sx * 1.1, 2.3, -4.0, 0.12, 1.9, 1.6); fin.rotation.z = -sx * 0.35;
+      const st = part(tail, grey, sx * 1.6, 1.25, -4.3, 2.0, 0.1, 1.3); st.rotation.y = -sx * 0.25;
+      part(fus, '#ff8a3d', sx * 0.45, 1.2, -4.0, 0.34, 0.34, 0.3, new THREE.CylinderGeometry(1, 1, 1, 12), { emissive: '#ff5500', emissiveIntensity: 0.9 }).rotation.x = Math.PI / 2;
+    }
+    for (const [x, z] of [[-1.0, -1.2], [1.0, -1.2], [0, 3.6]]) { v.wheels.push(part(fus, '#222', x, 0.4, z, 0.2, 0.4, 0.4, WHEEL)); part(fus, '#4a4f5a', x, 0.65, z, 0.08, 0.5, 0.08); }
+    v.seats = [[0, 0.8, 1.9]];
   } else if (t.plane && t.name === 'Biplane') {
     const grp = (name, pts, fatal = false) => { const g = new THREE.Group(); body.add(g); (v.pieces ||= {})[name] = { g, pts, fatal }; return g; };
     const fus = grp('body', [[0, 1.2, 3.1], [0, 1.75, 0]], true), eng = grp('engine', [[0, 1.2, 3.0], [0, 2.4, 2.95], [0, 0, 2.95]]);
@@ -733,6 +756,7 @@ export class Vehicle {
         const sg = (_f.x * hit.nx + _f.z * hit.nz) < 0 ? 1 : -1;
         _t.copy(this.pos).addScaledVector(_f, sg * t.len * 0.5); _t.y += t.airliner ? 3.5 : t.h * 0.5;
         G.hitBuilding(hit.c, _t, impact * massOf(t), hit.nx, hit.nz);
+        if (this.driver && this.driver.isPlayer && impact * massOf(t) > 25 && G.crime) G.crime('Smashing into buildings', 2);
       }
       if (impact > 4) {
         this.speed *= -0.25;
@@ -791,7 +815,7 @@ export class Vehicle {
         if (sp > 3.5 || this.vy < -5) {
           _t.copy(_f).multiplyScalar(this.speed * 1.1); _t.y = 4 + sp * 0.25;
           if (ch.isRemote) onRemoteHit && onRemoteHit(ch, _t);
-          else if (!ch.ragdoll) { ch.flop(_t, 2.5); if (this.driver && this.driver.isPlayer) sfx.slap(); }
+          else if (!ch.ragdoll) { ch.flop(_t, 2.5); if (this.driver && this.driver.isPlayer) { sfx.slap(); G.crime && G.crime(ch.cop ? 'Running over a police officer' : 'Hitting a pedestrian', ch.cop ? 3 : 2); } }
         } else if (!ch.isRemote && !ch.ragdoll) {
           const pushX = (lx >= 0 ? 1 : -1) * (t.wid / 2 + 0.46 - Math.abs(lx));
           if (Math.abs(pushX) < t.wid) { ch.root.x += pushX * c; ch.root.z -= pushX * s; }
@@ -853,9 +877,10 @@ export class Vehicle {
     if (this.prop) this.prop.rotation.z += (this.driver || this.remoteDriver ? 0.3 + (this.throttle || 0) * 0.8 + Math.abs(this.speed) * 0.02 : 0);
     if (this.rotor) { this.rotor.rotation.y += this.rotorSpeed * 0.5; this.tailRotor.rotation.x += this.rotorSpeed * 0.6; }
     if (this.siren) {
-      const on = this.driver && Math.floor(G.time * 4) % 2 === 0;
-      this.siren[0].material.emissiveIntensity = this.driver ? (on ? 1.5 : 0.1) : 0.1;
-      this.siren[1].material.emissiveIntensity = this.driver ? (on ? 0.1 : 1.5) : 0.1;
+      const lit = this.driver && (this.driver.isPlayer || this.chase || !this.driver.cop);
+      const on = lit && Math.floor(G.time * 4) % 2 === 0;
+      this.siren[0].material.emissiveIntensity = lit ? (on ? 1.5 : 0.1) : 0.1;
+      this.siren[1].material.emissiveIntensity = lit ? (on ? 0.1 : 1.5) : 0.1;
     }
     // cargo follows the truck
     if (this.cargo.length) {
@@ -883,7 +908,7 @@ export class Vehicle {
       }
       this.netT += dt;
       if (this.netT > 2) { this.remoteDriver = null; this.speed = 0; }
-    } else if (!this.driver) {
+    } else if (!this.driver && !this.aiDriven) {
       // coasting / falling while nobody drives
       if (this.type.plane) {
         if (!this.onGround || this.speed > 0.05) { this.throttle = Math.max(0, (this.throttle || 0) - dt * 0.3); this.planeFly(dt, { throttle: 0, steer: 0, up: false, down: !this.onGround && Math.random() < 0.5 }); }
