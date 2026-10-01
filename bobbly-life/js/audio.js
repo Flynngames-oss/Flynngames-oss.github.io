@@ -1,5 +1,5 @@
 // Tiny synthesized sound effects (no audio files needed).
-let ctx = null, master = null;
+let ctx = null, master = null, muffle = null;
 let engine = null;
 
 export function initAudio() {
@@ -8,7 +8,9 @@ export function initAudio() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
     master.gain.value = 0.35;
-    master.connect(ctx.destination);
+    // everything goes through a low-pass filter that closes when your head is underwater
+    muffle = ctx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 20000; muffle.Q.value = 0.7;
+    master.connect(muffle); muffle.connect(ctx.destination);
   } catch (e) { ctx = null; }
 }
 
@@ -157,4 +159,62 @@ export function rumble(level) {
     rum = { g };
   }
   if (rum) rum.g.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * 0.9, ctx.currentTime, 0.2);
+}
+
+// ---------------------------------------------------------------- underwater, weather and nature
+export function setUnderwater(on) {
+  if (!ctx || !muffle) return;
+  muffle.frequency.setTargetAtTime(on ? 520 : 20000, ctx.currentTime, on ? 0.05 : 0.15);
+}
+// Looping noise beds (rain, wind, bubbling water, tornado roar) with a level 0..1
+const beds = {};
+const BED = {
+  under: { type: 'lowpass', f: 300, brown: true, vol: 0.5, wobble: 2.5 },
+  rain: { type: 'highpass', f: 900, brown: false, vol: 0.35 },
+  wind: { type: 'bandpass', f: 500, brown: true, vol: 0.7, wobble: 0.4 },
+  tornado: { type: 'lowpass', f: 260, brown: true, vol: 1.2, wobble: 1.5 },
+  rumble: { type: 'lowpass', f: 140, brown: true, vol: 0.9 },
+  rush: { type: 'bandpass', f: 800, brown: false, vol: 0.5, wobble: 0.8 },
+};
+export function ambience(name, level) {
+  if (!ctx) return;
+  let b = beds[name];
+  if (!b) {
+    if (level <= 0.001) return;
+    const cfg = BED[name];
+    const len = ctx.sampleRate * 3, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; if (cfg.brown) { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; } else d[i] = w * 0.5; }
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = cfg.type; f.frequency.value = cfg.f;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(f); f.connect(g); g.connect(name === 'under' ? ctx.destination : master); src.start();
+    if (cfg.wobble) { const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = cfg.wobble * 0.1; lg.gain.value = cfg.f * 0.35; lfo.connect(lg); lg.connect(f.frequency); lfo.start(); }
+    b = beds[name] = { g, cfg, lvl: -1 };
+  }
+  const v = Math.max(0, Math.min(1, level)) * b.cfg.vol * (name === 'under' ? 0.35 : 1);
+  if (Math.abs(v - b.lvl) > 0.005) { b.g.gain.setTargetAtTime(v, ctx.currentTime, 0.25); b.lvl = v; }
+}
+export function thunder(dist = 300) {
+  if (!ctx) return;
+  const delay = Math.min(4, dist / 343), vol = Math.max(0.15, 1 - dist / 1500);
+  noise(2.6, 0.9 * vol, 260, delay);
+  noise(0.35, 0.8 * vol, dist < 200 ? 4000 : 900, delay);
+  tone('sine', 70, 35, 1.8, 0.4 * vol, delay + 0.05);
+}
+// long, eerie humpback calls
+export function whaleCall(level = 1) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (let k = 0; k < 2; k++) {
+    const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = 'sine'; f.type = 'lowpass'; f.frequency.value = 900;
+    const f0 = 180 + Math.random() * 160, st = t + k * 1.6;
+    o.frequency.setValueAtTime(f0, st);
+    o.frequency.exponentialRampToValueAtTime(f0 * (1.4 + Math.random() * 0.8), st + 0.9);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.6, st + 2.2);
+    g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(0.18 * level, st + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, st + 2.4);
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.start(st); o.stop(st + 2.5);
+  }
 }

@@ -375,6 +375,7 @@ export const LOC = {
 let trunkIM, roundIM, pineIM, snowIM;
 const treeDefs = [];
 function addTree(x, z, type = Math.random() < 0.5 ? 'round' : 'pine', s = rand(0.85, 1.25)) {
+  if (G.keepOut && G.keepOut(x, z)) return;
   treeDefs.push({ x, z, type, s, y: heightAt(x, z) });
 }
 // Leafy crown: a cluster of lumpy blobs, darker underneath and in the middle.
@@ -460,6 +461,7 @@ function buildWilderness() {
     const x = (srand() * 2 - 1) * (WORLD - 60), z = (srand() * 2 - 1) * (WORLD - 60);
     if (Math.max(Math.abs(x), Math.abs(z)) < LAND + 25) continue;
     if (inZone(x, z, 25)) continue;
+    if (G.keepOut && G.keepOut(x, z)) continue;
     if (Math.abs(x + 30) < 12 && z > 0) continue;
     if (Math.abs(x - 30) < 12 && z < 0) continue;
     if (Math.abs(z - 30) < 12 && x < 0) continue;
@@ -1446,18 +1448,20 @@ export async function buildWorld(progress = () => {}) {
   TX.grass.repeat.set(1, 1);
   const gd = TX.grass.clone(); gd.needsUpdate = true; gd.repeat.set(WORLD / 5, WORLD / 5);
   terr.material.map = gd; terr.material.needsUpdate = true;
+  G.terrainMat = terr.material;
 
   // Ocean
   const waterTex = waterTexture(); waterTex.repeat.set(700, 700);
   G.waterTex = waterTex;
   G.sky = makeSky(); scene.add(G.sky);
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshPhongMaterial({ color: '#2d8fe0', map: waterTex, transparent: true, opacity: 0.86, shininess: 90, specular: '#ffffff' }));
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshPhongMaterial({ color: '#2d8fe0', map: waterTex, transparent: true, opacity: 0.86, shininess: 90, specular: '#ffffff', side: THREE.DoubleSide }));
   water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y;
   scene.add(water);
   G.water = water;
 
   // Roads
   const roadMat = new THREE.MeshLambertMaterial({ map: roadTexture() });
+  G.roadMats = [roadMat];
   for (const r of ROADS) {
     S(PLANE, roadMat, r, 0.02, 0, 0, -Math.PI / 2, 0, 10, LAND * 2, 1);
     S(PLANE, roadMat, 0, 0.021, r, 0, -Math.PI / 2, Math.PI / 2, 10, LAND * 2, 1);
@@ -1706,8 +1710,10 @@ export function buildLights() {
   s.left = -60; s.right = 60; s.top = 60; s.bottom = -60; s.near = 1; s.far = 260;
   sun.shadow.bias = -0.0008;
   G.scene.add(hemi, amb, sun, sun.target);
-  G.scene.fog = new THREE.Fog('#b4c8d4', 160, 1300);
+  G.landFog = new THREE.Fog('#b4c8d4', 160, 1300);
+  G.scene.fog = G.landFog;
 }
+export const getLights = () => ({ sun, hemi, amb });
 
 export function updateWorld(dt, focus) {
   G.dayTime = (G.dayTime + dt / 720) % 1; // 12 minute day
@@ -1728,7 +1734,7 @@ export function updateWorld(dt, focus) {
   updateCollapses(dt);
   updateTurbines(dt);
   if (G.waterTex) { G.waterTex.offset.x = G.time * 0.004; G.waterTex.offset.y = G.time * 0.0025; }
-  G.scene.fog.color.copy(tmpC);
+  G.landFog.color.copy(tmpC);
   sun.intensity = 0.25 + 1.7 * day;
   hemi.intensity = 0.3 + 0.35 * day;
   sun.color.setRGB(1, lerp(0.7, 0.9, day), lerp(0.5, 0.76, day));
@@ -1792,13 +1798,14 @@ function updateSpace() {
   if (G.water) G.water.visible = f < 0.35;
   if (G.sky) { const u = G.sky.material.uniforms; u.top.value.lerp(BLACK, f); u.horizon.value.lerp(BLACK, Math.pow(f, 0.7)); }
   G.scene.background.lerp(BLACK, f);
-  if (baseFogFar === null) baseFogFar = G.scene.fog.far;
+  const fog = G.landFog;
+  if (baseFogFar === null) baseFogFar = fog.far;
   if (f > 0) {
-    G.scene.fog.far = lerp(G.scene.fog.far, 1e6, f);
-    G.scene.fog.near = lerp(160, 1e5, f);
+    fog.far = lerp(fog.far, 1e6, f);
+    fog.near = lerp(160, 1e5, f);
     if (cam.far < 90000) { cam.far = 90000; cam.updateProjectionMatrix(); }
-  } else if (G.scene.fog.near !== 160) {
-    G.scene.fog.near = 160;
+  } else if (fog.near !== 160) {
+    fog.near = 160;
     G.applyGraphics && G.applyGraphics();
   }
 }

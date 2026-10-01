@@ -13,7 +13,7 @@ import { updateProps, kickProps, spawnPresents, updatePresents, updateTrees, hit
 import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './jobs.js';
 import * as UI from './ui.js';
 import * as NET from './net.js';
-import { initAudio, sfx, setEngine, setMusic, musicPlaying } from './audio.js';
+import { initAudio, sfx, setEngine, setMusic, musicPlaying, ambience } from './audio.js';
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
 import { updateDebris } from './debris.js';
 import { updateCockpit } from './cockpit.js';
@@ -22,6 +22,11 @@ import { initPolice, updatePolice } from './police.js';
 import { initRocket, updateRocket } from './rocket.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
+import { initOcean, updateOcean } from './ocean.js';
+import { initWeather, updateWeather, weatherNet, applyWeatherNet } from './weather.js';
+import { initTrain, updateTrain, onTrainNet } from './train.js';
+import { initPark, updatePark, onRidesNet } from './park.js';
+import { initModes, updateModes, onModeMsg, startMode, stopMode } from './modes.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -37,16 +42,26 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 // Cinematic colour grade: softer saturation, film contrast, split toning and a vignette
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, sat: { value: 0.72 }, contrast: { value: 1.14 }, vig: { value: 0.85 } },
+  uniforms: { tDiffuse: { value: null }, sat: { value: 0.72 }, contrast: { value: 1.14 }, vig: { value: 0.85 }, uw: { value: 0 }, time: { value: 0 }, flash: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig, uw, time, flash; varying vec2 vUv;
     void main(){
-      vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb;
+      vec2 uv = vUv;
+      vec4 c;
+      if (uw > 0.0) {
+        // underwater: the view wobbles and softens like looking through moving water
+        uv += vec2(sin(uv.y * 38.0 + time * 1.9) + sin(uv.y * 17.0 - time * 1.3), cos(uv.x * 29.0 + time * 1.6)) * 0.0016 * uw;
+        float b = 0.0022 * uw;
+        c = texture2D(tDiffuse, uv) * 0.36 + (texture2D(tDiffuse, uv + vec2(b, 0.0)) + texture2D(tDiffuse, uv - vec2(b, 0.0)) + texture2D(tDiffuse, uv + vec2(0.0, b * 1.6)) + texture2D(tDiffuse, uv - vec2(0.0, b * 1.6))) * 0.16;
+      } else c = texture2D(tDiffuse, uv);
+      vec3 col = c.rgb;
+      col += flash * vec3(0.75, 0.8, 1.0);
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(l), col, sat);
       col += vec3(-0.012, 0.0, 0.02) * (1.0 - clamp(l, 0.0, 1.0)) + vec3(0.03, 0.012, -0.018) * clamp(l, 0.0, 1.0);
       col = (col - 0.18) * contrast + 0.18;
-      vec2 d = vUv - 0.5; col *= 1.0 - vig * dot(d, d) * 1.3;
+      vec2 d = vUv - 0.5; col *= 1.0 - (vig + uw * 0.9) * dot(d, d) * 1.3;
+      col = mix(col, col * vec3(0.78, 1.0, 1.06), uw * 0.5);
       gl_FragColor = vec4(max(col, 0.0), c.a);
     }`,
 };
@@ -80,6 +95,11 @@ const TIPS = [
   'Planes take off from the airport runway — hold Space once you have speed.',
   'Jobs pay. Pizza, taxi, fire, garbage, lumber and fishing all earn cash.',
   'Press V for first person.',
+  'Dive into Coral Bay with C — seven treasure chests are hidden down there!',
+  'Jump off the Twin Towers and press Space for a WINGSUIT.',
+  'Ride the train round the whole island, or drive it yourself!',
+  'Bobbly Land has a rollercoaster with a loop. Hold on!',
+  'Rain makes the roads slippery — brake early!',
 ];
 $('loadTip').textContent = TIPS[Math.floor(Math.random() * TIPS.length)];
 async function progress(p, text) {
@@ -112,7 +132,7 @@ const WV = [
   ['firetruck', 50, 68, 0], ['garbage', 42, -72, 0], ['pickup', -104, 16, Math.PI / 2], ['pickup', -92, -60, 0],
   ['icecream', -44, 46, Math.PI / 2], ['monster', -48, -40, Math.PI], ['sports', 21, -12, 0], ['sedan', -21, 14, Math.PI],
   ['police', 21, 16, 0], ['sedan', 99, 40, 0], ['sedan', -81, -20, Math.PI], ['sedan', 39, 120, 0], ['pickup', 159, 60, 0],
-  ['boat', 200, 14, Math.PI / 2], ['boat', 205, -14, Math.PI / 2], ['heli', -76, -78, 0], ['sports', -150, -28, 0],
+  ['boat', 200, 14, Math.PI / 2], ['boat', 205, -14, Math.PI / 2], ['sub', 240, -14, Math.PI / 2], ['heli', -76, -78, 0], ['sports', -150, -28, 0],
   ['biplane', -122, 164, Math.PI / 2], ['jet', -138, 171.5, Math.PI / 2],
 ];
 WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color: t === 'sedan' ? ['#3fa7ff', '#ff5b6e', '#b46cff', '#46c25a'][i % 4] : null }));
@@ -137,6 +157,11 @@ initSkyTraffic();
 initRocket();
 initPolice();
 initQuests();
+initOcean();
+initWeather();
+initTrain();
+initPark();
+G.netSend = (m) => NET.send(m);
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
   const n = new Character(randomOutfit(), { isNPC: true });
@@ -148,6 +173,7 @@ scatterProps();
 spawnPresents();
 initJobs();
 UI.initUI();
+initModes((m) => NET.send(m));
 
 // ---------------------------------------------------------------- personal vehicles
 let myVehicle = null;
@@ -162,6 +188,9 @@ G.spawnMyVehicle = (id) => {
     else if (nearWater) { x = player.root.x; z = Math.sign(player.root.z) * 205; }
     else { x = 205; z = 20; UI.toast('🚤 Your boat is waiting at the pier!'); G.waypoint = { x: 200, z: 20 }; }
     yaw = Math.PI / 2;
+  } else if (t.sub) {
+    x = 238; z = 24; yaw = Math.PI / 2;
+    UI.toast('🟡 Your submarine is waiting in Coral Bay, next to the pier!'); G.waypoint = { x: 232, z: 20 };
   } else if (t.plane) {
     // planes wait at the start of the nearest runway (airliners need the big international one)
     const list = (LOC.airports || []).filter(a => !t.airliner || a.name === 'Bobbly International');
@@ -297,6 +326,8 @@ function nearestInteract() {
   let best = null, bd = 1e9;
   for (const it of G.interacts) {
     if (it.minY !== undefined && P.y < it.minY) continue;
+    if (it.y !== undefined && Math.abs(P.y - it.y) > (it.dy || 3)) continue;
+    if (it.when && !it.when()) continue;
     const d = Math.hypot(P.x - it.x, P.z - it.z);
     if (d < it.r && d < bd) { bd = d; best = it; }
   }
@@ -309,6 +340,7 @@ function nearestVehicle() {
     const d = Math.hypot(player.root.x - v.pos.x, player.root.z - v.pos.z);
     const reach = v.type.len / 2 + 2;
     if (d < reach && Math.abs(player.root.y - v.pos.y) < 3 && d < bd) {
+      if (v.canBoard && !v.canBoard()) continue;
       const free = v.occupants.some((o, i) => !o && (i > 0 || !v.remoteDriver));
       if (free) { bd = d; best = v; }
     }
@@ -349,6 +381,7 @@ function interact() {
     sfx.door();
     if (seat === 0 && v.type.isBike) UI.toast('W throttle · S brake · A/D lean · WHEELIE: Shift (lean back) + W, then feather W and tap S/C to hold it at the balance point · Space hop · E off', '', 9000);
     else if (seat === 0 && v.type.plane) UI.toast(`${v.type.emo} W/S throttle · ↑ nose up · ↓ nose down · ← → bank & turn · build speed on the runway, then ↑ to take off at ${Math.round(v.type.takeoff * 3.6)} km/h · V = cockpit view · E jump out`, '', 9000);
+    else if (v.type.rail || v.type.ride) UI.toast(v.type.tip ? v.type.tip(seat) : '🎢 Hold on tight! Press E to get off.', '', 7000);
     else if (seat === 0 && !G.seenDriveTip) { G.seenDriveTip = true; UI.toast(v.type.heli ? '🚁 W/S forward/back · A/D turn · Space up · Shift down · E exit' : 'W/S drive · A/D steer · Space brake · Q honk · E exit'); }
   }
 }
@@ -497,13 +530,14 @@ NET.on('hello', (m) => {
   if (G.net.mode === 'host') {
     const players = [{ id: G.net.myId, name: G.save.name, outfit: G.save.outfit }];
     for (const [id, rr] of G.remotes) if (id !== m.from) players.push({ id, name: rr.name, outfit: rr.outfit });
-    NET.send({ t: 'welcome', to: m.from, players, d: G.dayTime });
+    NET.send({ t: 'welcome', to: m.from, players, d: G.dayTime, wx: weatherNet() });
   }
   void r;
 });
 NET.on('welcome', (m) => {
   for (const p of m.players) addRemote(p.id, p.name, p.outfit);
   G.dayTime = m.d;
+  applyWeatherNet(m.wx);
   updateRoomInfo();
 });
 NET.on('leave', (m) => {
@@ -525,7 +559,13 @@ NET.on('chat', (m) => {
   const r = G.remotes.get(m.from);
   UI.chatLine(r ? r.name : '???', String(m.text).slice(0, 100), '#8fd3ff');
 });
-NET.on('time', (m) => { if (G.net.mode === 'client') G.dayTime = m.d; });
+NET.on('time', (m) => { if (G.net.mode === 'client') { G.dayTime = m.d; applyWeatherNet(m.wx); } });
+NET.on('trn', onTrainNet);
+NET.on('mode', (m) => { if (G.net.mode === 'client') onModeMsg(m); });
+NET.on('modeReq', (m) => { if (G.net.mode === 'host') { if (m.m === 'stop') stopMode(); else startMode(m.m); } });
+NET.on('rides', (m) => { if (G.net.mode === 'client') onRidesNet(m); });
+NET.on('wx', (m) => { if (G.net.mode === 'client') applyWeatherNet(m); });
+G.onWeather = () => { if (G.net.mode === 'host') NET.send({ t: 'wx', ...weatherNet() }); };
 NET.on('hit', (m) => {
   if (m.to && m.to !== G.net.myId) return;
   if (player.vehicle) return;
@@ -561,6 +601,7 @@ NET.on('st', (m) => {
   if (!r) return;
   r.applySnapshot(m.p, m.f, m.r);
   r.weapon = WEAPONS[m.w] ? m.w : null;
+  r.netFlat = !!m.fl;
   // held item visual
   if (m.h !== r.heldType) {
     if (r.heldMesh) G.scene.remove(r.heldMesh);
@@ -597,13 +638,14 @@ function netTick(dt) {
     h: heldProp ? heldProp.type : 0, hv: heldProp ? heldProp.variant : 0,
     v: player.vehicle && player.seat === 0 ? player.vehicle.netState() : 0,
     w: player.weapon || 0,
+    fl: player.diving || player.wingsuit ? 1 : 0,
   };
   NET.send(msg);
   if (player.held && player.held.kind === 'remote' && player.held.pullPt) {
     const p = player.held.pullPt;
     NET.send({ t: 'pull', to: player.held.obj.netId, pos: [p.x, p.y, p.z] });
   }
-  if (G.net.mode === 'host' && timeAcc > 10) { timeAcc = 0; NET.send({ t: 'time', d: G.dayTime }); }
+  if (G.net.mode === 'host' && timeAcc > 5) { timeAcc = 0; NET.send({ t: 'time', d: G.dayTime, wx: weatherNet() }); }
 }
 G.onOutfit = () => NET.send({ t: 'outfit', outfit: G.save.outfit, name: G.save.name });
 G.onChat = (text) => NET.send({ t: 'chat', text });
@@ -686,7 +728,8 @@ function applyGraphics() {
   useGrade = high;
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight);
   camera.far = high ? 2200 : 1200; camera.updateProjectionMatrix();
-  scene.fog.far = high ? 1500 : 800;
+  G.fogBaseFar = high ? 1500 : 800;
+  G.landFog.far = G.fogBaseFar;
 }
 if (!G.save.gfx) G.save.gfx = isTouch ? 'low' : 'high';
 applyGraphics();
@@ -711,7 +754,7 @@ function startGame() {
 // ---------------------------------------------------------------- per-frame player control
 function controlPlayer(dt) {
   const p = player;
-  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested;
+  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze;
   let ix = 0, iy = 0;
   if (!blocked) {
     ix = (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + touch.mx;
@@ -724,7 +767,7 @@ function controlPlayer(dt) {
     const v = p.vehicle;
     if (p.seat === 0 && !v.remoteDriver) {
       const shift = !!(K.ShiftLeft || K.ShiftRight), ctrl = !!(K.ControlLeft || K.ControlRight || K.KeyC);
-      let inp = { throttle: iy, steer: -ix, brake: !!K.Space && !v.type.isBike, up: !!space, down: shift, back: shift, fwd: ctrl, jump: v.type.isBike && space && !p.prevSpace };
+      let inp = { throttle: iy, steer: -ix, brake: !!K.Space && !v.type.isBike, up: !!space, down: shift || (v.type.sub && !!K.KeyC), back: shift, fwd: ctrl, jump: v.type.isBike && space && !p.prevSpace };
       if (v.type.plane && !blocked) {
         // planes: arrow keys fly (↑ nose up, ↓ nose down, ←/→ bank), W/S throttle
         const ax = (K.ArrowRight ? 1 : 0) - (K.ArrowLeft ? 1 : 0) + (K.KeyD ? 1 : 0) - (K.KeyA ? 1 : 0) + touch.mx;
@@ -737,7 +780,7 @@ function controlPlayer(dt) {
       v.hitThings((ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
       v.catchCargo();
     }
-    setEngine(p.seat === 0, v.speed + (v.type.heli ? v.pos.y * 0.3 : 0), v.type.heli || v.type.plane);
+    setEngine(p.seat === 0 && !v.type.ride, v.speed + (v.type.heli ? v.pos.y * 0.3 : 0), v.type.heli || v.type.plane);
     return;
   }
   setEngine(false);
@@ -748,8 +791,19 @@ function controlPlayer(dt) {
   if (l > 1) { mx /= l; mz /= l; }
   p.ctrl.mx = mx; p.ctrl.mz = mz;
   p.ctrl.run = !!(K.ShiftLeft || K.ShiftRight) || (isTouch && l > 0.9);
-  if (!G.ui.fishing && space && !p.prevSpace) {
-    if (!p.grounded && !p.chute && !p.swimming && p.vel.y < -4 && p.root.y - groundHeight(p.root.x, p.root.z, p.root.y) > 5) {
+  p.ctrl.up = !!space && !blocked;
+  p.ctrl.dive = !blocked && !!(K.KeyC || K.ControlLeft || K.ControlRight);
+  p.ctrl.ix = ix; p.ctrl.iy = iy;
+  if (p.diving) { /* Space swims up while diving */ }
+  else if (!G.ui.fishing && space && !p.prevSpace) {
+    const fallH = p.root.y - groundHeight(p.root.x, p.root.z, p.root.y);
+    if (p.wingsuit) {
+      // wingsuit -> parachute
+      p.wingsuit = false; p.ws = null; p.chute = true; p.vel.multiplyScalar(0.35); sfx.pop();
+    } else if (!p.grounded && !p.chute && !p.swimming && p.vel.y < -4 && fallH > 24) {
+      p.wingsuit = true; p.ws = null; sfx.whoosh();
+      if (!G.seenWing) { G.seenWing = true; UI.toast('🦅 WINGSUIT! W dive faster · S flatten out · A/D turn · Space opens your parachute', '', 8000); }
+    } else if (!p.grounded && !p.chute && !p.swimming && p.vel.y < -4 && fallH > 5) {
       p.chute = true; sfx.pop();
       if (!G.seenChute) { G.seenChute = true; UI.toast('🪂 Parachute open! Steer with WASD.'); }
     } else p.ctrl.jump = true;
@@ -764,6 +818,7 @@ function controlPlayer(dt) {
     NET.send({ t: 'shot', ...shot });
   }
   updateFishing(dt, space);
+  ambience('rush', p.wingsuit && p.ws ? clamp((p.ws.v - 10) / 45, 0, 1) : p.chute ? 0.15 : 0);
 }
 
 // ---------------------------------------------------------------- camera
@@ -795,7 +850,7 @@ function updateCamera(dt) {
   if (Math.abs(fovT - camera.fov) > 0.05) { camera.fov += (fovT - camera.fov) * (1 - Math.exp(-dt * 3)); camera.updateProjectionMatrix(); }
   player.head.visible = !G.cam.fp;
   // in a cockpit view the arms would cover the instruments
-  const hideArms = G.cam.fp && v && v.eyes && (v.type.plane || v.type.heli);
+  const hideArms = G.cam.fp && v && v.eyes && (v.type.plane || v.type.heli || v.type.ride || v.type.sub);
   for (const k of ['armL', 'armR', 'handL', 'handR']) if (player[k]) player[k].visible = !hideArms;
   if (G.cam.fp) {
     // First person: eyes inside the head, looking where the mouse points
@@ -824,6 +879,11 @@ function updateCamera(dt) {
     camera.lookAt(_v.copy(camera.position).add(look));
     camTarget.copy(camera.position);
     return;
+  }
+  if (!v && player.wingsuit && G.time - G.cam.lastMouse > 0.8) {
+    // swing round behind the wingsuit flyer
+    G.cam.yaw = angleLerp(G.cam.yaw, player.facing + Math.PI, 1 - Math.exp(-dt * 2.5));
+    G.cam.pitch += (0.12 - G.cam.pitch) * Math.min(1, dt * 2);
   }
   const tgt = v ? _v.copy(v.pos).add(_w.set(0, v.type.airliner ? 6 : v.type.heli || v.type.plane ? 2 : 1.4, 0)) : _v.copy(player.p[PARTS.CHE]).add(_w.set(0, 0.5, 0));
   camTarget.lerp(tgt, 1 - Math.exp(-dt * (v ? 12 : 10)));
@@ -889,7 +949,7 @@ function updatePrompt() {
   const it = nearestInteract();
   if (it) { UI.setPrompt(`<b>E</b> ${it.label()}`); return; }
   const v = nearestVehicle();
-  if (v) { UI.setPrompt(`<b>E</b> ${(!v.remoteDriver && !v.occupants[0]) ? 'Drive' : 'Ride in'} ${v.type.emo} ${v.type.name}`); return; }
+  if (v) { UI.setPrompt(`<b>E</b> ${v.type.prompt ? v.type.prompt : (!v.remoteDriver && !v.occupants[0]) ? 'Drive' : 'Ride in'} ${v.type.prompt ? '' : v.type.emo + ' ' + v.type.name}`); return; }
   if (p.held) { UI.setPrompt(G.mouse.grabLock ? 'Holding — <b>Click</b> to throw' : 'Release to throw'); return; }
   UI.setPrompt(null);
 }
@@ -906,6 +966,14 @@ function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  update(dt);
+  if (G.noRender) return;
+  if (useGrade) composer.render(); else renderer.render(scene, camera);
+}
+G.noRender = new URLSearchParams(location.search).has('norender');   // automated tests only
+// run the game forward without drawing (used by automated tests)
+G.step = (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) update(dt); };
+function update(dt) {
   G.time += dt;
   frame++;
 
@@ -913,6 +981,8 @@ function loop(now) {
   if (G.started) updateGrab();
   updateTraffic(dt, (ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
   updateSkyTraffic(dt);
+  updateTrain(dt);
+  updatePark(dt);
   updateDebris(dt);
   for (const v of G.vehicles) if (!(v.driver === player && player.seat === 0)) v.update(dt); else v.sync();
   bumpVehicles();
@@ -939,11 +1009,17 @@ function loop(now) {
       void pr;
     });
     updateJobs(dt);
+    updateModes(dt);
   }
   updateRemoteExtras();
   updateWorld(dt, player.vehicle ? player.vehicle.pos : player.pos);
+  updateWeather(dt);
   updateCamera(dt);
   updateCockpit(dt, player);
+  updateOcean(dt, player);
+  gradePass.uniforms.uw.value += ((G.gradeUW || 0) - gradePass.uniforms.uw.value) * Math.min(1, dt * 6);
+  gradePass.uniforms.time.value = G.time;
+  gradePass.uniforms.flash.value = G.flash || 0;
   if (G.started) {
     UI.updateHUD();
     if (frame % 2 === 0) UI.drawMinimap();
@@ -954,7 +1030,6 @@ function loop(now) {
     netTick(dt);
     if (frame % 600 === 0) writeSave();
   }
-  if (useGrade) composer.render(); else renderer.render(scene, camera);
 }
 
 buildTitle();

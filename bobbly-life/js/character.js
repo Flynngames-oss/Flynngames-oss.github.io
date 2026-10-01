@@ -1,7 +1,7 @@
 // Wobbly characters: spring-driven body parts while walking, verlet ragdoll when flopped.
 import * as THREE from 'three';
 import { G, mat, placeBetween, textSprite, clamp, angleLerp, WATER_Y, UP, rand, pick, COLORS } from './state.js';
-import { groundHeight, resolveWalls, getGroundTag, baseHeight } from './world.js';
+import { groundHeight, resolveWalls, getGroundTag, baseHeight, nearColliders } from './world.js';
 import { sfx } from './audio.js';
 
 export const HATS = [
@@ -32,6 +32,7 @@ export const GLASSES = [
   { id: 'sun', name: 'Sunglasses', price: 100, emo: '😎' },
   { id: 'goggles', name: 'Goggles', price: 150, emo: '🥽' },
   { id: 'diamond', name: 'Diamond Shades', price: 400, emo: '💎' },
+  { id: 'scuba', name: 'Scuba Mask (breathe 4 min underwater)', price: 150, emo: '🤿' },
 ];
 export const EYES = [
   { id: 'round', name: 'Normal' }, { id: 'big', name: 'Big' }, { id: 'happy', name: 'Happy' },
@@ -56,6 +57,7 @@ const HALFBALL = new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI /
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3();
 const _right = new THREE.Vector3(), _up = new THREE.Vector3(), _fwd = new THREE.Vector3();
 const _mtx = new THREE.Matrix4();
+const _q2 = new THREE.Quaternion();
 
 // Soft plastic/rubber look for bodies (a little shiny)
 const cmatCache = new Map();
@@ -136,6 +138,14 @@ export function makeExtras(list = [], o = {}) {
       case 'stripes': for (const y of [0.1, 0.45, 0.8]) add(body, new THREE.TorusGeometry(0.46, 0.06, 6, 18), col || '#222', 0, y, 0, 1, 1, 1, Math.PI / 2); break;
       case 'belly': add(body, BALL, col || '#ffffff', 0, 0.3, 0.32, 0.34, 0.5, 0.18); break;
       case 'fin': add(body, CONE, c, 0, 1.0, -0.3, 0.06, 0.45, 0.25, -0.3); break;
+      case 'tank': {
+        const t = add(body, LIMB, col || '#ffcc22', 0, 0.45, -0.55, 0.17, 0.75, 0.17);
+        add(body, BALL, col || '#ffcc22', 0, 0.83, -0.55, 0.17, 0.12, 0.17);
+        add(body, LIMB, '#2a2a2e', 0, 0.95, -0.55, 0.05, 0.12, 0.05);
+        add(body, LIMB, '#1a1a1e', 0.18, 0.98, -0.28, 0.025, 0.55, 0.025, 1.0, 0, -0.4);
+        void t; break;
+      }
+      case 'wetsuit': for (const sx of [-1, 1]) add(body, LIMB, col || '#ffcc22', sx * 0.43, 0.38, 0, 0.02, 0.7, 0.04); break;
       case 'shell': add(body, HALFBALL, col || '#3f8a4a', 0, 0.35, -0.3, 0.5, 0.6, 0.5, -Math.PI / 2); break;
     }
   }
@@ -183,6 +193,7 @@ export const SKINS = [
   { id: 'flynn', name: 'King Flynn', emo: '🤴', price: 0, quest: 'Collect every present, then visit King Flynn at his castle', o: { skin: '#f2c9a0', shirt: '#7a1020', pants: '#2a1a40', hat: 'crown', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#8a5a2b', extras: ['cape:#b0122a', 'belly:#f4e6c0'] } },
   { id: 'george', name: 'George', emo: '🤪', price: 0, quest: 'Find George in his secret treehouse and do his mission', o: { skin: '#f2c9a0', shirt: '#ffcf4a', pants: '#3fa7ff', hat: 'propeller', glasses: 'nerd', eyes: 'happy', hair: 'curly', hairColor: '#c9a060', extras: ['nose:#ff5b6e'] } },
   { id: 'jacob', name: 'Jacob', emo: '🪂', price: 0, quest: 'Find Jacob on top of the Twin Towers and bring him the crystal', o: { skin: '#e0ac86', shirt: '#ff6a1a', pants: '#ff6a1a', hat: 'none', glasses: 'sun', eyes: 'round', hair: 'short', hairColor: '#1c1512', extras: ['backpack:#2a2a2e'] } },
+  { id: 'diver', name: 'Scuba Diver', emo: '🤿', price: 300, o: { skin: '#f2c9a0', shirt: '#1c2a3a', pants: '#1c2a3a', hat: 'none', glasses: 'scuba', eyes: 'round', extras: ['tank', 'wetsuit', 'flippers'] } },
   { id: 'shadow', name: 'Shadow', emo: '🌑', price: 800, o: { skin: '#1a1a22', shirt: '#1a1a22', pants: '#1a1a22', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['visor:#ff2040'] } },
 ];
 
@@ -196,6 +207,14 @@ export function makeGlasses(id) {
     case 'sun': for (const s of [-1, 1]) add(B, '#111111', s * 0.15, 0.07, 0.43, 0.22, 0.13, 0.04); add(B, '#111111', 0, 0.1, 0.44, 0.1, 0.03, 0.02); break;
     case 'nerd': for (const s of [-1, 1]) { const t = mk(new THREE.TorusGeometry(0.1, 0.022, 6, 16), mat('#222')); t.position.set(s * 0.15, 0.07, 0.44); g.add(t); } add(B, '#222', 0, 0.07, 0.45, 0.08, 0.02, 0.02); break;
     case 'goggles': add(LIMB, '#553311', 0, 0.07, 0, 0.44, 0.1, 0.44); for (const s of [-1, 1]) add(LIMB, '#66ccff', s * 0.15, 0.07, 0.42, 0.11, 0.08, 0.11, Math.PI / 2, 0, 0, { emissive: '#224466' }); break;
+    case 'scuba': {
+      add(LIMB, '#1a1a1e', 0, 0.07, 0, 0.445, 0.12, 0.445);
+      add(B, '#9fe8ff', 0, 0.08, 0.4, 0.42, 0.2, 0.08, 0, 0, 0, { transparent: true, opacity: 0.55 });
+      add(B, '#ffcc22', 0, 0.08, 0.42, 0.46, 0.25, 0.04);
+      add(LIMB, '#ffcc22', 0.3, 0.32, 0.18, 0.035, 0.55, 0.035, 0.2, 0, -0.15);
+      add(BALL, '#1a1a1e', 0, -0.14, 0.44, 0.07, 0.06, 0.05);
+      break;
+    }
     case 'diamond': for (const s of [-1, 1]) add(new THREE.OctahedronGeometry(0.14), '#8ff0ff', s * 0.16, 0.07, 0.43, 1, 0.8, 0.3, 0, 0, 0, { emissive: '#3fd6d0', emissiveIntensity: 0.5 }); break;
   }
   return g;
@@ -340,6 +359,12 @@ export class Character {
     if (this.extras) { this.head.remove(this.extras.head); this.body.remove(this.extras.body); }
     this.extras = makeExtras((Array.isArray(o.extras) ? o.extras : []).filter(x => typeof x === 'string').slice(0, 8), o);
     this.extras.head.scale.setScalar(0.9);
+    // flippers replace the shoes (and make you swim faster)
+    this.flippers = (o.extras || []).some(e => String(e).startsWith('flippers'));
+    for (const sh of [this.shoeL, this.shoeR]) {
+      sh.material = this.flippers ? cmat('#ffcc22') : cmat('#2a2a2e');
+      sh.scale.set(this.flippers ? 0.2 : 0.16, this.flippers ? 0.05 : 0.11, this.flippers ? 0.62 : 0.26);
+    }
     this.head.add(this.extras.head); this.body.add(this.extras.body);
   }
 
@@ -365,6 +390,7 @@ export class Character {
 
   // ---------------------------------------------------------------- ragdoll
   flop(impulse = null, minTime = 1.5) {
+    this.wingsuit = false; this.ws = null; this.diving = false;
     if (this.vehicle) return;
     if (!this.ragdoll) {
       this.ragdoll = true; this.ragT = 0; this.chute = false;
@@ -447,6 +473,8 @@ export class Character {
   // ---------------------------------------------------------------- walking
   locomote(dt) {
     const c = this.ctrl;
+    if (this.diving) return this.dive(dt);
+    if (this.wingsuit) return this.glide(dt);
     const mlen = Math.hypot(c.mx, c.mz);
     const speed = this.swimming ? 4 : this.chute ? 10 : c.run ? 10.5 : 6;
     const acc = this.grounded ? 32 : 9;
@@ -469,6 +497,13 @@ export class Character {
     const gh = groundHeight(this.root.x, this.root.z, this.root.y);
     const tag = getGroundTag();
     this.swimming = false;
+    // under the surface in deep water (jumped in, got out of a sub, or pressed dive): scuba-dive
+    if (gh < WATER_Y - 2.4 && baseHeight(this.root.x, this.root.z) < WATER_Y - 2 && (this.root.y < WATER_Y - 2.2 || (c.dive && this.root.y < WATER_Y - 0.6))) {
+      this.diving = true; this.swimming = true; this.chute = false;
+      if (this.root.y > WATER_Y - 1.4) this.root.y = WATER_Y - 1.4;
+      if (this.vel.y < -6) this.vel.y *= 0.3;
+      return;
+    }
     if (gh < WATER_Y - 0.4 && this.root.y < WATER_Y - 0.9 + 0.05) {
       this.swimming = true;
       this.root.y += (WATER_Y - 0.9 - this.root.y) * Math.min(1, dt * 8);
@@ -485,7 +520,73 @@ export class Character {
         this.root.y = gh; this.vel.y = 0; this.grounded = true; this.chute = false;
       }
     } else this.grounded = false;
-    if (!(this.isPlayer && G.rocketRide) && (this.root.y < -30 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500)) this.respawn && this.respawn();
+    if (!(this.isPlayer && G.rocketRide) && (this.root.y < -60 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500)) this.respawn && this.respawn();
+  }
+
+  // Wingsuit: W dives (faster), S flattens out (slower, careful not to stall), A/D bank and turn.
+  glide(dt) {
+    const c = this.ctrl;
+    const ws = this.ws || (this.ws = { v: Math.max(20, Math.hypot(this.vel.x, this.vel.y, this.vel.z)), g: -0.5, bank: 0 });
+    const gT = c.iy > 0.2 ? -0.85 : c.iy < -0.2 ? -0.12 : -0.38;
+    ws.g += (gT - ws.g) * Math.min(1, dt * 1.6);
+    if (ws.v < 17) ws.g = Math.min(ws.g, -0.45 - (17 - ws.v) * 0.05);           // too slow: the nose drops (stall)
+    ws.v += (-9.8 * Math.sin(ws.g) - 0.0026 * ws.v * ws.v) * dt;                  // gravity along the path against drag
+    ws.v = clamp(ws.v, 8, 70);
+    ws.bank += (-(c.ix || 0) * 0.75 - ws.bank) * Math.min(1, dt * 3);
+    this.facing += ws.bank * 1.2 * dt;
+    const cg = Math.cos(ws.g);
+    this.vel.set(Math.sin(this.facing) * cg * ws.v, Math.sin(ws.g) * ws.v, Math.cos(this.facing) * cg * ws.v);
+    this.root.addScaledVector(this.vel, dt);
+    this.grounded = false; this.swimming = false;
+    const hit = resolveWalls(this.root, 0.5, 1.2, 0.2);
+    const gh = groundHeight(this.root.x, this.root.z, this.root.y + 0.5);
+    const water = gh < WATER_Y && this.root.y < WATER_Y;
+    if (hit || this.root.y <= gh + 0.2 || water) {
+      this.wingsuit = false; this.ws = null;
+      if (water) { this.root.y = WATER_Y - 0.9; this.vel.multiplyScalar(0.2); if (this.isPlayer) sfx.splash(); return; }
+      this.root.y = Math.max(this.root.y, gh);
+      if (hit || ws.v > 13) {
+        this.flop(_a.copy(this.vel).multiplyScalar(0.55).setY(5), 2.5);
+        if (this.isPlayer && G.toast) G.toast(hit ? '💥 SPLAT! You flew into a wall!' : '🤕 Crash landing! Open your parachute (Space) before the ground next time.', 'bad');
+      } else { this.vel.set(0, 0, 0); this.grounded = true; if (this.isPlayer) sfx.land(); }
+    }
+  }
+
+  // Underwater: swim in 3D. WASD moves where the camera looks, Space swims up, C dives, Shift kicks harder.
+  dive(dt) {
+    const c = this.ctrl;
+    this.swimming = true; this.grounded = false; this.chute = false;
+    const fast = c.run ? 1.6 : 1;
+    const sp = (this.flippers ? 5.6 : 3.8) * fast;
+    const ty = ((c.up ? 1 : 0) - (c.dive ? 1 : 0)) * (this.flippers ? 3.6 : 3) * fast;
+    const k = 1 - Math.exp(-dt * 2.6);                   // water drag: you glide a little
+    this.vel.x += (c.mx * sp - this.vel.x) * k;
+    this.vel.z += (c.mz * sp - this.vel.z) * k;
+    this.vel.y += (ty - this.vel.y) * k;
+    const mlen = Math.hypot(c.mx, c.mz);
+    if (c.aim !== undefined && c.aim !== null) this.facing = angleLerp(this.facing, c.aim, 1 - Math.exp(-12 * dt));
+    else if (mlen > 0.1) this.facing = angleLerp(this.facing, Math.atan2(c.mx, c.mz), 1 - Math.exp(-6 * dt));
+    c.jump = false;
+    this.root.addScaledVector(this.vel, dt);
+    resolveWalls(this.root, 0.45, 1.3, 0.25);
+    // bump your head on cave roofs and ship decks
+    const list = nearColliders(this.root.x, this.root.z);
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o.off || this.root.x < o.minX - 0.3 || this.root.x > o.maxX + 0.3 || this.root.z < o.minZ - 0.3 || this.root.z > o.maxZ + 0.3) continue;
+      if (o.minY > this.root.y + 0.4 && this.root.y + 1.4 > o.minY) { this.root.y = o.minY - 1.4; if (this.vel.y > 0) this.vel.y = 0; }
+    }
+    const fl = groundHeight(this.root.x, this.root.z, this.root.y + 0.4);
+    if (this.root.y < fl + 0.15) { this.root.y = fl + 0.15; if (this.vel.y < 0) this.vel.y = 0; }
+    if (this.root.y > WATER_Y - 0.9 || fl > WATER_Y - 1.3) {
+      // back at the surface (or swam into the shallows)
+      this.diving = false;
+      this.root.y = Math.min(this.root.y, WATER_Y - 0.9);
+      if (this.vel.y > 0) this.vel.y = 0;
+      this.grounded = true;
+      if (this.isPlayer) sfx.water();
+    }
+    if (!(this.isPlayer && G.rocketRide) && Math.abs(this.root.x) > 1500) this.respawn && this.respawn();
   }
 
   computeTargets(dt) {
@@ -519,6 +620,34 @@ export class Character {
       T(FL, -0.25, scooter ? 0.3 : 0.3, 0.6); T(FR, 0.25, scooter ? 0.3 : 0.3, 0.6);
       if (this.seat === 0) { T(HL, -0.22, scooter ? 1.1 : 0.95, 0.55); T(HR, 0.22, scooter ? 1.1 : 0.95, 0.55); }
       else { T(HL, -0.5, 0.8, 0.2); T(HR, 0.5, 0.8, 0.2); }
+      if (this.vehicle.type.ride && this.vehicle.typeId === 'coaster') { T(HL, -0.3, 1.25, 0.45); T(HR, 0.3, 1.25, 0.45); if (Math.abs(this.vehicle.speed) > 12) { T(HL, -0.55, 2.0, 0.1); T(HR, 0.55, 2.0, 0.1); } }
+      if (this.vehicle.quat) {
+        // tilt the whole body with the car (loops, banked turns)
+        _q2.setFromAxisAngle(UP, -this.facing).premultiply(this.vehicle.quat);
+        for (const t2 of this.tgt) { _a.subVectors(t2, R).applyQuaternion(_q2); t2.copy(R).add(_a); }
+      }
+      return;
+    }
+    if (this.diving) {
+      // stretched out flat, frog-kicking, arms sweeping
+      const t = this.emoteT * (Math.hypot(this.vel.x, this.vel.z) > 1 ? 6 : 2.5), up = clamp(this.vel.y * 0.13, -0.5, 0.5);
+      const kick = Math.sin(t) * 0.28;
+      T(PEL, 0, 0.95 - up * 0.3, -0.3); T(CHE, 0, 1.0 + up * 0.25, 0.3); T(HEAD, 0, 1.08 + up * 0.8, 0.95);
+      T(FL, -0.2, 0.92 + kick - up * 0.9, -1.3); T(FR, 0.2, 0.92 - kick - up * 0.9, -1.3);
+      const st = Math.sin(t * 0.5);
+      T(HL, -0.55 - st * 0.25, 1.0 + up * 0.5, 0.75 + st * 0.35); T(HR, 0.55 + st * 0.25, 1.0 + up * 0.5, 0.75 + st * 0.35);
+      if (this.ctrl.grab) { T(HL, -0.25, 1.05 + up, 1.3); T(HR, 0.25, 1.05 + up, 1.3); }
+      return;
+    }
+    if (this.wingsuit) {
+      // spread-eagle in the wingsuit, body flat to the wind
+      const w = Math.sin(this.emoteT * 9) * 0.03;
+      T(PEL, 0, 0.9, -0.35); T(CHE, 0, 0.95, 0.35); T(HEAD, 0, 1.0, 1.0);
+      T(HL, -1.05, 0.95 + w, 0.35); T(HR, 1.05, 0.95 - w, 0.35);
+      T(FL, -0.5, 0.88, -1.3); T(FR, 0.5, 0.88, -1.3);
+      // bank into turns
+      const bank = this.ws ? this.ws.bank : 0, sl = Math.sin(bank);
+      for (const t2 of this.tgt) { const hgt = t2.y - R.y - 0.9; t2.y -= ((t2.x - R.x) * rx + (t2.z - R.z) * rz) * sl * 0.9; void hgt; }
       return;
     }
     T(PEL, 0, 0.75 + bob, 0);
@@ -591,7 +720,7 @@ export class Character {
         _a.subVectors(this.p[PEL], this.prev[PEL]);
         if (_a.length() / Math.min(dt, 1 / 30) < 2.5) this.getUp();
       }
-      if (this.p[PEL].y < -30) this.respawn && this.respawn();
+      if (this.p[PEL].y < -60) this.respawn && this.respawn();
     } else {
       const ox = this.root.x, oy = this.root.y, oz = this.root.z;
       if (this.vehicle) this.vehicle.seatPos(this.seat, this.root), this.facing = this.vehicle.yaw;
@@ -631,8 +760,11 @@ export class Character {
       if (_right.lengthSq() < 0.01) _right.copy(this.lastRight); else _right.normalize();
       _right.lerp(this.lastRight, 0.5).normalize();
     } else {
-      _fwd.set(Math.sin(this.facing), 0, Math.cos(this.facing));
-      _right.crossVectors(_up, _fwd).normalize();
+      if (this.diving || this.wingsuit || (this.isRemote && this.netFlat)) _fwd.set(0, -1, 0);    // lying flat: chest faces down
+      else _fwd.set(Math.sin(this.facing), 0, Math.cos(this.facing));
+      _right.crossVectors(_up, _fwd);
+      if (_right.lengthSq() < 1e-4) _right.set(Math.cos(this.facing), 0, -Math.sin(this.facing));
+      _right.normalize();
     }
     this.lastRight.copy(_right);
     _fwd.crossVectors(_right, _up).normalize();
@@ -672,6 +804,23 @@ export class Character {
       placeBetween(this.nozzle, P[HR], _a); this.nozzle.scale.y = 0.7;
     }
     if (this.tag) this.tag.position.set(P[HEAD].x, P[HEAD].y + 0.95, P[HEAD].z);
+    // wingsuit fabric between arms, body and legs
+    if (this.wingsuit && !this.ragdoll) {
+      if (!this.wingMesh) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(15 * 3), 3));
+        this.wingMesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#ff6a1a', side: THREE.DoubleSide, roughness: 0.6 }));
+        this.wingMesh.frustumCulled = false; this.wingMesh.castShadow = true;
+        G.scene.add(this.wingMesh);
+      }
+      const a = this.wingMesh.geometry.attributes.position;
+      const ls = _a.copy(P[CHE]).addScaledVector(_right, -0.4), rs = _b.copy(P[CHE]).addScaledVector(_right, 0.4);
+      const lh = _c.copy(P[PEL]).addScaledVector(_right, -0.3), rh = _d.copy(P[PEL]).addScaledVector(_right, 0.3);
+      const tri = [P[HL], ls, lh, P[HL], lh, P[FL], P[HR], rs, rh, P[HR], rh, P[FR], P[FL], P[PEL], P[FR]];
+      tri.forEach((v, i) => a.setXYZ(i, v.x, v.y, v.z));
+      a.needsUpdate = true; this.wingMesh.geometry.computeVertexNormals();
+      this.wingMesh.visible = true;
+    } else if (this.wingMesh) this.wingMesh.visible = false;
     // parachute
     if (this.chute && !this.ragdoll) {
       if (!this.chuteMesh) {

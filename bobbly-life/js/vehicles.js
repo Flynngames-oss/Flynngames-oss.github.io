@@ -1,6 +1,7 @@
 // Drivable vehicles: arcade car physics, ramps launch you, crashes eject you.
 import * as THREE from 'three';
 import { G, mat, clamp, lerp, angleLerp, WATER_Y, rand, pick } from './state.js';
+import { bubbles } from './ocean.js';
 import { groundHeight, resolveWalls, baseHeight, getGroundTag, nearColliders } from './world.js';
 import { detach, chunk, sparks, smoke, fire, explosion } from './debris.js';
 import { sfx } from './audio.js';
@@ -36,6 +37,7 @@ export const VTYPES = {
   eb_mini:    { name: 'Blackout Mini', emo: '🏍️', price: 600, bike: { frame: '#18181a', plastic: '#1c1c1e', accent: '#555', fork: '#222', shock: '#222', scale: 0.82 }, max: 18, acc: 13 },
   eb_apex:    { name: 'Apex Trail', emo: '🏍️', price: 2000, bike: { frame: '#141416', plastic: '#1a1a1c', accent: '#2a2a2e', fork: '#1a1a1a', shock: '#3a3a3a', scale: 1.12 }, max: 29, acc: 19 },
   heli:      { name: 'Helicopter', emo: '🚁', price: 3000, len: 5.0, wid: 2.2, h: 1.8, wr: 0, max: 40, acc: 18, turn: 1.6, color: '#ff8a3d', seats: 2, heli: true },
+  sub:       { name: 'Submarine', emo: '🟡', price: 4500, len: 6.6, wid: 2.6, h: 2.6, wr: 0, max: 12, acc: 4.5, turn: 0.75, color: '#ffc21a', seats: 2, sub: true, noCrash: true },
 };
 
 for (const t of Object.values(VTYPES)) if (t.bike) {
@@ -217,6 +219,49 @@ function buildMesh(v) {
     part(body, '#bfe6ff', 0, 1.0, 0.7, W * 0.8, 0.5, 0.1, BOX, glass);
     part(body, '#4a4f5a', 0, 0.5, -L / 2 + 0.2, 0.5, 0.8, 0.5);
     v.seats = [[0.45, 0.25, -0.2], [-0.45, 0.25, -0.2]];
+  } else if (t.rail || t.ride || t.custom) {
+    G.railMesh[v.typeId](v, body);
+  } else if (t.sub) {
+    const paint = new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, metalness: 0.2 });
+    const steel = new THREE.MeshStandardMaterial({ color: '#8a9199', roughness: 0.35, metalness: 0.75 });
+    const darkM = new THREE.MeshStandardMaterial({ color: '#23262b', roughness: 0.6, metalness: 0.3 });
+    const glassM = new THREE.MeshStandardMaterial({ color: '#bfefff', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
+    const add = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; body.add(o); return o; };
+    // main pressure hull with a glass bubble at the front
+    add(new THREE.CapsuleGeometry(1.15, 3.2, 8, 20), paint, 0, 1.3, -0.5, Math.PI / 2);
+    add(new THREE.SphereGeometry(1.2, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), glassM, 0, 1.3, 1.25, Math.PI / 2);
+    add(new THREE.TorusGeometry(1.18, 0.09, 8, 28), steel, 0, 1.3, 1.25);
+    // conning tower, hatch, periscope and a beacon
+    add(new THREE.BoxGeometry(0.9, 0.85, 1.6), paint, 0, 2.6, -0.7);
+    add(new THREE.CylinderGeometry(0.45, 0.45, 0.85, 16), paint, 0, 2.6, -1.5);
+    add(new THREE.CylinderGeometry(0.35, 0.35, 0.12, 16), steel, 0, 3.08, -0.9);
+    add(new THREE.CylinderGeometry(0.05, 0.05, 1.1, 8), steel, 0.25, 3.4, -0.4);
+    add(new THREE.BoxGeometry(0.12, 0.12, 0.3), steel, 0.25, 3.95, -0.3);
+    add(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: '#ff3a2a', emissive: '#ff2010', emissiveIntensity: 1.5 }), -0.25, 3.15, -1.2);
+    // portholes
+    for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) {
+      add(new THREE.TorusGeometry(0.2, 0.05, 6, 14), steel, sx * 1.12, 1.45, -0.2 - i * 0.85, 0, Math.PI / 2);
+      add(new THREE.CircleGeometry(0.19, 14), new THREE.MeshStandardMaterial({ color: '#1d3a4a', roughness: 0.1, metalness: 0.5 }), sx * 1.13, 1.45, -0.2 - i * 0.85, 0, sx * Math.PI / 2);
+    }
+    // thruster pods with lamps, skids, fins and the shrouded propeller
+    for (const sx of [-1, 1]) {
+      add(new THREE.CapsuleGeometry(0.28, 2.6, 4, 12), darkM, sx * 1.35, 0.55, -0.3, Math.PI / 2);
+      add(new THREE.CylinderGeometry(0.06, 0.06, 4.4, 6), steel, sx * 0.75, 0.08, -0.3, Math.PI / 2);
+      add(new THREE.BoxGeometry(0.06, 0.4, 0.06), steel, sx * 0.75, 0.25, 1.1); add(new THREE.BoxGeometry(0.06, 0.4, 0.06), steel, sx * 0.75, 0.25, -1.6);
+      add(new THREE.BoxGeometry(1.3, 0.08, 0.8), paint, sx * 1.1, 1.3, -2.7);
+    }
+    add(new THREE.BoxGeometry(0.08, 1.4, 0.8), paint, 0, 1.55, -2.75);
+    add(new THREE.TorusGeometry(0.62, 0.1, 8, 24), darkM, 0, 1.3, -3.25);
+    v.subProp = new THREE.Group(); v.subProp.position.set(0, 1.3, -3.2); body.add(v.subProp);
+    for (let i = 0; i < 4; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.04), steel); b.position.y = 0.28; const hub = new THREE.Group(); hub.rotation.z = i * Math.PI / 2; b.rotation.y = 0.5; hub.add(b); v.subProp.add(hub); }
+    v.lamps = []; v.beams = [];
+    const beamM = new THREE.MeshBasicMaterial({ color: '#fff6d8', transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    for (const sx of [-1, 1]) {
+      v.lamps.push(add(new THREE.CircleGeometry(0.2, 14), new THREE.MeshStandardMaterial({ color: '#fff8e0', emissive: '#fff4c0', emissiveIntensity: 0.2 }), sx * 1.35, 0.55, 1.12));
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(2.6, 16, 18, 1, true), beamM); beam.rotation.x = -Math.PI / 2; beam.position.set(sx * 1.35, 0.55, 9.1); beam.visible = false; body.add(beam); v.beams.push(beam);
+    }
+    v.seats = [[0.42, 0.62, 1.15], [-0.42, 0.62, 1.15]];
+    v.eyes = v.seats.map(st => [st[0], 1.95, st[2] + 0.05]);
   } else if (t.scooter) {
     for (const z of [-0.65, 0.65]) { const w = part(body, '#222', 0, wr, z, 0.18, wr, wr, WHEEL); v.wheels.push(w); }
     part(body, c, 0, 0.55, 0, 0.5, 0.35, 1.5);
@@ -228,7 +273,7 @@ function buildMesh(v) {
     v.seats = [[0, 0.25, -0.2]];
   }
   // first-person eye points for each seat (in body space)
-  if (!t.isBike && !t.scooter && !t.boat && v.seats) v.eyes = v.seats.map(s => [s[0], s[1] + (t.heli ? 1.8 : 1.41), s[2] - 0.02]);
+  if (!t.isBike && !t.scooter && !t.boat && !t.sub && !v.eyes && v.seats) v.eyes = v.seats.map(s => [s[0], s[1] + (t.heli ? 1.8 : 1.41), s[2] - 0.02]);
   v.body = body;
   return root;
 }
@@ -245,7 +290,7 @@ export class Vehicle {
     this.id = id || ('p' + G.net.myId + '_' + (personalCounter++));
     this.owner = owner;
     this.pos = new THREE.Vector3(x, 0, z);
-    this.pos.y = this.type.boat ? WATER_Y - 0.1 : groundHeight(x, z, 50, 0.5);
+    this.pos.y = this.type.boat ? WATER_Y - 0.1 : this.type.sub ? WATER_Y - 2.1 : groundHeight(x, z, 50, 0.5);
     this.yaw = yaw; this.speed = 0; this.vy = 0; this.onGround = true;
     this.pitch = 0; this.roll = 0; this.bounce = 0; this.bounceV = 0;
     this.hvel = new THREE.Vector3(); // helicopter horizontal velocity
@@ -253,7 +298,7 @@ export class Vehicle {
     this.cargo = [];
     this.remoteDriver = null; this.netT = 0;
     this.damage = 0; this.lost = {}; this.lostWheels = 0; this.pull = 0;
-    const T = this.type; this.carLike = !T.isBike && !T.plane && !T.heli && !T.boat;
+    const T = this.type; this.carLike = !T.isBike && !T.plane && !T.heli && !T.boat && !T.sub && !T.rail && !T.ride;
     this.mesh = buildMesh(this);
     this.occupants = this.seats.map(() => null);
     G.scene.add(this.mesh);
@@ -266,6 +311,7 @@ export class Vehicle {
 
   seatPos(i, out) {
     const s = this.seats[Math.min(i, this.seats.length - 1)];
+    if (this.quat) return out.set(s[0], s[1], s[2]).applyQuaternion(this.quat).add(this.pos);   // rollercoaster cars can go upside down
     const c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
     if (this.type.isBike) {
       const wb = this.bikeWb, p = -this.pitch;          // p > 0 = front up
@@ -288,7 +334,10 @@ export class Vehicle {
   // Drive with input {throttle, steer, brake, up, down}. Called for vehicles we control.
   drive(dt, inp) {
     const t = this.type;
+    if (this.twister) return;
     if (t.heli) return this.fly(dt, inp);
+    if (t.sub) return this.subDrive(dt, inp);
+    if (t.rail || t.ride) return G.railDrive && G.railDrive(this, dt, inp);
     if (t.plane) return this.planeFly(dt, inp);
     if (t.isBike) return this.ride(dt, inp);
     const prevSpeed = this.speed;
@@ -310,7 +359,7 @@ export class Vehicle {
         if (sp < -0.5) this.speed += 26 * inp.throttle * dt;                           // braking while reversing
         else this.speed += t.acc * (1 - ratio * ratio * 0.85) * inp.throttle * dt;
       } else if (inp.throttle < 0) {
-        if (sp > 0.5) this.speed -= 26 * -inp.throttle * dt;                           // brakes
+        if (sp > 0.5) this.speed -= 26 * (1 - 0.35 * (this.carLike ? G.wet || 0 : 0)) * -inp.throttle * dt;   // brakes (worse in the wet)
         else this.speed -= t.acc * 0.5 * -inp.throttle * dt;                            // reverse
       }
       // rolling resistance + air drag
@@ -326,7 +375,8 @@ export class Vehicle {
       const wheelbase = Math.max(1.4, t.len * 0.6);
       let yawRate = this.speed * Math.tan(this.steerA) / wheelbase;
       // tyres can only hold so much sideways force (~1g), so fast cars turn wide
-      const latMax = (t.sports ? 12 : t.truck ? 7 : 10) / Math.max(1, Math.abs(this.speed));
+      const wet = this.carLike ? (G.wet || 0) : 0;            // rain makes the road slippery
+      const latMax = (t.sports ? 12 : t.truck ? 7 : 10) * (1 - 0.38 * wet) / Math.max(1, Math.abs(this.speed));
       yawRate = clamp(yawRate, -latMax, latMax);
       if (inp.brake && Math.abs(this.speed) > 7) yawRate *= 1.8;                       // handbrake turn
       this.yaw += yawRate * dt;
@@ -339,7 +389,7 @@ export class Vehicle {
       this.steerVis = this.steerA / 0.6;
       // grip: the direction of travel catches up with where the car points
       if (this.moveYaw === undefined) this.moveYaw = this.yaw;
-      const grip = inp.brake ? 1.8 : t.boat ? 2.5 : 9 - ratio * 3;
+      const grip = (inp.brake ? 1.8 : t.boat ? 2.5 : 9 - ratio * 3) * (1 - 0.6 * wet);
       let slip = ((this.yaw - this.moveYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
       this.moveYaw += slip * Math.min(1, grip * dt);
       this.speed *= 1 - Math.min(0.5, Math.abs(slip) * 0.9 * dt);                        // sliding scrubs speed
@@ -367,6 +417,38 @@ export class Vehicle {
     this.collideWalls(dt, 0);
     this.pitch = lerp(this.pitch, this.speed / t.max * 0.25, 0.1);
     this.roll = lerp(this.roll, -inp.steer * 0.2, 0.1);
+  }
+
+  // Submarine: W/S thrust, A/D turn, Space rise, Shift dive. Floats at the surface with the tower out.
+  subDrive(dt, inp) {
+    const t = this.type;
+    const target = inp.throttle * (inp.throttle > 0 ? t.max : t.max * 0.45);
+    this.speed += clamp(target - this.speed, -t.acc * dt, t.acc * dt);
+    this.speed *= 1 - Math.min(1, dt * 0.15);
+    this.yaw += inp.steer * t.turn * (0.35 + Math.min(1, Math.abs(this.speed) / 4) * 0.65) * dt;
+    const vyT = inp.up ? 3 : inp.down ? -3 : 0;
+    this.vy += clamp(vyT - this.vy, -2.5 * dt, 2.5 * dt);
+    this.forward(_f);
+    const ox = this.pos.x, oz = this.pos.z, sp0 = this.speed;
+    this.pos.addScaledVector(_f, this.speed * dt);
+    this.pos.y += this.vy * dt;
+    const top = WATER_Y - 2.1;
+    if (this.pos.y > top) { this.pos.y = top; if (this.vy > 0) this.vy = 0; }
+    // the sea floor: scrape along gentle slopes, stop at walls and the shore
+    const fl = baseHeight(this.pos.x, this.pos.z);
+    if (fl > top - 0.2 || fl > this.pos.y + 1.4) {
+      this.pos.x = ox; this.pos.z = oz;
+      if (Math.abs(this.speed) > 3 && this.driver && this.driver.isPlayer) sfx.crash();
+      this.speed *= -0.25;
+    } else if (this.pos.y < fl + 0.15) { this.pos.y = fl + 0.15; if (this.vy < 0) this.vy = 0; }
+    this.collideWalls(dt, sp0);
+    this.onGround = false;
+    this.pitch = lerp(this.pitch, clamp(-this.vy * 0.07, -0.25, 0.25), Math.min(1, dt * 2));
+    this.roll = lerp(this.roll, -inp.steer * 0.1 * Math.min(1, Math.abs(this.speed) / 5) + (this.pos.y >= top - 0.01 ? Math.sin(G.time * 1.3 + this.pos.x) * 0.03 : 0), Math.min(1, dt * 2));
+    if (Math.abs(this.speed) > 1 && Math.random() < dt * 14 && this.pos.y < WATER_Y - 2.4) {
+      _t.set(-Math.sin(this.yaw) * 3.4, 1.3, -Math.cos(this.yaw) * 3.4).add(this.pos);
+      bubbles(_t, 2, 0.4);
+    }
   }
 
   // E-dirt bike. Real-ish physics:
@@ -592,7 +674,7 @@ export class Vehicle {
   // ------------------------------------------------ crashes for cars, trucks and bikes
   crash(impact, hit) {
     const t = this.type;
-    if (t.plane || t.heli || t.boat) return;
+    if (t.plane || t.heli || t.boat || t.noCrash) return;
     if ((this.crashCD || 0) > G.time) return;
     this.crashCD = G.time + 0.35;
     this.damage += impact * (t.truck ? 0.55 : 1);
@@ -763,7 +845,7 @@ export class Vehicle {
         this.bounceV += 3;
         if (this.driver && this.driver.isPlayer) sfx.crash();
         if (impact > 7) this.crash(impact, hit);
-        if (impact > 17 && this.driver && !t.heli && !t.plane) this.ejectAll(impact * 1.3);
+        if (impact > 17 && this.driver && !t.heli && !t.plane && !t.noCrash) this.ejectAll(impact * 1.3);
       } else this.speed *= 1 - along * 0.5;
       if (t.heli && this.hvel) this.speed *= 0.5;
     }
@@ -796,6 +878,12 @@ export class Vehicle {
     ch.root.set(ep.x, Math.max(ep.y, groundHeight(ep.x, ep.z, ep.y + 2)), ep.z);
     resolveWalls(ch.root, 0.5, 1.8);
     if (this.type.boat || this.type.heli) ch.root.y = Math.max(ch.root.y, this.pos.y + 0.3);
+    if (this.type.sub) {
+      // climb out of the hatch at the surface, or swim out of the side underwater
+      if (this.pos.y >= WATER_Y - 2.2) ch.root.set(ep.x, WATER_Y - 0.9, ep.z);
+      else { ch.root.y = this.pos.y + 0.6; ch.diving = true; }
+    }
+    if (ch.place && (this.type.rail || this.type.ride)) { if (G.onLeaveRide) G.onLeaveRide(this, ch); }
   }
 
   // Knock over characters and props we drive into.
@@ -876,6 +964,13 @@ export class Vehicle {
     for (const w of this.wheels) w.rotation.x += this.speed * 0.016 / Math.max(0.3, this.type.wr);
     if (this.prop) this.prop.rotation.z += (this.driver || this.remoteDriver ? 0.3 + (this.throttle || 0) * 0.8 + Math.abs(this.speed) * 0.02 : 0);
     if (this.rotor) { this.rotor.rotation.y += this.rotorSpeed * 0.5; this.tailRotor.rotation.x += this.rotorSpeed * 0.6; }
+    if (this.subProp) {
+      this.subProp.rotation.z += this.speed * 0.06 + (this.driver || this.remoteDriver ? 0.05 : 0);
+      const on = !!(this.driver || this.remoteDriver);
+      const inside = G.cam && G.cam.fp && G.player && G.player.vehicle === this;
+      for (const b of this.beams) b.visible = on && !inside;
+      for (const l of this.lamps) l.material.emissiveIntensity = on ? 2.2 : 0.2;
+    }
     if (this.siren) {
       const lit = this.driver && (this.driver.isPlayer || this.chase || !this.driver.cop);
       const on = lit && Math.floor(G.time * 4) % 2 === 0;
@@ -896,6 +991,11 @@ export class Vehicle {
 
   update(dt) {
     this.effects(dt);
+    if (this.twister) { this.sync(); return; }        // spinning round inside a tornado
+    if (this.type.rail || this.type.ride) {             // moved by its track (train.js / park.js)
+      if (this.remoteDriver) { this.netT += dt; if (this.netT > 2) this.remoteDriver = null; }
+      this.sync(); return;
+    }
     if (this.remoteDriver) {
       if (this.net) {
         const k = 1 - Math.exp(-dt * 12);
@@ -912,6 +1012,11 @@ export class Vehicle {
       // coasting / falling while nobody drives
       if (this.type.plane) {
         if (!this.onGround || this.speed > 0.05) { this.throttle = Math.max(0, (this.throttle || 0) - dt * 0.3); this.planeFly(dt, { throttle: 0, steer: 0, up: false, down: !this.onGround && Math.random() < 0.5 }); }
+      } else if (this.type.sub) {
+        if (this.pos.y < WATER_Y - 2.11 || Math.abs(this.speed) > 0.01) this.subDrive(dt, { throttle: 0, steer: 0, up: false, down: false, idle: true });
+        if (this.vy < 0.5) this.vy += dt * 0.3;
+      } else if (this.type.rail || this.type.ride) {
+        /* moved by its track */
       } else if (this.type.heli) {
         this.rotorSpeed = Math.max(0, this.rotorSpeed - dt * 0.3);
         if (!this.onGround || this.speed !== 0) this.fly(dt, { throttle: 0, steer: 0, up: false, down: false });
@@ -972,6 +1077,7 @@ export class Vehicle {
 // Vehicle-vs-vehicle bumping
 export function bumpVehicles() {
   const vs = G.vehicles;
+  for (const v of vs) if (v.bumpCD) v.bumpCD = Math.max(0, v.bumpCD - 1 / 60);
   for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) {
     const a = vs[i], b = vs[j];
     if (a.type.heli !== b.type.heli && (a.pos.y > b.pos.y + 3 || b.pos.y > a.pos.y + 3)) continue;
@@ -980,12 +1086,14 @@ export function bumpVehicles() {
     const min = (a.type.len + b.type.len) * 0.3;
     if (d < min && d > 0.01 && Math.abs(a.pos.y - b.pos.y) < 2) {
       const push = (min - d) / d * 0.5;
-      const am = a.remoteDriver ? 0 : 1, bm = b.remoteDriver ? 0 : 1;
+      const am = a.remoteDriver || a.type.rail || a.type.ride ? 0 : 1, bm = b.remoteDriver || b.type.rail || b.type.ride ? 0 : 1;
+      if (!am && !bm) continue;
+      if (a.type.bumper && b.type.bumper && G.bumperBounce && !a.bumpCD) { G.bumperBounce(a, b); a.bumpCD = b.bumpCD = 0.3; }
       a.pos.x -= dx * push * am; a.pos.z -= dz * push * am;
       b.pos.x += dx * push * bm; b.pos.z += dz * push * bm;
       const nx = dx / d, nz = dz / d;
       const closing = (Math.sin(a.yaw) * a.speed - Math.sin(b.yaw) * b.speed) * nx + (Math.cos(a.yaw) * a.speed - Math.cos(b.yaw) * b.speed) * nz;
-      if (closing > 9 && !a.type.plane && !b.type.plane) {
+      if (closing > 9 && !a.type.plane && !b.type.plane && !a.type.bumper && !b.type.bumper) {
         if (am) a.crash(closing * 0.8, { nx: -nx, nz: -nz });
         if (bm) b.crash(closing * 0.8, { nx, nz });
         if (closing > 16) for (const v of [a, b]) if (v.driver && !v.remoteDriver) v.ejectAll(closing);
