@@ -153,3 +153,18 @@ body.touch #hint { display: none; }
 #crosshair { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; transform: translate(-50%,-50%); }
 #crosshair::before { content: ''; position: absolute; left: 0; top: 11px; width: 24px; height: 2px; background: linear-gradient(90deg, #fff 0 35%, transparent 35% 65%, #fff 65%); }
 #crosshair::after { content: ''; position: absolute; top: 0; left: 11px; height: 24px; width: 2px; background: linear-gradient(180deg, #fff 0 35%, transparent 35% 65%, #fff 65%); }
+
+/* ---------- diving ---------- */
+#diveHud { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); width: min(340px, 80vw); display: none; text-align: center; color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: .5px; text-shadow: 0 2px 4px rgba(0,0,0,.7); pointer-events: none; }
+#diveHud .dh-depth { font-size: 20px; }
+#diveHud .dh-bar { height: 12px; margin-top: 4px; border-radius: 6px; background: rgba(0,20,40,.55); border: 1px solid rgba(160,230,255,.6); overflow: hidden; }
+#diveHud .dh-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #3fd6ff, #9ff0ff); transition: width .2s; }
+#diveHud .dh-fill.low { background: linear-gradient(90deg, #ff3a3a, #ff8a5a); animation: dhpulse .6s infinite alternate; }
+#diveHud .dh-tip { font-size: 15px; margin-top: 4px; opacity: .9; }
+@keyframes dhpulse { from { opacity: 1; } to { opacity: .45; } }
+#weatherHud { position: absolute; top: 58px; right: 18px; color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 17px; letter-spacing: .5px; text-shadow: 0 2px 4px rgba(0,0,0,.7); pointer-events: none; }
+#weatherHud.alert { color: #ff5a4a; font-size: 22px; animation: dhpulse .5s infinite alternate; }
+#modeBar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: none; padding: 7px 16px; border-radius: 10px; background: rgba(20,24,34,.85); color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: .4px; white-space: nowrap; pointer-events: none; border: 1px solid rgba(255,210,58,.6); }
+#modeBar.blue { border-color: #5f8fff; } #modeBar.red { border-color: #ff5a5a; }
+#modeCover { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4,6,12,.94); z-index: 40; color: #fff; font-family: 'Barlow Condensed', sans-serif; font-size: 40px; font-weight: 800; text-align: center; pointer-events: none; }
+#modeCover span { display: block; font-size: 120px; color: #ffd23a; } #modeCover small { display: block; font-size: 22px; opacity: .8; font-weight: 600; }

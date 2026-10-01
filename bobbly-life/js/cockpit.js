@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { G, WATER_Y, clamp } from './state.js';
 import { carModel, truckModel, bikeModel, M } from './models.js';
 import { LOC } from './world.js';
+import { heightAt } from './terrain.js';
 
 let active = null;
 export function updateCockpit(dt, player) {
@@ -107,7 +108,8 @@ function build(v) {
   const t = v.type;
   const group = new THREE.Group(); group.visible = false;
   let upd = null;
-  if (t.airliner) upd = airlinerCockpit(v, group);
+  if (t.sub) upd = subCockpit(v, group);
+  else if (t.airliner) upd = airlinerCockpit(v, group);
   else if (t.plane) upd = smallPlaneCockpit(v, group);
   else if (t.isBike) upd = bikeCockpit(v, group);
   else if (v.carLike && !t.scooter) upd = carCockpit(v, group);
@@ -409,4 +411,63 @@ function eicas(x, X, Y, W, H, d, v) {
   if (v.onGround && Math.abs(v.speed) > (v.type.takeoff || 40)) warn.push('ROTATE');
   for (const w of warn) { x.fillStyle = w === 'ROTATE' ? '#40ff60' : '#ff3030'; x.fillText(w, W - 20, y); y += 30; }
   x.restore();
+}
+
+// ----- submarine: sonar, depth & compass screens under the glass bubble
+function subCockpit(v, g) {
+  const trim = mat('#23262c'), steel = mat('#7d848c', { metalness: 0.7, roughness: 0.35 });
+  box(g, trim, 0, 1.05, 1.95, 1.9, 0.42, 0.55, -0.35);
+  box(g, steel, 0, 1.3, 1.72, 1.9, 0.05, 0.06);
+  for (const sx of [-1, 1]) box(g, trim, sx * 0.42, 0.55, 1.6, 0.12, 0.6, 0.12);
+  const blip = (x, cx, cy, R, dx, dz, col, r = 4) => {
+    const c = Math.cos(-v.yaw), s = Math.sin(-v.yaw);
+    const lx = dx * c - dz * s, lz = dx * s + dz * c;
+    const d = Math.hypot(lx, lz); if (d > 160) return;
+    x.fillStyle = col; x.beginPath(); x.arc(cx - lx / 160 * R, cy - lz / 160 * R, r, 0, 7); x.fill();
+  };
+  const sonar = panel(0.6, 0.42, 420, 300, (x, w, h) => {
+    x.fillStyle = '#021208'; x.fillRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2 + 6, R = 130;
+    x.strokeStyle = 'rgba(60,255,140,0.35)'; x.lineWidth = 1.5;
+    for (let k = 1; k <= 3; k++) { x.beginPath(); x.arc(cx, cy, R * k / 3, 0, 7); x.stroke(); }
+    x.beginPath(); x.moveTo(cx - R, cy); x.lineTo(cx + R, cy); x.moveTo(cx, cy - R); x.lineTo(cx, cy + R); x.stroke();
+    const a = (G.time * 1.6) % (Math.PI * 2);
+    const gr = x.createRadialGradient(cx, cy, 0, cx, cy, R);
+    gr.addColorStop(0, 'rgba(60,255,140,0.25)'); gr.addColorStop(1, 'rgba(60,255,140,0.05)');
+    x.fillStyle = gr; x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, R, a - 0.5, a); x.closePath(); x.fill();
+    const O = G.ocean, P = v.pos;
+    if (O) {
+      for (const sc of O.schools) blip(x, cx, cy, R, sc.pos.x - P.x, sc.pos.z - P.z, 'rgba(120,255,170,0.8)', 3);
+      for (const d of O.dolphins) blip(x, cx, cy, R, d.m.position.x - P.x, d.m.position.z - P.z, '#8affff', 3);
+      for (const sh of O.sharks) blip(x, cx, cy, R, sh.m.position.x - P.x, sh.m.position.z - P.z, '#ff6a5a', 4);
+      if (O.whale) blip(x, cx, cy, R, O.whale.m.position.x - P.x, O.whale.m.position.z - P.z, '#ffffff', 7);
+      const T = G.save.treasure || [];
+      for (const ch of O.chests) if (!T.includes(ch.id)) blip(x, cx, cy, R, ch.x - P.x, ch.z - P.z, '#ffd23a', 4);
+      if (O.wreck) blip(x, cx, cy, R, O.wreck.x - P.x, O.wreck.z - P.z, 'rgba(255,200,120,0.9)', 6);
+    }
+    x.fillStyle = '#3cff8c'; x.beginPath(); x.moveTo(cx, cy - 8); x.lineTo(cx + 6, cy + 6); x.lineTo(cx - 6, cy + 6); x.fill();
+    x.font = '700 18px Arial'; x.fillStyle = '#3cff8c'; x.textAlign = 'left'; x.fillText('SONAR 160 m', 10, 22);
+    x.textAlign = 'right'; x.fillStyle = '#ffd23a'; x.fillText('● treasure', w - 10, 22);
+  });
+  facePilot(sonar.m, 0.55); sonar.m.position.set(-0.4, 1.28, 1.98); g.add(sonar.m);
+  const nav = panel(0.6, 0.42, 420, 300, (x, w, h) => {
+    x.fillStyle = '#05080c'; x.fillRect(0, 0, w, h);
+    const depth = Math.max(0, WATER_Y - v.pos.y), below = Math.max(0, v.pos.y - heightAt(v.pos.x, v.pos.z));
+    gauge(x, 95, 150, 82, 'DEPTH m', depth, 0, 50, { ticks: 10, every: 2, arcs: [[40, 50, '#d02020']], needle: '#ffcc22' });
+    x.fillStyle = '#e8eef5'; x.textAlign = 'left'; x.font = '700 30px Arial';
+    x.fillText(`${(Math.abs(v.speed) * 1.944).toFixed(1)} kn`, 200, 70);
+    x.font = '600 20px Arial'; x.fillStyle = '#8fa0b0';
+    x.fillText(`Floor below: ${below.toFixed(1)} m`, 200, 110);
+    x.fillText(`Rise/dive: ${v.vy > 0.2 ? '▲' : v.vy < -0.2 ? '▼' : '■'} ${Math.abs(v.vy).toFixed(1)} m/s`, 200, 140);
+    const hdg = ((-v.yaw * 180 / Math.PI) % 360 + 540) % 360;
+    x.fillText(`Heading ${Math.round(hdg).toString().padStart(3, '0')}°`, 200, 170);
+    x.fillStyle = below < 2 ? '#ff5a4a' : '#3cff8c'; x.font = '700 20px Arial';
+    x.fillText(below < 2 ? '⚠ TERRAIN' : 'CLEAR', 200, 210);
+    x.fillStyle = '#ffcc22'; x.fillText('🔋 BATTERY 100%', 200, 250);
+  });
+  facePilot(nav.m, 0.55); nav.m.position.set(0.4, 1.28, 1.98); g.add(nav.m);
+  // control sticks
+  const stick = new THREE.Group(); stick.position.set(0.42, 0.95, 1.55); g.add(stick);
+  rod(stick, trim, [0, 0, 0], [0, 0.32, 0], 0.025); box(stick, mat('#ffcc22'), 0, 0.34, 0, 0.07, 0.1, 0.07);
+  return (dt) => { sonar.redraw(dt); nav.redraw(dt); stick.rotation.x = clamp(v.speed / 12, -1, 1) * 0.3; stick.rotation.z = -clamp(v.vy / 3, -1, 1) * 0.2; };
 }

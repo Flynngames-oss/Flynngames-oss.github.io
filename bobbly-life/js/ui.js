@@ -8,6 +8,8 @@ import { PRESENT_SPOTS } from './props.js';
 import { WORLD, heightAt, biome, HIGHWAYS } from './terrain.js';
 import { sfx } from './audio.js';
 import { WEAPONS } from './weapons.js';
+import { setWeather, forceTornado } from './weather.js';
+import { startMode, stopMode } from './modes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -144,7 +146,7 @@ function clothingPanel(title) {
 
 function dealerPanel() {
   openPanel('🚗 Car Dealer', (el) => {
-    el.innerHTML = `<p>Buy a vehicle, then spawn it any time from your <b>Phone (Tab)</b>.</p><div class="grid">${Object.entries(VTYPES).map(([id, t]) => {
+    el.innerHTML = `<p>Buy a vehicle, then spawn it any time from your <b>Phone (Tab)</b>.</p><div class="grid">${Object.entries(VTYPES).filter(([, t]) => !t.noShop).map(([id, t]) => {
       const owned = G.save.ownedCars.includes(id);
       return `<div class="item ${owned ? 'owned' : ''}" data-id="${id}"><span class="emo">${t.emo}</span>${t.name}<div class="price">${owned ? 'Owned ✓ — tap to spawn' : '$' + t.price}</div></div>`;
     }).join('')}</div>`;
@@ -164,6 +166,7 @@ function dealerPanel() {
 
 // [emoji, name, x, z, facing]
 const TRAVEL = [
+  ['🐠', 'Coral Bay — Dive Shop', 'diveShop'], ['🎢', 'Bobbly Land Theme Park', 'themePark'], ['🚉', 'Bobbly Central Station', 'stn_Bobbly Central'], ['🚉', 'Lakeside Station', 'stn_Lakeside'], ['🚉', 'West Beach Station', 'stn_West Beach'],
   ['🏙️', 'Twin Towers', 'twin'], ['🛗', 'Twin Towers — rooftop deck', 'twinTop'], ['🛫', 'Bobbly International Airport', 'intl'], ['🛩️', 'SW Regional Airport', 'swAir'],
   ['✈️', 'Town Airfield', -130, 158, Math.PI / 2], ['⛲', 'Town Square', 0, -14, Math.PI], ['🔫', 'Blaster Shop', -70, -48, -Math.PI / 2],
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
@@ -193,6 +196,40 @@ function blasterPanel() {
   });
 }
 
+function diveShopPanel() {
+  openPanel('🤿 Coral Bay Dive Shop', (el) => {
+    const S2 = G.save, o = S2.outfit;
+    const mask = S2.ownedGlasses.includes('scuba'), suit = S2.ownedSkins.includes('diver'), sub = S2.ownedCars.includes('sub');
+    const T = (S2.treasure || []).length, N = G.ocean ? G.ocean.chests.length : 7;
+    el.innerHTML = `<p>Coral Bay is a deep reef lagoon full of fish, turtles, dolphins, sharks, jellyfish and a giant whale. There's a sunken pirate ship and an underwater cave, and <b>${N} treasure chests</b> are hidden down there (${T} found).</p>
+      <div class="grid">
+        <div class="item ${mask ? 'owned' : ''} ${o.glasses === 'scuba' ? 'equipped' : ''}" data-dive="mask"><span class="emo">🤿</span>Scuba Mask<div class="small">Breathe for 4 minutes instead of 25 seconds</div><div class="price">${o.glasses === 'scuba' ? 'Wearing' : mask ? 'Owned — wear it' : '$150'}</div></div>
+        <div class="item ${suit ? 'owned' : ''}" data-dive="suit"><span class="emo">🧜</span>Full Scuba Diver<div class="small">Mask, air tank, wetsuit and flippers (swim much faster)</div><div class="price">${suit ? 'Owned — wear it' : '$300'}</div></div>
+        <div class="item ${sub ? 'owned' : ''}" data-dive="sub"><span class="emo">🟡</span>Submarine<div class="small">Glass bubble, sonar, headlights. Never runs out of air!</div><div class="price">${sub ? 'Owned — launch it' : '$' + VTYPES.sub.price}</div></div>
+      </div>
+      <h3>How to dive</h3>
+      <p>Swim out past the pier where it gets deep. <b>C</b> dive down · <b>Space</b> swim up · <b>Shift</b> swim fast · <b>E</b> open a treasure chest. Keep an eye on your air bar!</p>
+      <p class="small">Submarine: W/S thrust · A/D turn · Space rise · Shift dive · V cockpit view with sonar (treasure shows as gold dots).</p>`;
+    el.querySelectorAll('[data-dive]').forEach(b => b.onclick = () => {
+      const k = b.dataset.dive;
+      if (k === 'mask') {
+        if (!mask) { if (S2.money < 150) { toast('Not enough money! Do some jobs 💼', 'bad'); sfx.bad(); return; } addMoney(-150, 'Bought a Scuba Mask!'); S2.ownedGlasses.push('scuba'); sfx.coin(); }
+        o.glasses = 'scuba'; outfitChanged();
+      } else if (k === 'suit') {
+        const sk = SKINS.find(x => x.id === 'diver');
+        if (!suit) { if (S2.money < sk.price) { toast('Not enough money! Do some jobs 💼', 'bad'); sfx.bad(); return; } addMoney(-sk.price, 'Bought the Scuba Diver suit!'); S2.ownedSkins.push('diver'); if (!S2.ownedGlasses.includes('scuba')) S2.ownedGlasses.push('scuba'); sfx.win(); }
+        Object.assign(o, sk.o, { extras: [...sk.o.extras] }); outfitChanged();
+        toast('🤿 Suited up! Flippers make you swim fast.');
+      } else if (k === 'sub') {
+        if (!sub) { if (S2.money < VTYPES.sub.price) { toast(`The submarine costs $${VTYPES.sub.price}. Keep working! 💪`, 'bad'); sfx.bad(); return; } addMoney(-VTYPES.sub.price, 'Bought a Submarine!'); S2.ownedCars.push('sub'); writeSave(); sfx.win(); }
+        closePanel(); G.spawnMyVehicle('sub'); return;
+      }
+      rerender();
+    });
+  });
+}
+export const openDiveShop = diveShopPanel;
+
 function phonePanel() {
   openPanel('📱 Bobbly Phone', (el) => {
     const s = G.save;
@@ -210,8 +247,21 @@ function phonePanel() {
         <div class="item" data-wp="blasters"><span class="emo">🔫</span>Blaster Shop<div class="price">Set waypoint</div></div>
         <div class="item" data-wp="mansion"><span class="emo">🏠</span>Dream House<div class="price">${s.house ? 'Your home' : '$2000'}</div></div>
       </div>
+      <h3>🎮 Party Games (multiplayer)</h3>
+      ${G.net.mode === 'solo' ? '<p class="small">Host a room and invite friends to play Hide &amp; Seek or Cops &amp; Robbers!</p>' : `<div class="tabs">
+        <button class="btn small ${G.mode.m === 'hide' ? 'green' : 'blue'}" data-mode="hide">🙈 Hide &amp; Seek</button>
+        <button class="btn small ${G.mode.m === 'cops' ? 'green' : 'blue'}" data-mode="cops">🚓 Cops &amp; Robbers</button>
+        ${G.mode.m ? '<button class="btn small gray" data-mode="stop">🛑 Stop game</button>' : ''}</div>
+        <p class="small">Hide &amp; Seek: one seeker counts to 40, everyone hides in Bobbly Town. Cops &amp; Robbers: robbers grab cash bags, cops bust them.</p>`}
+      <h3>🌦️ Weather Machine</h3>
+      ${G.net.mode === 'client' ? '<p class="small">Only the host can change the weather.</p>' : `<div class="tabs">
+        <button class="btn small ${G.weather.state === 'clear' ? 'green' : 'gray'}" data-wx="clear">☀️ Sunny</button>
+        <button class="btn small ${G.weather.state === 'cloudy' ? 'green' : 'gray'}" data-wx="cloudy">☁️ Cloudy</button>
+        <button class="btn small ${G.weather.state === 'rain' ? 'green' : 'gray'}" data-wx="rain">🌧️ Rain</button>
+        <button class="btn small ${G.weather.state === 'storm' ? 'green' : 'gray'}" data-wx="storm">⛈️ Storm</button>
+        <button class="btn small ${G.weather.tornado ? 'green' : 'gray'}" data-wx="tornado">🌪️ Tornado!</button></div>`}
       <h3>📊 Stats</h3>
-      <p>🎁 Presents found: <b>${s.presents.length} / ${PRESENT_SPOTS.length}</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'}</p>
+      <p>🎁 Presents found: <b>${s.presents.length} / ${PRESENT_SPOTS.length}</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'} · 💰 Sunken treasure: ${(s.treasure || []).length} / ${G.ocean ? G.ocean.chests.length : 7}</p>
       <div class="tabs">
         <button class="btn small blue" id="phRespawn">🔄 Respawn (unstuck)</button>
         ${s.house ? '<button class="btn small green" id="phHome">🏠 Go Home</button>' : ''}
@@ -235,6 +285,12 @@ function phonePanel() {
       toast(`${t[0]} Welcome to ${t[1]}!`);
     });
     el.querySelectorAll('[data-wp]').forEach(b => b.onclick = () => { G.waypoint = LOC[b.dataset.wp]; toast('📍 Waypoint set!'); closePanel(); });
+    el.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { closePanel(); if (b.dataset.mode === 'stop') stopMode(); else startMode(b.dataset.mode); });
+    el.querySelectorAll('[data-wx]').forEach(b => b.onclick = () => {
+      const w = b.dataset.wx;
+      if (w === 'tornado') { forceTornado(); closePanel(); return; }
+      setWeather(w); toast(`Weather: ${b.textContent}`); rerender();
+    });
     $('phRespawn').onclick = () => { closePanel(); G.player.respawn(); };
     if ($('phHome')) $('phHome').onclick = () => { closePanel(); G.player.respawn(true); };
     $('phWp').onclick = () => { G.waypoint = null; closePanel(); };
@@ -309,6 +365,7 @@ function buildWorldBase() {
   }
   x.strokeStyle = '#6b7079'; x.lineWidth = 2;
   for (const hw of HIGHWAYS) { x.beginPath(); x.moveTo((hw.x0 + WORLD) / 5, (hw.z0 + WORLD) / 5); x.lineTo((hw.x1 + WORLD) / 5, (hw.z1 + WORLD) / 5); x.stroke(); }
+  for (const f of G.mapExtras || []) f(x, (v) => (v + WORLD) / 5);
 }
 
 function buildMapBase() {
@@ -354,7 +411,8 @@ export function drawMinimap() {
   const dot = (wx, wz, col, r = 4) => { x.fillStyle = col; x.beginPath(); x.arc(wx - P.x, wz - P.z, r / zoom, 0, 7); x.fill(); };
   if (G.job && G.job.markers) for (const m of G.job.markers) dot(m.x, m.z, '#222', 4);
   for (const v of G.vehicles) if (v.owner === G.net.myId) dot(v.pos.x, v.pos.z, '#ff8a3d', 4);
-  for (const [, r] of G.remotes) { const p = r.p[0]; dot(p.x, p.z, '#ff3bd4', 5); }
+  for (const [id, r] of G.remotes) { if (G.mapHide && G.mapHide(id)) continue; const p = r.p[0]; dot(p.x, p.z, G.mapColor ? G.mapColor(id) : '#ff3bd4', 5); }
+  for (const f of G.mapDots || []) f(dot);
   x.restore();
   // objective / waypoint (clamped to edge)
   const drawTarget = (t, col) => {
@@ -399,14 +457,16 @@ export function updateHUD() {
     if (!G.job && G.waypoint && d < 8) { G.waypoint = null; toast('📍 You arrived!'); }
   } else $('objDist').classList.add('hidden');
   const v = G.player.vehicle;
-  if (v && G.player.seat === 0) {
+  if (G.rideHud) { $('speedo').classList.remove('hidden'); $('speedo').textContent = G.rideHud; }
+  else if (v && G.player.seat === 0) {
     $('speedo').classList.remove('hidden');
-    let txt = Math.round(Math.abs(v.speed) * 3.6) + ' km/h' + (v.type.heli || v.type.plane ? ` · ${Math.round(v.pos.y)}m up` : '');
+    let txt = Math.round(Math.abs(v.speed) * 3.6) + ' km/h' + (v.type.heli || v.type.plane ? ` · ${Math.round(v.pos.y)}m up` : '') + (v.type.sub ? ` · ${Math.max(0, Math.round(-0.6 - v.pos.y))} m deep` : '');
     if (v.type.plane && v.onGround && !v.wrecked) txt += v.speed > v.type.takeoff ? ' · ✈️ PULL ↑ NOW TO TAKE OFF!' : ` · take-off at ${Math.round(v.type.takeoff * 3.6)} km/h`;
     if (v.wrecked) txt = '💥 WRECKED — press E to get out';
     else if (v.flipped) txt = '🙃 Flipped! Hang on…';
     $('speedo').textContent = txt;
   }
+  else if (G.rideHud) { $('speedo').classList.remove('hidden'); $('speedo').textContent = G.rideHud; }
   else $('speedo').classList.add('hidden');
 }
 
@@ -419,7 +479,8 @@ export function setPrompt(text) {
 
 // ---------------------------------------------------------------- init
 export function initUI() {
-  G.toast = toast; G.setJob = setJob; G.clearJob = clearJob; G.onMoney = onMoney;
+  G.chatLine = chatLine;
+  G.toast = toast; G.setJob = setJob; G.clearJob = clearJob; G.onMoney = onMoney; G.openDiveShop = diveShopPanel;
   shownMoney = G.save.money;
   $('moneyVal').textContent = shownMoney;
   $('panelClose').onclick = closePanel;

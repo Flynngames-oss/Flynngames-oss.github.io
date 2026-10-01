@@ -1,5 +1,32 @@
 // Shared game state and small helpers used by every module.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// Merge a group's non-moving meshes into one mesh per material (far fewer draw calls). Meshes in `keep` stay as they are.
+export function mergeStatic(group, keep = new Set()) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const byMat = new Map(), drop = [];
+  group.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || keep.has(o) || Array.isArray(o.material)) return;
+    for (let p = o.parent; p && p !== group; p = p.parent) if (keep.has(p)) return;
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    if (!g.attributes.normal) g.computeVertexNormals();
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    if (!byMat.has(o.material)) byMat.set(o.material, { list: [], shadow: false });
+    const e = byMat.get(o.material); e.list.push(g); e.shadow ||= o.castShadow;
+    drop.push(o);
+  });
+  for (const o of drop) o.parent.remove(o);
+  for (const [m, e] of byMat) {
+    const mesh = new THREE.Mesh(mergeGeometries(e.list), m);
+    mesh.castShadow = e.shadow; mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  return group;
+}
 
 export const G = {
   scene: null, camera: null, renderer: null,

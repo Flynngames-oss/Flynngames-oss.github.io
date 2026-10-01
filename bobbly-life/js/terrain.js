@@ -1,6 +1,6 @@
 // The big open world around Bobbly Town: a height grid with biomes, lakes, a bay and highways.
 import * as THREE from 'three';
-import { LAND } from './state.js';
+import { LAND, G } from './state.js';
 
 export const WORLD = 1320;           // half-size of the whole map
 const STEP = 8;                      // grid spacing (matches the terrain mesh)
@@ -20,7 +20,7 @@ function vnoise(x, z) {
   const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1);
   return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
 }
-function fbm(x, z, oct = 4) {
+export function fbm(x, z, oct = 4) {
   let s = 0, a = 0.5, f = 1, n = 0;
   for (let i = 0; i < oct; i++) { s += vnoise(x * f, z * f) * a; n += a; a *= 0.5; f *= 2.03; }
   return s / n;
@@ -40,7 +40,20 @@ export const HIGHWAYS = [
   { name: 'West Highway', x0: -LAND, z0: 30, x1: -1050, z1: 30 },
 ];
 export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 620, z: 700, r: 90 }];
-const BAY = { x0: 200, x1: 520, z0: -170, z1: 170 };
+export const BAY = { x0: 200, x1: 520, z0: -170, z1: 170 };
+// Sea floor of Coral Bay: sandy shallows, reef terraces, a sandy channel and a 40 m deep basin
+export function bayFloor(x, z) {
+  const din = Math.min(x - BAY.x0, BAY.x1 - x, z - BAY.z0, BAY.z1 - z);      // distance in from the shore
+  const shelf = sm(6, 70, din), deep = sm(55, 150, din);
+  let h = -4 - 10 * shelf - 24 * deep;
+  // reef bumps and terraces in the middle depths, smoother sand in the deep basin
+  const reef = fbm(x / 34 + 40, z / 34 - 11, 4);
+  h += (reef - 0.22) * 18 * shelf * (1 - deep * 0.6);
+  h += Math.max(0, reef - 0.3) * 40 * shelf * (1 - deep);
+  // gentle sand ripples
+  h += Math.sin(x / 5.5 + Math.sin(z / 9) * 1.6) * 0.25 * shelf;
+  return Math.min(h, -2.2);
+}
 // Flat building zones: Mega City (west) and the Suburbs (north-east)
 export const ZONES = {
   city: { x0: -1000, x1: -200, z0: -470, z1: 280, h: 0 },
@@ -56,6 +69,7 @@ export const ZONES = {
   intl: { x0: 420, x1: 980, z0: -620, z1: -425, h: 'auto' },
   swAir: { x0: -1095, x1: -745, z0: -1085, z1: -975, h: 'auto' },
   jail: { x0: -175, x1: -105, z0: -305, z1: -235, h: 0 },
+  park: { x0: 668, x1: 985, z0: -150, z1: 22, h: 'auto' },
   intlRw: { x0: 346, x1: 985, z0: -490, z1: -420, h: 'intl' },   // the long international runway
 };
 // Rivers split the island into regions (highways cross them on bridges)
@@ -123,9 +137,9 @@ function rawHeight(x, z, noRiver = false, noZones = false) {
     const d = polyDist(x, z, rv.pts);
     if (d < rv.w + 40) h = mix(h, -3.5, 1 - sm(rv.w * 0.5, rv.w * 0.5 + 26, d));
   }
-  // bay east of town (where the pier is)
+  // Coral Bay east of town (where the pier is): shallow by the beach, a deep reef lagoon further out
   const bx = Math.max(BAY.x0 - x, 0, x - BAY.x1), bz = Math.max(BAY.z0 - z, 0, z - BAY.z1);
-  h = mix(h, -4, 1 - sm(0, 12, Math.hypot(bx, bz)));
+  h = mix(h, bayFloor(x, z), 1 - sm(0, 12, Math.hypot(bx, bz)));
   // lakes
   for (const l of LAKES) h = mix(h, -4, 1 - sm(l.r * 0.6, l.r, Math.hypot(x - l.x, z - l.z)));
   // ocean all around the island
@@ -155,7 +169,7 @@ export function slopeAt(x, z) {
 
 // ---------------------------------------------------------------- meshes
 const C = (h) => new THREE.Color(h);
-const COL = { grass: C('#7fae4f'), forest: C('#5a8f42'), sand: C('#f2dc9a'), desert: C('#b8aa6a'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f') };
+const COL = { grass: C('#7fae4f'), forest: C('#5a8f42'), sand: C('#f2dc9a'), desert: C('#b8aa6a'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f'), seaSand: C('#b9a57c'), algae: C('#6f8a4a') };
 export function buildTerrainMesh(scene) {
   const segs = N - 1;
   const g = new THREE.PlaneGeometry(WORLD * 2, WORLD * 2, segs, segs);
@@ -173,6 +187,12 @@ export function buildTerrainMesh(scene) {
     const slope = slopeAt(x, z);
     c.copy(COL.grass).lerp(COL.forest, b.west).lerp(COL.desert, b.south);
     if (h < 0.8 && r > LAND + 1) c.copy(COL.beach);
+    if (h < -3) {
+      // sea floor: pale sand in the shallows, darker sand and rock down deep, with patchy algae
+      c.lerp(COL.seaSand, Math.min(1, (-3 - h) / 30));
+      const patch = fbm(x / 22 + 7, z / 22 + 3, 3);
+      if (patch > 0.58) c.lerp(COL.algae, Math.min(0.55, (patch - 0.58) * 3));
+    }
     if (slope > 0.55) c.lerp(COL.rock, Math.min(1, (slope - 0.55) * 3));
     if (h > 95) c.lerp(COL.snow, Math.min(1, (h - 95) / 25));
     const v = (hash(i, j) - 0.5) * 0.06;
@@ -214,6 +234,7 @@ export function buildHighways(scene, roadMat) {
     g.computeVertexNormals();
     const tex = roadMat.map.clone(); tex.needsUpdate = true; tex.repeat.set(1, 1);
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
+    (G.roadMats ||= []).push(m.material);
     m.receiveShadow = true;
     scene.add(m);
   }
