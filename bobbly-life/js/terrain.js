@@ -147,6 +147,14 @@ function rawHeight(x, z, noRiver = false, noZones = false) {
   return h;
 }
 
+// Reshape the ground after it's generated (used to dig cuttings and build embankments for the railway).
+export function editGrid(near, fn) {
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = -WORLD + i * STEP, z = -WORLD + j * STEP;
+    if (!near(x, z)) continue;
+    const k = j * N + i; grid[k] = fn(x, z, grid[k]);
+  }
+}
 export function buildHeights() {
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) grid[j * N + i] = rawHeight(-WORLD + i * STEP, -WORLD + j * STEP);
 }
@@ -233,8 +241,9 @@ export function buildHighways(scene, roadMat) {
     g.setIndex(idx);
     g.computeVertexNormals();
     const tex = roadMat.map.clone(); tex.needsUpdate = true; tex.repeat.set(1, 1);
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
-    (G.roadMats ||= []).push(m.material);
+    const rm = roadMat.clone(); rm.map = tex; rm.side = THREE.DoubleSide;
+    const m = new THREE.Mesh(g, rm);
+    (G.roadMats ||= []).push(rm);
     m.receiveShadow = true;
     scene.add(m);
   }

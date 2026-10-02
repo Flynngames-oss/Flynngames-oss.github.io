@@ -1,6 +1,6 @@
 // HUD, shops, phone, minimap, chat.
 import { G, COLORS, addMoney, writeSave, LAND, noEmoji } from './state.js';
-import { HATS, GLASSES, EYES, SKINS, HAIRS, HAIR_COLORS, SKIN_TONES } from './character.js';
+import { HATS, GLASSES, EYES, SKINS, HAIRS, HAIR_COLORS, SKIN_TONES, TOPS, BOTTOMS } from './character.js';
 import { VTYPES } from './vehicles.js';
 import { JOBS, startJob } from './jobs.js';
 import { LOC, ROADS, colliders, groundHeight } from './world.js';
@@ -82,6 +82,8 @@ function clothingPanel(title) {
     const o = G.save.outfit;
     let html = `<div class="tabs">
       <button class="btn small ${tab === 'skins' ? '' : 'gray'}" data-tab="skins">🦸 Skins</button>
+      <button class="btn small ${tab === 'tops' ? '' : 'gray'}" data-tab="tops">👕 Tops</button>
+      <button class="btn small ${tab === 'bottoms' ? '' : 'gray'}" data-tab="bottoms">👖 Bottoms</button>
       <button class="btn small ${tab === 'hats' ? '' : 'gray'}" data-tab="hats">🎩 Hats</button>
       <button class="btn small ${tab === 'glasses' ? '' : 'gray'}" data-tab="glasses">😎 Glasses</button>
       <button class="btn small ${tab === 'face' ? '' : 'gray'}" data-tab="face">👀 Face</button>
@@ -92,6 +94,13 @@ function clothingPanel(title) {
         const owned = G.save.ownedSkins.includes(sk.id);
         return `<div class="item ${owned ? 'owned' : ''}" data-skin="${sk.id}"><span class="emo">${sk.emo}</span>${sk.name}<div class="price">${owned ? 'Owned — wear it' : sk.quest ? '🔒 Secret character' : '$' + sk.price}</div>${!owned && sk.quest ? `<div class="small">${sk.quest}</div>` : ''}</div>`;
       }).join('')}</div>`;
+    }
+    if (tab === 'tops') {
+      html += `<p class="small">Free! The colour comes from the Colors tab (Shirt).</p><div class="grid">${TOPS.map(t => `<div class="item ${(o.top || 'tshirt') === t.id ? 'equipped' : ''}" data-top="${t.id}"><span class="emo">${t.emo}</span>${t.name}</div>`).join('')}</div>`;
+    }
+    if (tab === 'bottoms') {
+      html += `<div class="grid">${BOTTOMS.map(t => `<div class="item ${(o.bottom || 'jeans') === t.id ? 'equipped' : ''}" data-bottom="${t.id}"><span class="emo">${t.emo}</span>${t.name}</div>`).join('')}</div>`;
+      html += `<h3>👟 Sneakers</h3><div class="swatches">${['#f2f2ee', '#3a3f4a', '#202226', '#b8322a', '#2f5fa8', '#8a6a4a', '#46a85a', '#ff8a2a', '#b46cff'].map(c => `<div class="sw ${o.shoes === c ? 'sel' : ''}" data-shoe="${c}" style="background:${c}"></div>`).join('')}</div><p class="small">The colour of trousers comes from the Colors tab (Pants).</p>`;
     }
     if (tab === 'hats') html += itemGrid(HATS, 'ownedHats', 'hat');
     if (tab === 'glasses') html += itemGrid(GLASSES, 'ownedGlasses', 'glasses');
@@ -124,9 +133,12 @@ function clothingPanel(title) {
       render(el);
     });
     el.querySelectorAll('[data-hair]').forEach(b => b.onclick = () => { o.hair = b.dataset.hair; outfitChanged(); render(el); });
+    el.querySelectorAll('[data-top]').forEach(b => b.onclick = () => { o.top = b.dataset.top; outfitChanged(); render(el); });
+    el.querySelectorAll('[data-bottom]').forEach(b => b.onclick = () => { o.bottom = b.dataset.bottom; outfitChanged(); render(el); });
+    el.querySelectorAll('[data-shoe]').forEach(b => b.onclick = () => { o.shoes = b.dataset.shoe; outfitChanged(); render(el); });
     el.querySelectorAll('[data-hc]').forEach(b => b.onclick = () => { o.hairColor = b.dataset.hc; outfitChanged(); render(el); });
     el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(el); });
-    el.querySelectorAll('.sw').forEach(s => s.onclick = () => { o[s.dataset.key] = s.dataset.color; outfitChanged(); render(el); });
+    el.querySelectorAll('.sw[data-key]').forEach(s => s.onclick = () => { o[s.dataset.key] = s.dataset.color; outfitChanged(); render(el); });
     el.querySelectorAll('.item[data-slot]').forEach(it => it.onclick = () => {
       const slot = it.dataset.slot, id = it.dataset.id, price = +it.dataset.price;
       const ownedKey = slot === 'hat' ? 'ownedHats' : slot === 'glasses' ? 'ownedGlasses' : null;
