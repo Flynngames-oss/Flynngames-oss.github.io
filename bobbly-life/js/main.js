@@ -6,8 +6,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP } from './state.js';
-import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows } from './world.js';
+import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP, WATER_Y } from './state.js';
+import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows, setDrawDistances, baseHeight } from './world.js';
 import { Character, updateNPC, randomOutfit, PARTS, SKIN_TONES, HAIRS, HAIR_COLORS } from './character.js';
 import { Vehicle, VTYPES, bumpVehicles, randomCarColor } from './vehicles.js';
 import { updateProps, kickProps, spawnPresents, updatePresents, updateTrees, hitTree, scatterProps, buildPropMesh } from './props.js';
@@ -46,25 +46,42 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-// Cinematic colour grade: softer saturation, film contrast, split toning and a vignette
+// Colour grade: bright, saturated cartoon colours with a soft vignette, plus FXAA (smooths jagged edges, cheap
+// enough for Chromebooks).
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, sat: { value: 0.72 }, contrast: { value: 1.14 }, vig: { value: 0.85 }, uw: { value: 0 }, time: { value: 0 }, flash: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.16 }, contrast: { value: 1.04 }, vig: { value: 0.42 }, uw: { value: 0 }, time: { value: 0 }, flash: { value: 0 }, fxaa: { value: 1 }, res: { value: new THREE.Vector2(1280, 720) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig, uw, time, flash; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig, uw, time, flash, fxaa; uniform vec2 res; varying vec2 vUv;
+    float lu(vec3 c){ float l = dot(c, vec3(0.299, 0.587, 0.114)); return l / (1.0 + l); }
+    vec3 aa(vec2 uv){
+      vec2 px = 1.0 / res;
+      vec3 nw = texture2D(tDiffuse, uv + vec2(-1.0, -1.0) * px).rgb, ne = texture2D(tDiffuse, uv + vec2(1.0, -1.0) * px).rgb;
+      vec3 sw = texture2D(tDiffuse, uv + vec2(-1.0, 1.0) * px).rgb, se = texture2D(tDiffuse, uv + vec2(1.0, 1.0) * px).rgb;
+      vec3 m = texture2D(tDiffuse, uv).rgb;
+      float lNW = lu(nw), lNE = lu(ne), lSW = lu(sw), lSE = lu(se), lM = lu(m);
+      float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+      if (lMax - lMin < 0.04) return m;
+      vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+      float red = max((lNW + lNE + lSW + lSE) * 0.03125, 0.0078125);
+      dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + red), vec2(-8.0), vec2(8.0)) * px;
+      vec3 a = 0.5 * (texture2D(tDiffuse, uv - dir * 0.1667).rgb + texture2D(tDiffuse, uv + dir * 0.1667).rgb);
+      vec3 b = a * 0.5 + 0.25 * (texture2D(tDiffuse, uv - dir * 0.5).rgb + texture2D(tDiffuse, uv + dir * 0.5).rgb);
+      float lB = lu(b);
+      return (lB < lMin || lB > lMax) ? a : b;
+    }
     void main(){
       vec2 uv = vUv;
-      vec4 c;
+      vec4 c = texture2D(tDiffuse, uv);
       if (uw > 0.0) {
         // underwater: the view wobbles and softens like looking through moving water
         uv += vec2(sin(uv.y * 38.0 + time * 1.9) + sin(uv.y * 17.0 - time * 1.3), cos(uv.x * 29.0 + time * 1.6)) * 0.0016 * uw;
         float b = 0.0022 * uw;
-        c = texture2D(tDiffuse, uv) * 0.36 + (texture2D(tDiffuse, uv + vec2(b, 0.0)) + texture2D(tDiffuse, uv - vec2(b, 0.0)) + texture2D(tDiffuse, uv + vec2(0.0, b * 1.6)) + texture2D(tDiffuse, uv - vec2(0.0, b * 1.6))) * 0.16;
-      } else c = texture2D(tDiffuse, uv);
+        c.rgb = texture2D(tDiffuse, uv).rgb * 0.36 + (texture2D(tDiffuse, uv + vec2(b, 0.0)).rgb + texture2D(tDiffuse, uv - vec2(b, 0.0)).rgb + texture2D(tDiffuse, uv + vec2(0.0, b * 1.6)).rgb + texture2D(tDiffuse, uv - vec2(0.0, b * 1.6)).rgb) * 0.16;
+      } else if (fxaa > 0.5) c.rgb = aa(uv);
       vec3 col = c.rgb;
       col += flash * vec3(0.75, 0.8, 1.0);
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(l), col, sat);
-      col += vec3(-0.012, 0.0, 0.02) * (1.0 - clamp(l, 0.0, 1.0)) + vec3(0.03, 0.012, -0.018) * clamp(l, 0.0, 1.0);
       col = (col - 0.18) * contrast + 0.18;
       vec2 d = vUv - 0.5; col *= 1.0 - (vig + uw * 0.9) * dot(d, d) * 1.3;
       col = mix(col, col * vec3(0.78, 1.0, 1.06), uw * 0.5);
@@ -93,7 +110,7 @@ const gradePass = new ShaderPass(GradeShader);
 composer.addPass(gradePass);
 composer.addPass(new OutputPass());
 let useGrade = true;
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); aoPass.setSize(innerWidth, innerHeight); bloomPass.setSize(innerWidth / 2, innerHeight / 2); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); gradePass.uniforms.res.value.set(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()); aoPass.setSize(innerWidth, innerHeight); bloomPass.setSize(innerWidth / 2, innerHeight / 2); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
 const TIPS = [
   'Hold left click to grab things — and people. Let go to throw.',
@@ -141,10 +158,12 @@ const WV = [
   ['firetruck', 50, 68, 0], ['garbage', 42, -72, 0], ['pickup', -104, 16, Math.PI / 2], ['pickup', -92, -60, 0],
   ['icecream', -44, 46, Math.PI / 2], ['monster', -48, -40, Math.PI], ['sports', 21, -12, 0], ['sedan', -21, 14, Math.PI],
   ['police', 21, 16, 0], ['sedan', 99, 40, 0], ['sedan', -81, -20, Math.PI], ['sedan', 39, 120, 0], ['pickup', 159, 60, 0],
-  ['boat', 200, 14, Math.PI / 2], ['boat', 205, -14, Math.PI / 2], ['sub', 240, -14, Math.PI / 2], ['heli', -76, -78, 0], ['sports', -150, -28, 0],
+  ['boat', -45, -708, Math.PI / 2], ['boat', -40, -733, Math.PI / 2], ['sub', -12, -735, Math.PI / 2], ['boat', 360, -575, Math.PI], ['heli', -76, -78, 0], ['sports', -150, -28, 0],
   ['biplane', -122, 164, Math.PI / 2], ['jet', -138, 171.5, Math.PI / 2],
 ];
 WV.forEach(([t, x, z, yaw], i) => new Vehicle(t, x, z, yaw, { id: 'w' + i, color: t === 'sedan' ? ['#3fa7ff', '#ff5b6e', '#b46cff', '#46c25a'][i % 4] : null }));
+// go-karts lined up on the grid at the Crazy Go-Kart Track
+(LOC.kartGrid || []).forEach((g, i) => new Vehicle('kart', g.x, g.z, g.yaw, { id: 'kart' + i, color: ['#e8322a', '#3fa7ff', '#ffd23a', '#46c25a', '#b97aff', '#ff8a2a'][i % 6] }));
 // Showroom cars
 [['sports', -12], ['monster', 0], ['police', 12]].forEach(([t, x], i) => {
   const v = new Vehicle(t, x, -50, Math.PI * 0.85, { id: 'd' + i });
@@ -194,14 +213,15 @@ G.spawnMyVehicle = (id) => {
   const t = VTYPES[id];
   let x, z, yaw = player.facing;
   if (t.boat) {
-    const nearWater = Math.max(Math.abs(player.root.x), Math.abs(player.root.z)) > 170;
-    if (nearWater && Math.abs(player.root.x) > Math.abs(player.root.z)) { x = Math.sign(player.root.x) * 205; z = player.root.z; }
-    else if (nearWater) { x = player.root.x; z = Math.sign(player.root.z) * 205; }
-    else { x = 205; z = 20; UI.toast('🚤 Your boat is waiting at the pier!'); G.waypoint = { x: 200, z: 20 }; }
+    // the nearest deep enough water within 60 m, otherwise the pier in Slippy Bay
+    let best = null;
+    for (let a = 0; a < 16 && !best; a++) for (const d of [12, 25, 40, 60]) { const qx = player.root.x + Math.sin(a / 16 * Math.PI * 2) * d, qz = player.root.z + Math.cos(a / 16 * Math.PI * 2) * d; if (baseHeight(qx, qz) < WATER_Y - 1.5) { best = [qx, qz]; break; } }
+    if (best) [x, z] = best;
+    else { x = -45; z = -708; UI.toast('🚤 Your boat is waiting at the pier in Slippy Bay!'); G.waypoint = { x: -60, z: -712 }; }
     yaw = Math.PI / 2;
   } else if (t.sub) {
-    x = 238; z = 24; yaw = Math.PI / 2;
-    UI.toast('🟡 Your submarine is waiting in Coral Bay, next to the pier!'); G.waypoint = { x: 232, z: 20 };
+    x = -18; z = -700; yaw = Math.PI / 2;
+    UI.toast('🟡 Your submarine is waiting in Slippy Bay, next to the pier!'); G.waypoint = { x: -28, z: -712 };
   } else if (t.plane) {
     // planes wait at the start of the nearest runway (airliners need the big international one)
     const list = (LOC.airports || []).filter(a => !t.airliner || a.name === 'Bobbly International');
@@ -256,6 +276,7 @@ function onKey(code) {
     else { stopFishing(); player.flop(null, 0.8); player.holdRag = true; }
   }
   if (code === 'KeyJ') quitJob();
+  if (code === 'KeyN' && G.openMap) { G.openMap(); return; }
   if (code === 'KeyM') { G.save.music = !musicPlaying(); setMusic(G.save.music); writeSave(); UI.toast(G.save.music ? '🎵 Music on' : '🔇 Music off'); }
   if (code === 'KeyV') {
     G.cam.fp = !G.cam.fp;
@@ -733,14 +754,18 @@ G.applyGraphics = () => applyGraphics();
 G.writeSave = writeSave;
 function applyGraphics() {
   const high = G.save.gfx !== 'low', ultra = G.save.gfx === 'ultra';
-  renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
-  setShadows(high, ultra);
+  renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : Math.min(devicePixelRatio, 1) * 0.9);
+  // every setting gets sun shadows now (Low uses a small, cheap shadow map), smoothing of jagged edges and the colour grade
+  setShadows(true, ultra, !high);
+  setDrawDistances(G.save.gfx);
   aoPass.enabled = ultra;
   bloomPass.enabled = high;
-  useGrade = high;
+  useGrade = true;
+  gradePass.uniforms.fxaa.value = renderer.getPixelRatio() < 1.3 ? 1 : 0;
+  gradePass.uniforms.res.value.set(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio());
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight);
-  camera.far = high ? 2200 : 1200; camera.updateProjectionMatrix();
-  G.fogBaseFar = high ? 1500 : 800;
+  camera.far = high ? 2200 : 1500; camera.updateProjectionMatrix();
+  G.fogBaseFar = high ? 1500 : 1050;
   G.landFog.far = G.fogBaseFar;
 }
 if (!G.save.gfx) G.save.gfx = isTouch ? 'low' : 'high';
@@ -766,7 +791,7 @@ function startGame() {
 // ---------------------------------------------------------------- per-frame player control
 function controlPlayer(dt) {
   const p = player;
-  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze;
+  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze || G.cableRide || G.slideRide;
   let ix = 0, iy = 0;
   if (!blocked) {
     ix = (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + touch.mx;
@@ -843,6 +868,7 @@ function pointSolid(x, y, z) {
 }
 let camOrbit = 0;
 function updateCamera(dt) {
+  if (G.camOverride) { const o = G.camOverride; camera.position.copy(o.pos); camera.lookAt(o.look); return; }   // photo / debug camera
   if (!G.started) {
     // Home screen: your Bobbler dances on the right, the town behind them
     camOrbit += dt * 0.25;

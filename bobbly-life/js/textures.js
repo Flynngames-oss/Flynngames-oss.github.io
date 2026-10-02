@@ -36,23 +36,16 @@ function speckle(x, n, size, count, lo, hi, alpha = 1) {
 
 // Greyscale grass/ground detail: multiplied with the terrain's vertex colours.
 export function grassDetail() {
+  // clean cartoon lawn: soft light and dark patches with a few tiny blades (greyscale, tinted by the ground colour)
   const n = 512, [c, x] = canvas(n);
-  x.fillStyle = '#d8d8d8'; x.fillRect(0, 0, n, n);
-  // soft clumps of lighter and darker turf
-  for (let i = 0; i < 160; i++) { const px = rnd() * n, py = rnd() * n, r = 10 + rnd() * 40, v = 175 + rnd() * 80 | 0; const g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, `rgba(${v},${v},${v},0.45)`); g.addColorStop(1, `rgba(${v},${v},${v},0)`); x.fillStyle = g; x.fillRect(px - r, py - r, r * 2, r * 2); }
-  speckle(x, n, 3, 7000, 150, 255, 0.5);
+  x.fillStyle = '#ececec'; x.fillRect(0, 0, n, n);
+  for (let i = 0; i < 120; i++) { const px = rnd() * n, py = rnd() * n, r = 16 + rnd() * 50, v = 205 + rnd() * 50 | 0; const g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, `rgba(${v},${v},${v},0.4)`); g.addColorStop(1, `rgba(${v},${v},${v},0)`); x.fillStyle = g; x.fillRect(px - r, py - r, r * 2, r * 2); }
+  speckle(x, n, 2, 2500, 205, 255, 0.35);
   x.lineCap = 'round';
-  for (let i = 0; i < 9000; i++) {
-    const px = rnd() * n, py = rnd() * n, l = 4 + rnd() * 9, a = -Math.PI / 2 + (rnd() - 0.5) * 1.1;
-    const v = Math.floor(150 + rnd() * 105);
-    x.strokeStyle = `rgba(${v},${v},${v},0.55)`; x.lineWidth = 0.8 + rnd() * 1.2;
-    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
-  }
-  x.lineCap = 'round';
-  for (let i = 0; i < 1400; i++) {
+  for (let i = 0; i < 2600; i++) {
     const px = rnd() * n, py = rnd() * n, l = 3 + rnd() * 6, a = -Math.PI / 2 + (rnd() - 0.5) * 0.9;
     const v = Math.floor(200 + rnd() * 55);
-    x.strokeStyle = `rgba(${v},${v},${v},0.7)`; x.lineWidth = 1 + rnd();
+    x.strokeStyle = `rgba(${v},${v},${v},0.45)`; x.lineWidth = 1 + rnd();
     x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
   }
   return tex(c);
@@ -229,14 +222,101 @@ export function interiorWallTexture() {
   return { map: tex(c), emit: tex(e) };
 }
 
+// Asphalt roof shingles: staggered tabs with gritty granules and a shadow line under every course (plus bumps).
+let roofCache = null;
 export function roofTexture() {
-  const n = 128, [c, x] = canvas(n);
-  x.fillStyle = '#e8e8e8'; x.fillRect(0, 0, n, n);
-  for (let r = 0; r < 8; r++) for (let k = 0; k < 9; k++) {
-    const v = Math.floor(185 + rnd() * 60);
-    x.fillStyle = `rgb(${v},${v},${v})`;
-    const off = r % 2 ? 8 : 0;
-    x.fillRect(k * 16 - off + 1, r * 16 + 1, 14, 14);
+  if (roofCache) return roofCache.map;
+  const n = 256, [c, x] = canvas(n), [hC, hh] = canvas(n);
+  x.fillStyle = '#d8d8d8'; x.fillRect(0, 0, n, n);
+  hh.fillStyle = '#808080'; hh.fillRect(0, 0, n, n);
+  const rows = 8, rh = n / rows, tw = n / 6;
+  for (let r = 0; r < rows; r++) {
+    const off = (r % 2) * tw / 2 + (r % 3) * 7;
+    for (let k = -1; k < 7; k++) {
+      const v = Math.floor(175 + rnd() * 70);
+      x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(k * tw + off + 1, r * rh, tw - 2, rh);
+      const g = hh.createLinearGradient(0, r * rh, 0, (r + 1) * rh); g.addColorStop(0, '#5a5a5a'); g.addColorStop(0.9, '#c8c8c8'); g.addColorStop(1, '#303030');
+      hh.fillStyle = g; hh.fillRect(k * tw + off + 1, r * rh, tw - 2, rh);
+    }
+    x.fillStyle = 'rgba(0,0,0,0.38)'; x.fillRect(0, (r + 1) * rh - 3, n, 3);      // shadow under each course
+  }
+  speckle(x, n, 1.5, 9000, 90, 255, 0.35);                                           // granules
+  roofCache = { map: tex(c), normal: normalFromHeight(hC, 3) };
+  return roofCache.map;
+}
+export function roofNormal() { roofTexture(); return roofCache.normal; }
+
+// Weathered concrete / stone for columns, ledges and cornices: fine grain, formwork joints, rain streaks.
+let concreteCache = null;
+export function concreteTexture() {
+  if (concreteCache) return concreteCache;
+  const n = 256, [c, x] = canvas(n), [hC, hh] = canvas(n);
+  x.fillStyle = '#e6e3dc'; x.fillRect(0, 0, n, n);
+  hh.fillStyle = '#909090'; hh.fillRect(0, 0, n, n);
+  speckle(x, n, 2, 7000, 200, 245, 0.45);
+  speckle(hh, n, 2, 5000, 120, 170, 0.6);
+  for (let i = 0; i < 26; i++) {                                                     // rain streaks
+    const px = rnd() * n, len = 30 + rnd() * 120, g = x.createLinearGradient(0, 0, 0, len);
+    g.addColorStop(0, 'rgba(70,64,58,0.12)'); g.addColorStop(1, 'rgba(70,64,58,0)');
+    x.fillStyle = g; x.fillRect(px, rnd() * 40, 2 + rnd() * 5, len);
+  }
+  x.fillStyle = 'rgba(0,0,0,0.10)'; x.fillRect(0, 0, n, 2); x.fillRect(0, 0, 2, n);  // panel joints every 2 m
+  hh.fillStyle = '#404040'; hh.fillRect(0, 0, n, 3); hh.fillRect(0, 0, 3, n);
+  concreteCache = { map: tex(c), normal: normalFromHeight(hC, 2.5) };
+  return concreteCache;
+}
+
+// Glass curtain wall: floor-to-ceiling tinted glass in a slim metal grid, a dark spandrel panel at each floor
+// slab, reflections that fade from sky to dark office, and offices lit at night.
+export function glassWallTextures() {
+  const n = 512, bay = 128, [c, x] = canvas(n), [e, y] = canvas(n), [rmC, rm] = canvas(n), [hC, hh] = canvas(n);
+  y.fillStyle = '#000'; y.fillRect(0, 0, n, n);
+  rm.fillStyle = 'rgb(0,30,230)'; rm.fillRect(0, 0, n, n);                         // smooth, mirror-like glass
+  hh.fillStyle = '#707070'; hh.fillRect(0, 0, n, n);
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) {
+    const bx = k * bay, by = r * bay, t = rnd();
+    const g = x.createLinearGradient(bx, by, bx + bay * 0.4, by + bay);
+    g.addColorStop(0, `rgb(${200 + t * 30 | 0},${214 + t * 25 | 0},${226 + t * 20 | 0})`);
+    g.addColorStop(0.45, `rgb(${120 + t * 30 | 0},${138 + t * 30 | 0},${156 + t * 30 | 0})`);
+    g.addColorStop(1, `rgb(${62 + t * 20 | 0},${72 + t * 20 | 0},${84 + t * 20 | 0})`);
+    x.fillStyle = g; x.fillRect(bx, by, bay, bay);
+    // what you can just make out through the glass: ceiling lights, a desk partition
+    x.fillStyle = 'rgba(255,255,255,0.10)'; for (let l = bx + 10; l < bx + bay - 10; l += 28) x.fillRect(l, by + 8, 16, 3);
+    if (rnd() < 0.5) { x.fillStyle = 'rgba(30,34,40,0.35)'; x.fillRect(bx + 8 + rnd() * 60, by + 70, 40 + rnd() * 30, 30); }
+    // spandrel at the floor slab
+    x.fillStyle = 'rgb(54,60,68)'; x.fillRect(bx, by + 104, bay, 24);
+    rm.fillStyle = 'rgb(0,90,160)'; rm.fillRect(bx, by + 104, bay, 24);
+    // night: lit offices
+    if (rnd() < 0.45) { const w = rnd() < 0.65; y.fillStyle = w ? `rgba(255,${210 + rnd() * 30 | 0},${150 + rnd() * 40 | 0},${0.5 + rnd() * 0.5})` : `rgba(215,232,255,${0.5 + rnd() * 0.5})`; y.fillRect(bx, by, bay, 104); }
+    // slim mullions and transom
+    x.fillStyle = '#3a4048'; x.fillRect(bx, by, 4, bay); x.fillRect(bx, by + 102, bay, 3);
+    hh.fillStyle = '#d0d0d0'; hh.fillRect(bx, by, 5, bay); hh.fillRect(bx, by + 101, bay, 5);
+    rm.fillStyle = 'rgb(0,120,200)'; rm.fillRect(bx, by, 4, bay);
+    y.fillStyle = '#000'; y.fillRect(bx, by, 4, bay); y.fillRect(bx, by + 102, bay, 26);
+  }
+  return { map: tex(c), emit: tex(e), rm: tex(rmC, false), normal: normalFromHeight(hC, 2) };
+}
+
+// Goods on supermarket shelves: three shelves of colourful packets, tins and bottles.
+export function goodsTexture() {
+  const W = 256, H = 256, [c, x] = canvas(W);
+  x.fillStyle = '#e8e8e6'; x.fillRect(0, 0, W, H);
+  const cols = ['#e84a3f', '#3fa7ff', '#ffd23a', '#46c25a', '#b46cff', '#ff8a2a', '#f4f2ee', '#2a4a8a', '#8a2a2a'];
+  for (let r = 0; r < 3; r++) {
+    const y0 = 8 + r * 82, sh = 70;
+    x.fillStyle = '#8a8e94'; x.fillRect(0, y0 + sh, W, 6);                       // shelf lip
+    x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(0, y0, W, sh);
+    let px = 2;
+    while (px < W - 4) {
+      const kind = rnd(), w = kind < 0.4 ? 14 + rnd() * 10 : kind < 0.7 ? 10 : 18 + rnd() * 8, h = kind < 0.4 ? 40 + rnd() * 25 : kind < 0.7 ? 26 + rnd() * 8 : 50 + rnd() * 16;
+      const col = cols[Math.floor(rnd() * cols.length)];
+      for (let rep = 0; rep < 1 + Math.floor(rnd() * 4) && px < W - 4; rep++) {
+        x.fillStyle = col; x.fillRect(px, y0 + sh - h, w, h);
+        x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillRect(px + 2, y0 + sh - h * 0.65, w - 4, h * 0.25);
+        x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(px + w - 2, y0 + sh - h, 2, h);
+        px += w + 1;
+      }
+    }
   }
   return tex(c);
 }

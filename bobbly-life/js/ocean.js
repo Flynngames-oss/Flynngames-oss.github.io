@@ -10,7 +10,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, WATER_Y, clamp, lerp, addMoney, textSprite, mergeStatic } from './state.js';
-import { heightAt, BAY, fbm } from './terrain.js';
+import { heightAt, BAY, BAY_SHIFT, fbm } from './terrain.js';
+// the reef was laid out east of town; these move its spots into Slippy Bay
+const X = (v) => v + BAY_SHIFT.x, Z = (v) => v + BAY_SHIFT.z;
 import { addCollider, LOC, getLights, baseHeight } from './world.js';
 import { sfx, setUnderwater, ambience, whaleCall } from './audio.js';
 
@@ -214,13 +216,13 @@ function instanced(geo, material, list) {
 }
 const pickC = (a) => a[Math.floor(R() * a.length)];
 function reefNoise(x, z) { return fbm(x / 26 + 3, z / 26 - 9, 3); }
-function kelpZone(x, z) { return Math.hypot(x - 255, z - 105) < 62 || Math.hypot(x - 470, z + 120) < 38; }
+function kelpZone(x, z) { return Math.hypot(x - X(255), z - Z(105)) < 62 || Math.hypot(x - X(470), z - Z(-120)) < 38; }
 
 function buildReef() {
   const L = { stag: [[], [], []], brain: [], fan: [], tube: [], anem: [], grass: [], kelp: [], rock: [], star: [], urchin: [] };
   for (let x = BAY.x0 + 8; x < BAY.x1 - 3; x += 2.2) for (let z = BAY.z0 + 3; z < BAY.z1 - 3; z += 2.2) {
     const px = x + rr(-1, 1), pz = z + rr(-1, 1);
-    if (Math.abs(pz) < 5 && px < 236) continue;                      // keep the pier clear
+    if (Math.abs(pz - Z(0)) < 5 && px < X(236)) continue;            // keep the pier clear
     const h = floorAt(px, pz), d = WATER_Y - h;
     if (d < 1.4) continue;
     const n = reefNoise(px, pz), ry = R() * Math.PI * 2;
@@ -244,7 +246,7 @@ function buildReef() {
   // big boulders (solid)
   for (let i = 0; i < 26; i++) {
     const x = rr(BAY.x0 + 40, BAY.x1 - 20), z = rr(BAY.z0 + 20, BAY.z1 - 20);
-    if (x < 245 && Math.abs(z) < 20) continue;
+    if (x < X(245) && Math.abs(z - Z(0)) < 20) continue;
     const h = floorAt(x, z), s = rr(1.8, 4.5);
     if (WATER_Y - h < s + 2) continue;
     L.rock.push({ x, y: h + s * 0.15, z, sx: s * rr(0.9, 1.3), sy: s * rr(0.6, 0.9), sz: s * rr(0.9, 1.3), ry: R() * 6, c: pickC(['#6f6a62', '#5f5a55', '#7a7266']) });
@@ -321,7 +323,7 @@ function buildFish() {
     if (homes.some(h => Math.hypot(h.x - x, h.z - z) < 45)) continue;
     homes.push({ x, z });
   }
-  while (homes.length < SPECIES.length) homes.push({ x: rr(260, 470), z: rr(-130, 130) });
+  while (homes.length < SPECIES.length) homes.push({ x: X(rr(260, 470)), z: Z(rr(-130, 130)) });
   SPECIES.forEach((sp, si) => {
     const school = { sp, home: homes[si], fish: [], a: R() * 6, w1: rr(0.025, 0.05) * (R() < 0.5 ? -1 : 1), R1: rr(12, 30), R2: rr(10, 26), dph: R() * 6, pos: new THREE.Vector3(), vel: new THREE.Vector3() };
     for (let i = 0; i < sp.n; i++) {
@@ -518,12 +520,12 @@ function buildAnimals() {
   for (let i = 0; i < 5; i++) {
     const m = turtleModel(i + 10); m.scale.setScalar(rr(1, 1.35));
     ocean.detail.add(m);
-    ocean.turtles.push({ m, a: R() * 6, w: rr(0.02, 0.035) * (R() < 0.5 ? 1 : -1), cx: rr(270, 460), cz: rr(-110, 110), r1: rr(25, 50), r2: rr(20, 45), ph: R() * 6, prev: new THREE.Vector3() });
+    ocean.turtles.push({ m, a: R() * 6, w: rr(0.02, 0.035) * (R() < 0.5 ? 1 : -1), cx: X(rr(270, 460)), cz: Z(rr(-110, 110)), r1: rr(25, 50), r2: rr(20, 45), ph: R() * 6, prev: new THREE.Vector3() });
   }
   const jc = ['#ff8ad8', '#8ad8ff', '#c08aff', '#ffb08a', '#8affd0'];
   for (let i = 0; i < 18; i++) {
     const m = jellyModel(jc[i % jc.length]); const s = rr(0.6, 1.4); m.scale.setScalar(s);
-    const x = rr(420, 505), z = rr(-160, -40);
+    const x = X(rr(420, 505)), z = Z(rr(-160, -40));
     ocean.detail.add(m);
     ocean.jellies.push({ m, x, z, y: lerp(floorAt(x, z) + 3, WATER_Y - 2, R()), vy: 0, ph: R() * 6, s, dx: rr(-0.2, 0.2), dz: rr(-0.2, 0.2) });
   }
@@ -534,7 +536,7 @@ function buildAnimals() {
   ocean.pod = { a: 0, cx: CX + 10, cz: CZ, r: 95 };
   for (let i = 0; i < 2; i++) {
     const m = sharkModel(); m.scale.setScalar(rr(0.95, 1.15)); ocean.detail.add(m);
-    ocean.sharks.push({ m, a: i * 3, w: 0.05 * (i ? -1 : 1), cx: 380 + i * 40, cz: -20 + i * 50, r: 35 + i * 10, depth: 0.55 + i * 0.15, chase: 0, bumpT: 0, prev: new THREE.Vector3() });
+    ocean.sharks.push({ m, a: i * 3, w: 0.05 * (i ? -1 : 1), cx: X(380 + i * 40), cz: Z(-20 + i * 50), r: 35 + i * 10, depth: 0.55 + i * 0.15, chase: 0, bumpT: 0, prev: new THREE.Vector3() });
   }
   const wm = whaleModel(); ocean.group.add(wm);
   ocean.whale = { m: wm, a: 1, surfT: 50, surfacing: 0, songT: 6, prev: new THREE.Vector3() };
@@ -565,8 +567,8 @@ function updateAnimals(dt, t, focus, P) {
     const fl = floorAt(j.x, j.z);
     if (j.y > WATER_Y - 1.2) j.vy = -0.4;
     if (j.y < fl + 2) j.vy = 0.6;
-    if (j.x < 410 || j.x > 510) j.dx = -j.dx;
-    if (j.z < -165 || j.z > -30) j.dz = -j.dz;
+    if (j.x < X(410) || j.x > X(510)) j.dx = -j.dx;
+    if (j.z < Z(-165) || j.z > Z(-30)) j.dz = -j.dz;
     j.m.position.set(j.x, j.y, j.z);
     const u = j.m.userData;
     u.bell.scale.set(1 + pulse * 0.14, 1 - pulse * 0.2, 1 + pulse * 0.14);
@@ -738,7 +740,7 @@ function hullGeo(L, W, H, u0, u1) {
   return g;
 }
 function buildWreck() {
-  const wx = 395, wz = 48;
+  const wx = X(395), wz = Z(48);
   const fy = Math.min(floorAt(wx, wz - 10), floorAt(wx, wz + 10), floorAt(wx, wz)) - 0.6;
   const wood = stdMat({ map: woodTexture(), side: THREE.DoubleSide, roughness: 0.95 });
   const dark = stdMat({ color: '#2a2018', roughness: 1 });
@@ -787,7 +789,7 @@ function buildWreck() {
 
 // ---------------------------------------------------------------- underwater cave
 function buildCave() {
-  const z = -112, xa = 280, xb = 318, wid = 6.5, ht = 5.5;
+  const z = Z(-112), xa = X(280), xb = X(318), wid = 6.5, ht = 5.5;
   let fy = -1e9; for (let x = xa; x <= xb; x += 2) fy = Math.max(fy, floorAt(x, z), floorAt(x, z - 3), floorAt(x, z + 3));
   const ceil = fy + ht;
   const rock = stdMat({ color: '#5d5750', roughness: 1, flatShading: true });
@@ -956,8 +958,8 @@ function buildMotes() {
 
 // ---------------------------------------------------------------- dive shop on the beach
 function buildDiveShop() {
-  const x = 182, z = -26;
-  const g = new THREE.Group(); g.position.set(x, 0, z); ocean.dock.add(g);
+  const x = X(182), z = Z(-26), gy = heightAt(x, z);
+  const g = new THREE.Group(); g.position.set(x, gy, z); ocean.dock.add(g);
   const wall = stdMat({ color: '#f4f1ea' }), blue = stdMat({ color: '#2f8fd8' });
   const b = new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 5.5), wall); b.position.y = 1.6; g.add(b);
   const roof = new THREE.Mesh(new THREE.BoxGeometry(8, 0.35, 6.5), blue); roof.position.y = 3.4; g.add(roof);
@@ -965,7 +967,7 @@ function buildDiveShop() {
   const tankM = stdMat({ color: '#ffcc22', metalness: 0.4, roughness: 0.4 });
   for (let i = 0; i < 4; i++) { const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.7, 4, 10), tankM); t.position.set(-2.6 + i * 0.45, 0.55, 3.0); g.add(t); }
   const s = textSprite('🤿 DIVE SHOP', { size: 52, color: '#fff', bg: 'rgba(30,110,190,0.95)', scale: 2.2 }); s.position.set(0, 4.5, 2.9); g.add(s);
-  addCollider(x - 3.5, 0, z - 2.75, x + 3.5, 3.4, z + 2.75);
+  addCollider(x - 3.5, gy - 1, z - 2.75, x + 3.5, gy + 3.4, z + 2.75);
   LOC.diveShop = { x, z: z + 4 };
   G.interacts.push({ x, z: z + 4.2, r: 4, label: () => '🤿 Dive Shop (scuba gear & tips)', action: () => G.openDiveShop && G.openDiveShop() });
 }
@@ -995,10 +997,10 @@ export function initOcean() {
   buildAnimals();
   buildWreck();
   buildCave();
-  chest('kelp', 262, floorAt(262, 112), 112, 1.2);
-  chest('jelly', 478, floorAt(478, -96), -96, -0.6);
-  chest('pier', 218, floorAt(218, -22), -22, 0.8);
-  chest('deep', 352, floorAt(352, -18), -18, 2.8);
+  chest('kelp', X(262), floorAt(X(262), Z(112)), Z(112), 1.2);
+  chest('jelly', X(478), floorAt(X(478), Z(-96)), Z(-96), -0.6);
+  chest('pier', X(218), floorAt(X(218), Z(-22)), Z(-22), 0.8);
+  chest('deep', X(352), floorAt(X(352), Z(-18)), Z(-18), 2.8);
   buildRays();
   buildCaustics();
   buildMotes();
@@ -1017,7 +1019,7 @@ export function updateOcean(dt, player) {
   const camD = Math.hypot(cam.position.x - CX, cam.position.z - CZ);
   const near = camD < 460 && cam.position.y < 300;
   ocean.group.visible = near;
-  ocean.detail.visible = cam.position.y < WATER_Y || (camD < 230 && cam.position.y < 60);
+  ocean.detail.visible = cam.position.y < WATER_Y || (camD < 200 && cam.position.y < 30);
   if (near) {
     updateFish(dt, G.time, focus);
     updateAnimals(dt, G.time, focus, G.started ? player : null);

@@ -50,7 +50,8 @@ const K0 = [800, 380, 190, 70, 70, 650, 650];
 const C0 = [50, 24, 11, 7, 7, 42, 42];
 
 const CAPS = new THREE.CapsuleGeometry(0.43, 0.6, 6, 16);
-const HEADG = new THREE.SphereGeometry(0.38, 20, 16);
+const HEADG = new THREE.SphereGeometry(0.45, 28, 20);
+const HEAD_SCALE = [1, 1.1, 0.97];
 const HIPS = new THREE.CylinderGeometry(0.43, 0.4, 0.42, 16);
 const LIMB = new THREE.CylinderGeometry(1, 1, 1, 8);
 const BALL = new THREE.SphereGeometry(1, 10, 8);
@@ -91,11 +92,12 @@ export function makeHat(id) {
     case 'cowboy': add(LIMB, '#8b5a2b', 0, 0.3, 0, 0.72, 0.04, 0.72); add(LIMB, '#8b5a2b', 0, 0.48, 0, 0.3, 0.35, 0.3); add(LIMB, '#4a2b1a', 0, 0.36, 0, 0.305, 0.07, 0.305); break;
     case 'witch': add(LIMB, '#5a2b8b', 0, 0.3, 0, 0.66, 0.04, 0.66); add(CONE, '#5a2b8b', 0, 0.75, -0.05, 0.36, 0.9, 0.36, -0.2); break;
     case 'propeller': {
-      add(HALFBALL, '#3fa7ff', 0, 0.12, 0, 0.44, 0.36, 0.44); add(LIMB, '#ffd54a', 0, 0.55, 0, 0.03, 0.12, 0.03);
-      const p = new THREE.Group(); p.position.y = 0.62; p.userData.spin = true;
-      const b1 = mk(LIMB, mat('#e84a3f'), 0.06, 0.02, 0.5); b1.rotation.x = Math.PI / 2; b1.scale.set(0.06, 0.02, 0.06); p.add(b1);
-      const bl = mk(new THREE.BoxGeometry(0.9, 0.02, 0.1), mat('#e84a3f')); p.add(bl);
-      const bl2 = mk(new THREE.BoxGeometry(0.1, 0.02, 0.9), mat('#46c25a')); p.add(bl2);
+      // knitted beanie with a folded rib band, a little stem and a two-blade propeller
+      add(HALFBALL, '#46c25a', 0, 0.1, 0, 0.45, 0.44, 0.45); add(LIMB, '#2f9a46', 0, 0.13, 0, 0.462, 0.11, 0.462);
+      for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; add(BOX_G, '#2a8a3e', Math.sin(a) * 0.463, 0.13, Math.cos(a) * 0.463, 0.025, 0.1, 0.012, 0, a, 0); }
+      add(LIMB, '#ffd54a', 0, 0.58, 0, 0.035, 0.12, 0.035); add(BALL, '#ffd54a', 0, 0.65, 0, 0.05, 0.035, 0.05);
+      const p = new THREE.Group(); p.position.y = 0.66; p.userData.spin = true;
+      for (const sd of [-1, 1]) { const bl = mk(BALL, mat('#46c25a'), 0.2, 0.018, 0.065); bl.position.x = sd * 0.2; bl.rotation.x = sd * 0.25; p.add(bl); }
       g.add(p); break;
     }
     case 'viking': add(HALFBALL, '#9aa4b1', 0, 0.1, 0, 0.45, 0.4, 0.45); for (const s of [-1, 1]) add(CONE, '#fff6e0', s * 0.5, 0.35, 0, 0.09, 0.4, 0.09, 0, 0, -s * 1.1); break;
@@ -161,7 +163,7 @@ export const TOPS = [
   { id: 'hoodie', name: 'Hoodie', emo: '🧶' }, { id: 'jacket', name: 'Zip jacket', emo: '🧥' }, { id: 'vest', name: 'Tank top', emo: '🎽' },
 ];
 export const BOTTOMS = [
-  { id: 'jeans', name: 'Jeans', emo: '👖' }, { id: 'chinos', name: 'Chinos', emo: '👖' }, { id: 'joggers', name: 'Joggers', emo: '🩳' }, { id: 'shorts', name: 'Shorts', emo: '🩳' },
+  { id: 'cargo', name: 'Cargo pants', emo: '👖' }, { id: 'jeans', name: 'Jeans', emo: '👖' }, { id: 'chinos', name: 'Chinos', emo: '👖' }, { id: 'joggers', name: 'Joggers', emo: '🩳' }, { id: 'shorts', name: 'Shorts', emo: '🩳' },
 ];
 const FAB = {};
 function fabCanvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return [c, c.getContext('2d')]; }
@@ -203,7 +205,11 @@ function torsoTex(top) {
   // neckline at the top
   if (top === 'tshirt' || top === 'vest' || top === 'long') { x.fillStyle = 'rgba(0,0,0,0.16)'; x.fillRect(0, 6, W, 4); x.fillStyle = 'rgba(255,255,255,0.4)'; x.fillRect(0, 10, W, 3); }
   if (top === 'polo') { x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(W / 2 - 4, 8, 8, 46); x.fillStyle = '#f8f8f8'; for (const by of [20, 34, 48]) { x.beginPath(); x.arc(W / 2, by, 2.6, 0, 7); x.fill(); } }
-  if (top === 'hoodie') { x.fillStyle = 'rgba(0,0,0,0.13)'; x.fillRect(W * 0.38, H * 0.48, W * 0.24, H * 0.25); x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(W * 0.38, H * 0.48, W * 0.24, 3); x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(0, H * 0.8, W, 10); for (const sx of [-6, 6]) { x.fillStyle = '#f4f4f4'; x.fillRect(W / 2 + sx - 1, 10, 3, 34); } }
+  if (top === 'hoodie') {
+    // kangaroo pocket, ribbed hem and a big pizza-slice print
+    x.fillStyle = 'rgba(0,0,0,0.13)'; x.fillRect(W * 0.36, H * 0.58, W * 0.28, H * 0.17); x.fillStyle = 'rgba(255,255,255,0.22)'; x.fillRect(W * 0.36, H * 0.58, W * 0.28, 3);
+    x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(0, H * 0.8, W, 10);
+  }
   if (top === 'jacket') { x.fillStyle = 'rgba(40,40,45,0.5)'; x.fillRect(W / 2 - 2, 0, 4, H); x.fillStyle = 'rgba(210,210,210,0.9)'; for (let y = 4; y < H * 0.85; y += 4) x.fillRect(W / 2 - 3, y, 6, 1.5); x.fillStyle = 'rgba(0,0,0,0.14)'; for (const sx of [-1, 1]) x.fillRect(W / 2 + sx * 34 - 14, H * 0.55, 28, 3); }
   if (top === 'tshirt') {
     // small print on the chest
@@ -242,7 +248,7 @@ function sneaker(group) {
 
 // Full costumes. hat/glasses they use become owned when you buy the skin.
 export const SKINS = [
-  { id: 'classic', name: 'Everyday', emo: '🙂', price: 0, o: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [] } },
+  { id: 'classic', name: 'Everyday', emo: '🙂', price: 0, o: { skin: '#ffd23f', shirt: '#2f6fd8', pants: '#ff7a1a', hat: 'propeller', glasses: 'none', eyes: 'round', hair: 'none', hairColor: '#3b2a20', extras: [], top: 'hoodie', bottom: 'cargo', shoes: 'bare' } },
   { id: 'robot', name: 'Robot', emo: '🤖', price: 300, o: { skin: '#b8c4d6', shirt: '#9aa4b1', pants: '#4a4f5a', hat: 'none', glasses: 'none', eyes: 'big', extras: ['antenna', 'visor', 'backpack:#6b7079'] } },
   { id: 'alien', name: 'Alien', emo: '👽', price: 300, o: { skin: '#9be05a', shirt: '#b46cff', pants: '#6c4bd6', hat: 'none', glasses: 'none', eyes: 'big', extras: ['antennae:#9be05a'] } },
   { id: 'ninja', name: 'Ninja', emo: '🥷', price: 250, o: { skin: '#f2c9a0', shirt: '#222222', pants: '#222222', hat: 'none', glasses: 'none', eyes: 'angry', extras: ['mask:#222222'] } },
@@ -307,28 +313,67 @@ export function makeGlasses(id) {
   return g;
 }
 
-function makeFace(eyes) {
-  // Simple, grown-up face: small dark eyes with a glint, brows and a neutral mouth
-  const g = new THREE.Group();
-  const dark = mat('#1c1512'), white = mat('#ffffff');
-  const big = eyes === 'big' ? 1.2 : 1;
-  for (const s of [-1, 1]) {
-    const sl = eyes === 'sleepy' ? 0.45 : 1;
-    const e = mk(BALL, dark, 0.042 * big, 0.062 * big * sl, 0.03);
-    e.position.set(s * 0.12, 0.05, 0.355); g.add(e);
-    if (eyes !== 'sleepy') { const gl = mk(BALL, white, 0.012, 0.012, 0.008); gl.position.set(s * 0.12 + 0.012, 0.07, 0.382); g.add(gl); }
-    const br = mk(BOX_G, mat('#2a1d16'), 0.1, 0.022, 0.025);
-    br.position.set(s * 0.125, eyes === 'happy' ? 0.15 : 0.14, 0.345);
-    br.rotation.z = eyes === 'angry' ? s * 0.35 : eyes === 'happy' ? -s * 0.12 : s * -0.05;
-    g.add(br);
+// Chest print (pizza slice) as its own little curved decal so it keeps its colours on any hoodie.
+let PRINT_TEX = null;
+function printTexture() {
+  if (PRINT_TEX) return PRINT_TEX;
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.translate(64, 60);
+  x.fillStyle = '#c47a2a'; x.beginPath(); x.moveTo(-46, -34); x.quadraticCurveTo(0, -56, 46, -34); x.lineTo(40, -24); x.quadraticCurveTo(0, -42, -40, -24); x.closePath(); x.fill();
+  x.fillStyle = '#ffcf4a'; x.beginPath(); x.moveTo(-40, -24); x.quadraticCurveTo(0, -42, 40, -24); x.lineTo(0, 52); x.closePath(); x.fill();
+  x.fillStyle = '#ffe28a'; x.beginPath(); x.moveTo(-28, -18); x.quadraticCurveTo(0, -30, 28, -18); x.lineTo(0, 36); x.closePath(); x.fill();
+  x.fillStyle = '#d8322a'; for (const [px, py, r] of [[-14, -14, 8], [13, -10, 7.5], [-1, 8, 7], [4, -26, 5]]) { x.beginPath(); x.arc(px, py, r, 0, 7); x.fill(); }
+  x.fillStyle = '#ffcf4a'; x.beginPath(); x.moveTo(-26, 2); x.lineTo(-18, 2); x.lineTo(-20, 20); x.quadraticCurveTo(-22, 28, -25, 20); x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(80,40,10,0.55)'; x.lineWidth = 3; x.beginPath(); x.moveTo(-46, -34); x.quadraticCurveTo(0, -56, 46, -34); x.lineTo(0, 52); x.closePath(); x.stroke();
+  PRINT_TEX = new THREE.CanvasTexture(c); PRINT_TEX.colorSpace = THREE.SRGBColorSpace;
+  return PRINT_TEX;
+}
+// Cartoon face painted onto a cap that wraps the front of the head: big shiny oval eyes and a wide open smile.
+const FACE_TEX = {};
+function faceTexture(eyes) {
+  if (FACE_TEX[eyes]) return FACE_TEX[eyes];
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  const ex = [82, 174], ey = 122;
+  const oval = (cx, cy, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
+  // rosy cheeks
+  for (const cx of [58, 198]) { const g = x.createRadialGradient(cx, 168, 2, cx, 168, 26); g.addColorStop(0, 'rgba(255,120,110,0.42)'); g.addColorStop(1, 'rgba(255,120,110,0)'); x.fillStyle = g; x.fillRect(cx - 30, 138, 60, 60); }
+  const big = eyes === 'big' ? 1.18 : 1;
+  for (const cx of ex) {
+    if (eyes === 'happy') {
+      x.strokeStyle = '#17110f'; x.lineWidth = 11; x.lineCap = 'round';
+      x.beginPath(); x.arc(cx, ey + 12, 17, Math.PI * 1.1, Math.PI * 1.9); x.stroke();
+    } else {
+      const ry = (eyes === 'sleepy' ? 15 : 25) * big, rx = 15 * big;
+      oval(cx, ey + (eyes === 'sleepy' ? 8 : 0), rx, ry, '#17110f');
+      oval(cx + 5 * big, ey - 9 * big + (eyes === 'sleepy' ? 6 : 0), 5.5 * big, 7 * big, '#ffffff');
+      oval(cx - 5 * big, ey + 10 * big, 2.5 * big, 2.5 * big, 'rgba(255,255,255,0.7)');
+      if (eyes === 'sleepy') { x.fillStyle = '#e8b830'; x.fillRect(cx - 20, ey - 14, 40, 12); x.strokeStyle = '#17110f'; x.lineWidth = 4; x.beginPath(); x.moveTo(cx - 18, ey - 2); x.lineTo(cx + 18, ey - 2); x.stroke(); }
+    }
+    if (eyes === 'angry') { x.strokeStyle = '#17110f'; x.lineWidth = 8; x.lineCap = 'round'; x.beginPath(); const s2 = cx < 128 ? 1 : -1; x.moveTo(cx - 20 * s2, ey - 38); x.lineTo(cx + 16 * s2, ey - 26); x.stroke(); }
   }
-  const mouth = mk(BOX_G, mat('#6b3a30'), eyes === 'happy' ? 0.12 : 0.09, 0.018, 0.02);
-  mouth.position.set(0, -0.1, 0.36);
-  if (eyes === 'happy') { const m2 = mk(new THREE.TorusGeometry(0.055, 0.012, 6, 12, Math.PI), mat('#6b3a30')); m2.position.set(0, -0.08, 0.36); m2.rotation.z = Math.PI; g.add(m2); }
-  else g.add(mouth);
-  // nose
-  const n = mk(BALL, mat('#000', { transparent: true, opacity: 0.08 }), 0.035, 0.04, 0.03);
-  n.position.set(0, -0.02, 0.375); g.add(n);
+  // mouth
+  if (eyes === 'angry') {
+    x.strokeStyle = '#3a0f14'; x.lineWidth = 9; x.lineCap = 'round'; x.beginPath(); x.arc(128, 214, 26, Math.PI * 1.15, Math.PI * 1.85); x.stroke();
+  } else {
+    const w = eyes === 'sleepy' ? 26 : 40, h = eyes === 'sleepy' ? 18 : 32;
+    const my = 176;
+    x.fillStyle = '#4a1018'; x.beginPath(); x.moveTo(128 - w, my); x.quadraticCurveTo(128, my + 6, 128 + w, my); x.quadraticCurveTo(128 + w * 0.9, my + h * 1.5, 128, my + h * 1.4); x.quadraticCurveTo(128 - w * 0.9, my + h * 1.5, 128 - w, my); x.fill();
+    x.save(); x.clip();
+    oval(128, my + h * 1.35, w * 0.6, h * 0.55, '#ff6b7a');
+    x.fillStyle = '#ffffff'; x.fillRect(128 - w, my - 4, w * 2, 7);
+    x.restore();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return (FACE_TEX[eyes] = t);
+}
+const FACE_GEO = new THREE.SphereGeometry(0.452, 24, 18, Math.PI / 2 - 0.8, 1.6, 0.55, 1.6);
+function makeFace(eyes) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(FACE_GEO, new THREE.MeshStandardMaterial({ map: faceTexture(eyes || 'round'), transparent: true, alphaTest: 0.3, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.scale.set(...HEAD_SCALE);
+  g.add(m);
   return g;
 }
 
@@ -352,19 +397,19 @@ function makeHair(id, color) {
   return g;
 }
 
-export const SKIN_TONES = ['#f6d7c3', '#eec4a5', '#e0ac86', '#c68b62', '#a86f4a', '#8a5536', '#5e3a24'];
-const SHIRTS = ['#2f3e5c', '#3a3a40', '#6b2f3a', '#4a5a3a', '#d9d2c3', '#f0f0f0', '#1f1f24', '#4f6f8f', '#8a6a4a', '#a33a3a', '#2f5f5f', '#c77a2a', '#5a4a6a'];
-const PANTS = ['#2c3e5c', '#1f2328', '#4a4f58', '#8a7a5a', '#3b4a66', '#555a44', '#6a5a4a'];
+export const SKIN_TONES = ['#ffd23f', '#f6d7c3', '#eec4a5', '#e0ac86', '#c68b62', '#a86f4a', '#8a5536', '#5e3a24'];
+const SHIRTS = ['#2f6fd8', '#e84a3f', '#46c25a', '#ffcf3a', '#b46cff', '#ff8a2a', '#3fc8d8', '#f0f0f0', '#ff6fa8', '#2f3e5c', '#8a3a3a'];
+const PANTS = ['#ff7a1a', '#2c4e8c', '#3a3f4a', '#c8a060', '#46a85a', '#8a5ad8', '#e84a3f', '#3b4a66'];
 export function randomOutfit() {
   if (Math.random() < 0.1) { const sk = pick(SKINS.slice(1).filter(s => !s.quest)); return { ...sk.o, extras: [...sk.o.extras] }; }
   return {
-    skin: pick(SKIN_TONES), shirt: pick(SHIRTS), pants: pick(PANTS),
-    hair: pick(['short', 'short', 'buzz', 'swept', 'curly', 'long', 'ponytail', 'bun', 'none']), hairColor: pick(HAIR_COLORS),
-    hat: Math.random() < 0.2 ? pick(['cap', 'beanie', 'cowboy', 'police', 'hardhat']) : 'none',
-    glasses: Math.random() < 0.2 ? pick(['sun', 'nerd']) : 'none',
-    eyes: pick(['round', 'round', 'happy', 'angry', 'sleepy']),
-    top: pick(['tshirt', 'tshirt', 'polo', 'long', 'hoodie', 'jacket', 'vest']), bottom: pick(['jeans', 'jeans', 'chinos', 'joggers', 'shorts']),
-    shoes: pick(['#f2f2ee', '#3a3f4a', '#202226', '#b8322a', '#2f5fa8', '#8a6a4a']),
+    skin: Math.random() < 0.6 ? '#ffd23f' : pick(SKIN_TONES), shirt: pick(SHIRTS), pants: pick(PANTS),
+    hair: Math.random() < 0.6 ? 'none' : pick(['short', 'buzz', 'swept', 'curly', 'ponytail', 'bun']), hairColor: pick(HAIR_COLORS),
+    hat: Math.random() < 0.3 ? pick(['cap', 'beanie', 'propeller', 'cowboy', 'party']) : 'none',
+    glasses: Math.random() < 0.15 ? pick(['sun', 'nerd']) : 'none',
+    eyes: pick(['round', 'round', 'big', 'happy', 'happy', 'sleepy']),
+    top: pick(['tshirt', 'tshirt', 'hoodie', 'hoodie', 'polo', 'long', 'jacket', 'vest']), bottom: pick(['cargo', 'cargo', 'jeans', 'joggers', 'shorts', 'chinos']),
+    shoes: Math.random() < 0.6 ? 'bare' : pick(['#f2f2ee', '#3a3f4a', '#b8322a', '#2f5fa8']),
   };
 }
 
@@ -410,22 +455,30 @@ export class Character {
     this.hipsMesh.position.y = -0.02;
     this.body.add(this.hipsMesh);
     this.headMesh = mk(HEADG, mat('#fff'));
+    this.headMesh.scale.set(...HEAD_SCALE); this.headMesh.position.y = -0.02;
     this.head.add(this.headMesh);
     this.armL = mk(LIMB, mat('#fff'), 0.11, 1, 0.11);
     this.armR = mk(LIMB, mat('#fff'), 0.11, 1, 0.11);
     this.legL = mk(LIMB, mat('#fff'), 0.14, 1, 0.14);
     this.legR = mk(LIMB, mat('#fff'), 0.14, 1, 0.14);
-    this.handL = mk(BALL, mat('#fff'), 0.13, 0.13, 0.13);
-    this.handR = mk(BALL, mat('#fff'), 0.13, 0.13, 0.13);
+    this.handL = mk(BALL, mat('#fff'), 0.15, 0.14, 0.15);
+    this.handR = mk(BALL, mat('#fff'), 0.15, 0.14, 0.15);
     this.shoeL = sneaker(new THREE.Group());
     this.shoeR = sneaker(new THREE.Group());
     // sleeves (short sleeves leave the forearm bare) and shorts legs
     this.sleeveL = mk(LIMB, mat('#fff'), 0.135, 1, 0.135); this.sleeveR = mk(LIMB, mat('#fff'), 0.135, 1, 0.135);
     this.shortL = mk(LIMB, mat('#fff'), 0.165, 1, 0.165); this.shortR = mk(LIMB, mat('#fff'), 0.165, 1, 0.165);
     this.hood = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), mat('#fff')); this.hood.scale.set(1, 0.55, 0.75); this.hood.position.set(0, 0.92, -0.26); this.hood.rotation.x = -1.1; this.hood.castShadow = true;
-    this.collar = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 6, 16), mat('#fff')); this.collar.rotation.x = Math.PI / 2; this.collar.position.y = 0.98; this.collar.scale.set(1, 0.85, 1);
-    this.body.add(this.hood, this.collar);
-    this.group.add(this.body, this.head, this.armL, this.armR, this.legL, this.legR, this.handL, this.handR, this.shoeL, this.shoeR, this.sleeveL, this.sleeveR, this.shortL, this.shortR);
+    this.collar = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.075, 8, 20), mat('#fff')); this.collar.rotation.x = Math.PI / 2; this.collar.position.y = 0.92; this.collar.scale.set(1, 0.9, 1);
+    // hoodie drawstrings with little tips
+    this.strings = new THREE.Group();
+    for (const sx of [-1, 1]) { const st = mk(LIMB, cmat('#f4f4f0'), 0.012, 0.2, 0.012); st.position.set(sx * 0.13, 0.78, 0.425); st.rotation.x = -0.3; this.strings.add(st); const tip = mk(LIMB, cmat('#f4f4f0'), 0.02, 0.045, 0.02); tip.position.set(sx * 0.13, 0.67, 0.455); this.strings.add(tip); }
+    this.belt = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 6, 22), cmat('#5a3a22')); this.belt.rotation.x = Math.PI / 2; this.belt.position.y = 0.16;
+    this.print = new THREE.Mesh(new THREE.CylinderGeometry(0.438, 0.438, 0.46, 14, 1, true, -0.62, 1.24), new THREE.MeshStandardMaterial({ map: printTexture(), transparent: true, alphaTest: 0.3, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 }));
+    this.print.position.y = 0.42;
+    this.body.add(this.hood, this.collar, this.strings, this.belt, this.print);
+    this.pocketL = mk(BOX_G, mat('#fff'), 0.1, 0.17, 0.2); this.pocketR = mk(BOX_G, mat('#fff'), 0.1, 0.17, 0.2);
+    this.group.add(this.body, this.head, this.armL, this.armR, this.legL, this.legR, this.handL, this.handR, this.shoeL, this.shoeR, this.sleeveL, this.sleeveR, this.shortL, this.shortR, this.pocketL, this.pocketR);
     G.scene.add(this.group);
     // fishing rod & hose nozzle (hidden until used)
     this.rod = new THREE.Group();
@@ -438,7 +491,7 @@ export class Character {
     this.outfit = Object.assign({}, o);
     const top = TOPS.some(t => t.id === o.top) ? o.top : 'tshirt', bottom = BOTTOMS.some(b => b.id === o.bottom) ? o.bottom : 'jeans';
     const topKind = top === 'hoodie' ? 'knit' : top === 'jacket' ? 'nylon' : 'cotton';
-    const legKind = bottom === 'jeans' ? 'denim' : bottom === 'joggers' ? 'knit' : 'cotton';
+    const legKind = bottom === 'jeans' ? 'denim' : bottom === 'joggers' ? 'knit' : bottom === 'cargo' ? 'nylon' : 'cotton';
     const skin = cmat(o.skin), shirt = clothMat(o.shirt, topKind, top), sleeve = clothMat(o.shirt, topKind), pants = clothMat(o.pants, legKind);
     this.bodyMesh.material = shirt;
     this.headMesh.material = skin;
@@ -453,25 +506,40 @@ export class Character {
     this.shortL.visible = this.shortR.visible = this.shorts;
     this.hipsMesh.material = pants;
     this.hood.visible = top === 'hoodie'; this.hood.material = sleeve;
-    this.collar.visible = top === 'polo' || top === 'jacket'; this.collar.material = sleeve;
-    const shoeCol = o.shoes || '#3a3f4a';
-    for (const sh of [this.shoeL, this.shoeR]) sh.userData.upper.material = cmat(shoeCol);
+    this.collar.visible = top !== 'vest'; this.collar.material = sleeve;
+    this.strings.visible = top === 'hoodie';
+    this.cargo = bottom === 'cargo';
+    this.belt.visible = (bottom === 'cargo' || bottom === 'jeans' || bottom === 'chinos') && (top === 'tshirt' || top === 'polo' || top === 'vest');
+    this.print.visible = top === 'hoodie';
+    this.pocketL.material = this.pocketR.material = pants;
+    this.pocketL.visible = this.pocketR.visible = this.cargo;
+    const legW = bottom === 'cargo' ? 0.19 : bottom === 'joggers' ? 0.165 : 0.15;
+    this.legL.scale.x = this.legL.scale.z = this.legR.scale.x = this.legR.scale.z = this.shorts ? 0.14 : legW;
+    // bare round bean feet, or sneakers
+    const bare = !o.shoes || o.shoes === 'bare';
+    for (const sh of [this.shoeL, this.shoeR]) {
+      const u = sh.userData;
+      u.upper.material = bare ? skin : cmat(o.shoes);
+      u.white.visible = !bare;
+      if (bare) { u.upper.scale.set(0.17, 0.15, 0.27); u.upper.position.y = -0.1; } else { u.upper.scale.set(0.15, 0.13, 0.25); u.upper.position.y = -0.04; }
+    }
+    this.bareFeet = bare;
     if (this.hatObj) this.head.remove(this.hatObj);
     if (this.glassesObj) this.head.remove(this.glassesObj);
     if (this.faceObj) this.head.remove(this.faceObj);
     if (this.hairObj) this.head.remove(this.hairObj);
-    this.hairObj = makeHair(o.hat === 'astro' || o.hat === 'knight' ? 'none' : o.hair, o.hairColor); this.head.add(this.hairObj);
+    this.hairObj = makeHair(o.hat === 'astro' || o.hat === 'knight' ? 'none' : o.hair, o.hairColor); this.hairObj.scale.set(1.18, 1.28, 1.14); this.hairObj.position.y = 0.0; this.head.add(this.hairObj);
     this.faceObj = makeFace(o.eyes); this.head.add(this.faceObj);
-    this.hatObj = makeHat(o.hat); this.hatObj.scale.setScalar(0.92); this.hatObj.position.y = 0.02; this.head.add(this.hatObj);
-    this.glassesObj = makeGlasses(o.glasses); this.glassesObj.scale.setScalar(0.88); this.head.add(this.glassesObj);
+    this.hatObj = makeHat(o.hat); this.hatObj.scale.setScalar(1.1); this.hatObj.position.y = 0.14; this.head.add(this.hatObj);
+    this.glassesObj = makeGlasses(o.glasses); this.glassesObj.scale.setScalar(1.08); this.glassesObj.position.set(0, 0.0, -0.02); this.head.add(this.glassesObj);
     if (this.extras) { this.head.remove(this.extras.head); this.body.remove(this.extras.body); }
     this.extras = makeExtras((Array.isArray(o.extras) ? o.extras : []).filter(x => typeof x === 'string').slice(0, 8), o);
-    this.extras.head.scale.setScalar(0.9);
+    this.extras.head.scale.setScalar(1.12);
     // flippers replace the shoes (and make you swim faster)
     this.flippers = (o.extras || []).some(e => String(e).startsWith('flippers'));
     for (const sh of [this.shoeL, this.shoeR]) {
       const u = sh.userData;
-      u.flip.visible = this.flippers; u.white.visible = !this.flippers;
+      u.flip.visible = this.flippers; u.white.visible = !this.flippers && !this.bareFeet;
     }
     this.head.add(this.extras.head); this.body.add(this.extras.body);
   }
@@ -899,6 +967,12 @@ export class Character {
     _a.copy(P[PEL]).addScaledVector(_right, 0.2).addScaledVector(_up, -0.1);
     placeBetween(this.legR, _a, P[FR]);
     if (this.shorts) placeBetween(this.shortR, _a, _b.copy(_a).lerp(P[FR], 0.5));
+    if (this.cargo) {
+      for (const [pk, f, sd] of [[this.pocketL, P[FL], -1], [this.pocketR, P[FR], 1]]) {
+        pk.position.copy(P[PEL]).addScaledVector(_right, sd * 0.2).addScaledVector(_up, -0.1).lerp(f, 0.42).addScaledVector(_right, sd * 0.15);
+        pk.quaternion.copy(this.body.quaternion);
+      }
+    }
     this.handL.position.copy(P[HL]); this.handR.position.copy(P[HR]);
     this.shoeL.position.copy(P[FL]); this.shoeR.position.copy(P[FR]);
     this.shoeL.quaternion.copy(this.body.quaternion); this.shoeR.quaternion.copy(this.body.quaternion);

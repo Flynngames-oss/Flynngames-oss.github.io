@@ -140,11 +140,14 @@ function buildTrack() {
     for (const sd of [-0.04, 0.04]) scene.add(new THREE.Mesh(ribbon(off + sd, off + sd, 0.0, 0.17, all), steel));
   }
   // sleepers
-  const n = Math.floor(LEN / 0.75);
-  const sl = new THREE.InstancedMesh(new THREE.BoxGeometry(2.5, 0.14, 0.26), new THREE.MeshLambertMaterial({ color: '#4e4136' }), n);
+  // (in stretches of ~300 m so only the nearby ones are drawn)
+  const n = Math.floor(LEN / 0.75), per = 400, slG = new THREE.BoxGeometry(2.5, 0.14, 0.26), slM = new THREE.MeshLambertMaterial({ color: '#4e4136' });
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-  for (let k = 0; k < n; k++) { const t = trackAt(k * 0.75); e.set(t.pitch, t.yaw, 0, 'YXZ'); q.setFromEuler(e); m.compose(p.set(t.x, t.y - 0.02, t.z), q, one); sl.setMatrixAt(k, m); }
-  sl.receiveShadow = true; scene.add(sl);
+  for (let k0 = 0; k0 < n; k0 += per) {
+    const cnt = Math.min(per, n - k0), sl = new THREE.InstancedMesh(slG, slM, cnt);
+    for (let k = 0; k < cnt; k++) { const t = trackAt((k0 + k) * 0.75); e.set(t.pitch, t.yaw, 0, 'YXZ'); q.setFromEuler(e); m.compose(p.set(t.x, t.y - 0.02, t.z), q, one); sl.setMatrixAt(k, m); }
+    sl.receiveShadow = true; sl.computeBoundingSphere(); scene.add(sl);
+  }
   // viaducts and bridges: deck + pillars
   const conc = new THREE.MeshLambertMaterial({ color: '#b9b4aa' });
   scene.add(new THREE.Mesh(ribbon(-2.6, 2.6, -0.8, -0.8, elevated), conc));
