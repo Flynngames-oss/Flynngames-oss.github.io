@@ -1054,7 +1054,7 @@ export function updateOcean(dt, player) {
     L.sun.intensity *= lerp(0.9, 0.45, k) * (inCave ? 0.25 : 1);
     L.hemi.color.copy(hemiUW);
     L.hemi.intensity = Math.max(L.hemi.intensity, 0.45) * lerp(1.25, 0.95, k) * (inCave ? 0.55 : 1);
-    if (G.water) { G.water.material.opacity = 0.7; G.water.material.color.set('#7fd0e8'); }
+
     ocean.motes.visible = true;
     ocean.motes.material.uniforms.uCam.value.copy(cam.position);
   } else {
@@ -1062,7 +1062,7 @@ export function updateOcean(dt, player) {
     if (ocean.caustics) ocean.caustics.material.uniforms.uFar.value = 90;
     if (G.sky) G.sky.visible = true;
     getLights().hemi.color.copy(WHITE);
-    if (G.water) { G.water.material.opacity = 0.86; G.water.material.color.set('#2d8fe0'); }
+
     ocean.motes.visible = false;
   }
   // god rays hang down from the surface around you

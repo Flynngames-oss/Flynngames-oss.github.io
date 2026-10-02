@@ -23,7 +23,13 @@ html = html.replace(/<link rel="stylesheet" href="style\.css[^"]*">/, () => `<st
 html = html.replace(/<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/peerjs[^"]*"><\/script>/, () => `<script>${safe(peer)}</script>`);
 html = html.replace(/<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/mqtt[^"]*"><\/script>/, () => `<script>${safe(mqttLib)}</script>`);
 html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\n?/, '');
-html = html.replace(/<script type="module" src="js\/main\.js[^"]*"><\/script>/, () => `<script type="module">${safe(js.outputFiles[0].text)}</script>`);
+// embed image assets as data URLs so the single file works on its own
+let code = js.outputFiles[0].text;
+for (const f of fs.readdirSync(path.join(here, 'assets'))) {
+  const mime = f.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  code = code.split('assets/' + f).join(`data:${mime};base64,` + fs.readFileSync(path.join(here, 'assets', f)).toString('base64'));
+}
+html = html.replace(/<script type="module" src="js\/main\.js[^"]*"><\/script>/, () => `<script type="module">${safe(code)}</script>`);
 if (/src="js\/|importmap|href="style/.test(html)) throw new Error('something was not inlined');
 fs.writeFileSync(path.join(here, 'bobbly-life.html'), html);
 console.log('wrote bobbly-life.html', Math.round(html.length / 1024) + ' KB');

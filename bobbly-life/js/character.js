@@ -1,5 +1,6 @@
 // Wobbly characters: spring-driven body parts while walking, verlet ragdoll when flopped.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, placeBetween, textSprite, clamp, angleLerp, WATER_Y, UP, rand, pick, COLORS } from './state.js';
 import { groundHeight, resolveWalls, getGroundTag, baseHeight, nearColliders } from './world.js';
 import { sfx } from './audio.js';
@@ -153,6 +154,92 @@ export function makeExtras(list = [], o = {}) {
 }
 const BOX_G = new THREE.BoxGeometry(1, 1, 1);
 
+// ---------------------------------------------------------------- realistic clothing fabrics
+// Textures are near-white so the colour you pick tints them: cotton weave, denim twill, knitted fleece, nylon.
+export const TOPS = [
+  { id: 'tshirt', name: 'T-shirt', emo: '👕' }, { id: 'polo', name: 'Polo shirt', emo: '👔' }, { id: 'long', name: 'Long sleeve', emo: '🧥' },
+  { id: 'hoodie', name: 'Hoodie', emo: '🧶' }, { id: 'jacket', name: 'Zip jacket', emo: '🧥' }, { id: 'vest', name: 'Tank top', emo: '🎽' },
+];
+export const BOTTOMS = [
+  { id: 'jeans', name: 'Jeans', emo: '👖' }, { id: 'chinos', name: 'Chinos', emo: '👖' }, { id: 'joggers', name: 'Joggers', emo: '🩳' }, { id: 'shorts', name: 'Shorts', emo: '🩳' },
+];
+const FAB = {};
+function fabCanvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return [c, c.getContext('2d')]; }
+function fabTex(c, srgb = true, rx = 1, ry = 1) { const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+function weave(x, n, kind) {
+  // base cloth: fine threads + noise. Returns nothing; draws on x (colour) — height is drawn separately
+  x.fillStyle = kind === 'denim' ? '#e2e6ee' : '#f2f2f2'; x.fillRect(0, 0, n, n);
+  for (let i = 0; i < n * 30; i++) { const v = 205 + Math.random() * 50 | 0; x.fillStyle = `rgba(${v},${v},${v},0.35)`; x.fillRect(Math.random() * n, Math.random() * n, 1, 1); }
+  if (kind === 'denim') { x.strokeStyle = 'rgba(150,160,180,0.35)'; x.lineWidth = 1; for (let k = -n; k < n * 2; k += 3) { x.beginPath(); x.moveTo(k, 0); x.lineTo(k + n, n); x.stroke(); } }
+  else if (kind === 'knit') { for (let k = 0; k < n; k += 4) { x.fillStyle = 'rgba(0,0,0,0.06)'; x.fillRect(k, 0, 1.5, n); } }
+  else { for (let k = 0; k < n; k += 2) { x.fillStyle = 'rgba(0,0,0,0.035)'; x.fillRect(0, k, n, 1); x.fillRect(k, 0, 1, n); } }
+}
+function weaveHeight(kind, n) {
+  const [c, x] = fabCanvas(n); x.fillStyle = '#808080'; x.fillRect(0, 0, n, n);
+  if (kind === 'denim') { x.strokeStyle = '#c0c0c0'; x.lineWidth = 1.2; for (let k = -n; k < n * 2; k += 3) { x.beginPath(); x.moveTo(k, 0); x.lineTo(k + n, n); x.stroke(); } }
+  else if (kind === 'knit') { for (let k = 0; k < n; k += 4) { x.fillStyle = '#b0b0b0'; x.fillRect(k, 0, 2, n); } }
+  else if (kind === 'nylon') { for (let k = 0; k < n; k += 16) { x.fillStyle = '#909090'; x.fillRect(0, k, n, 8); } }
+  else { for (let k = 0; k < n; k += 2) { x.fillStyle = '#a0a0a0'; x.fillRect(0, k, n, 1); } }
+  return c;
+}
+let normalFromHeightFn = null;
+export function setNormalMaker(f) { normalFromHeightFn = f; }
+function fabric(kind) {
+  if (FAB[kind]) return FAB[kind];
+  const n = 128, [c, x] = fabCanvas(n);
+  weave(x, n, kind === 'nylon' ? 'cotton' : kind);
+  return (FAB[kind] = { map: fabTex(c, true, 6, 6), normal: normalFromHeightFn ? normalFromHeightFn(weaveHeight(kind, n), 1.2) : null });
+}
+// torso garments: the weave plus neckline, seams, hems, pockets, zips and a small chest print (front is at the centre)
+const TORSO = {};
+function torsoTex(top) {
+  if (TORSO[top]) return TORSO[top];
+  const W = 256, H = 256, [c, x] = fabCanvas(W);
+  const kind = top === 'hoodie' ? 'knit' : top === 'jacket' ? 'nylon' : 'cotton';
+  weave(x, W, kind);
+  // side seams (at the sides of the body) and the hem at the bottom
+  x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(W * 0.25 - 1, 0, 2, H); x.fillRect(W * 0.75 - 1, 0, 2, H);
+  x.fillStyle = 'rgba(0,0,0,0.1)'; x.fillRect(0, H * 0.83, W, 3);
+  // neckline at the top
+  if (top === 'tshirt' || top === 'vest' || top === 'long') { x.fillStyle = 'rgba(0,0,0,0.16)'; x.fillRect(0, 6, W, 4); x.fillStyle = 'rgba(255,255,255,0.4)'; x.fillRect(0, 10, W, 3); }
+  if (top === 'polo') { x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(W / 2 - 4, 8, 8, 46); x.fillStyle = '#f8f8f8'; for (const by of [20, 34, 48]) { x.beginPath(); x.arc(W / 2, by, 2.6, 0, 7); x.fill(); } }
+  if (top === 'hoodie') { x.fillStyle = 'rgba(0,0,0,0.13)'; x.fillRect(W * 0.38, H * 0.48, W * 0.24, H * 0.25); x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(W * 0.38, H * 0.48, W * 0.24, 3); x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(0, H * 0.8, W, 10); for (const sx of [-6, 6]) { x.fillStyle = '#f4f4f4'; x.fillRect(W / 2 + sx - 1, 10, 3, 34); } }
+  if (top === 'jacket') { x.fillStyle = 'rgba(40,40,45,0.5)'; x.fillRect(W / 2 - 2, 0, 4, H); x.fillStyle = 'rgba(210,210,210,0.9)'; for (let y = 4; y < H * 0.85; y += 4) x.fillRect(W / 2 - 3, y, 6, 1.5); x.fillStyle = 'rgba(0,0,0,0.14)'; for (const sx of [-1, 1]) x.fillRect(W / 2 + sx * 34 - 14, H * 0.55, 28, 3); }
+  if (top === 'tshirt') {
+    // small print on the chest
+    x.save(); x.translate(W / 2 + 22, 56); x.fillStyle = 'rgba(255,255,255,0.75)'; x.font = '700 15px Arial'; x.textAlign = 'center'; x.fillText('BOBBLY', 0, 0); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(-22, 4, 44, 2); x.restore();
+  }
+  const t = fabTex(c, true, 1, 1); t.offset.x = 0.5;              // the capsule's front is at u = 0
+  const hc = weaveHeight(kind, W);
+  return (TORSO[top] = { map: t, normal: normalFromHeightFn ? normalFromHeightFn(hc, 1.2) : null });
+}
+const clothCache = new Map();
+function clothMat(color, kind, top) {
+  const k = color + kind + (top || '');
+  if (!clothCache.has(k)) {
+    const f = top ? torsoTex(top) : fabric(kind);
+    const m = new THREE.MeshStandardMaterial({ color, map: f.map, roughness: kind === 'nylon' ? 0.45 : kind === 'denim' ? 0.85 : 0.92, metalness: 0 });
+    if (f.normal) { m.normalMap = f.normal; m.normalScale = new THREE.Vector2(0.6, 0.6); }
+    clothCache.set(k, m);
+  }
+  return clothCache.get(k);
+}
+let SNEAKER = null;
+function sneaker(group) {
+  if (!SNEAKER) {
+    // white sole, toe cap and laces merged into one mesh; the coloured upper is the second mesh
+    const parts = [new THREE.BoxGeometry(0.29, 0.07, 0.52).translate(0, -0.07, 0), new THREE.BoxGeometry(0.27, 0.05, 0.12).translate(0, -0.03, 0.2)];
+    for (let i = 0; i < 4; i++) parts.push(new THREE.BoxGeometry(0.12, 0.012, 0.018).rotateX(0.5).translate(0, 0.065 - i * 0.012, 0.11 - i * 0.045));
+    SNEAKER = mergeGeometries(parts.map(g => g.toNonIndexed()));
+  }
+  const white = new THREE.Mesh(SNEAKER, cmat('#f2f2ee')); white.castShadow = true;
+  const upper = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), cmat('#3a3f4a')); upper.scale.set(0.15, 0.13, 0.25); upper.position.y = -0.04; upper.castShadow = true;
+  const flip = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 1.1), cmat('#ffcc22')); flip.position.set(0, -0.06, 0.28); flip.visible = false;
+  group.add(white, upper, flip);
+  group.userData = { upper, white, flip };
+  return group;
+}
+
 // Full costumes. hat/glasses they use become owned when you buy the skin.
 export const SKINS = [
   { id: 'classic', name: 'Everyday', emo: '🙂', price: 0, o: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [] } },
@@ -276,6 +363,8 @@ export function randomOutfit() {
     hat: Math.random() < 0.2 ? pick(['cap', 'beanie', 'cowboy', 'police', 'hardhat']) : 'none',
     glasses: Math.random() < 0.2 ? pick(['sun', 'nerd']) : 'none',
     eyes: pick(['round', 'round', 'happy', 'angry', 'sleepy']),
+    top: pick(['tshirt', 'tshirt', 'polo', 'long', 'hoodie', 'jacket', 'vest']), bottom: pick(['jeans', 'jeans', 'chinos', 'joggers', 'shorts']),
+    shoes: pick(['#f2f2ee', '#3a3f4a', '#202226', '#b8322a', '#2f5fa8', '#8a6a4a']),
   };
 }
 
@@ -328,9 +417,15 @@ export class Character {
     this.legR = mk(LIMB, mat('#fff'), 0.14, 1, 0.14);
     this.handL = mk(BALL, mat('#fff'), 0.13, 0.13, 0.13);
     this.handR = mk(BALL, mat('#fff'), 0.13, 0.13, 0.13);
-    this.shoeL = mk(BALL, cmat('#2a2a2e'), 0.16, 0.11, 0.26);
-    this.shoeR = mk(BALL, cmat('#2a2a2e'), 0.16, 0.11, 0.26);
-    this.group.add(this.body, this.head, this.armL, this.armR, this.legL, this.legR, this.handL, this.handR, this.shoeL, this.shoeR);
+    this.shoeL = sneaker(new THREE.Group());
+    this.shoeR = sneaker(new THREE.Group());
+    // sleeves (short sleeves leave the forearm bare) and shorts legs
+    this.sleeveL = mk(LIMB, mat('#fff'), 0.135, 1, 0.135); this.sleeveR = mk(LIMB, mat('#fff'), 0.135, 1, 0.135);
+    this.shortL = mk(LIMB, mat('#fff'), 0.165, 1, 0.165); this.shortR = mk(LIMB, mat('#fff'), 0.165, 1, 0.165);
+    this.hood = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), mat('#fff')); this.hood.scale.set(1, 0.55, 0.75); this.hood.position.set(0, 0.92, -0.26); this.hood.rotation.x = -1.1; this.hood.castShadow = true;
+    this.collar = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 6, 16), mat('#fff')); this.collar.rotation.x = Math.PI / 2; this.collar.position.y = 0.98; this.collar.scale.set(1, 0.85, 1);
+    this.body.add(this.hood, this.collar);
+    this.group.add(this.body, this.head, this.armL, this.armR, this.legL, this.legR, this.handL, this.handR, this.shoeL, this.shoeR, this.sleeveL, this.sleeveR, this.shortL, this.shortR);
     G.scene.add(this.group);
     // fishing rod & hose nozzle (hidden until used)
     this.rod = new THREE.Group();
@@ -341,13 +436,26 @@ export class Character {
 
   setOutfit(o) {
     this.outfit = Object.assign({}, o);
-    const skin = cmat(o.skin), shirt = cmat(o.shirt), pants = cmat(o.pants);
+    const top = TOPS.some(t => t.id === o.top) ? o.top : 'tshirt', bottom = BOTTOMS.some(b => b.id === o.bottom) ? o.bottom : 'jeans';
+    const topKind = top === 'hoodie' ? 'knit' : top === 'jacket' ? 'nylon' : 'cotton';
+    const legKind = bottom === 'jeans' ? 'denim' : bottom === 'joggers' ? 'knit' : 'cotton';
+    const skin = cmat(o.skin), shirt = clothMat(o.shirt, topKind, top), sleeve = clothMat(o.shirt, topKind), pants = clothMat(o.pants, legKind);
     this.bodyMesh.material = shirt;
     this.headMesh.material = skin;
-    this.armL.material = this.armR.material = shirt;
+    this.shortSleeves = top === 'tshirt' || top === 'polo' || top === 'vest';
+    this.armL.material = this.armR.material = this.shortSleeves ? skin : sleeve;
+    this.sleeveL.material = this.sleeveR.material = sleeve;
+    this.sleeveL.visible = this.sleeveR.visible = top === 'tshirt' || top === 'polo';
     this.handL.material = this.handR.material = skin;
-    this.legL.material = this.legR.material = pants;
+    this.shorts = bottom === 'shorts';
+    this.legL.material = this.legR.material = this.shorts ? skin : pants;
+    this.shortL.material = this.shortR.material = pants;
+    this.shortL.visible = this.shortR.visible = this.shorts;
     this.hipsMesh.material = pants;
+    this.hood.visible = top === 'hoodie'; this.hood.material = sleeve;
+    this.collar.visible = top === 'polo' || top === 'jacket'; this.collar.material = sleeve;
+    const shoeCol = o.shoes || '#3a3f4a';
+    for (const sh of [this.shoeL, this.shoeR]) sh.userData.upper.material = cmat(shoeCol);
     if (this.hatObj) this.head.remove(this.hatObj);
     if (this.glassesObj) this.head.remove(this.glassesObj);
     if (this.faceObj) this.head.remove(this.faceObj);
@@ -362,8 +470,8 @@ export class Character {
     // flippers replace the shoes (and make you swim faster)
     this.flippers = (o.extras || []).some(e => String(e).startsWith('flippers'));
     for (const sh of [this.shoeL, this.shoeR]) {
-      sh.material = this.flippers ? cmat('#ffcc22') : cmat('#2a2a2e');
-      sh.scale.set(this.flippers ? 0.2 : 0.16, this.flippers ? 0.05 : 0.11, this.flippers ? 0.62 : 0.26);
+      const u = sh.userData;
+      u.flip.visible = this.flippers; u.white.visible = !this.flippers;
     }
     this.head.add(this.extras.head); this.body.add(this.extras.body);
   }
@@ -781,12 +889,16 @@ export class Character {
     // limbs
     _a.copy(P[CHE]).addScaledVector(_right, -0.4).addScaledVector(_up, 0.1);
     placeBetween(this.armL, _a, P[HL]);
+    if (this.sleeveL.visible) placeBetween(this.sleeveL, _a, _b.copy(_a).lerp(P[HL], 0.42));
     _a.copy(P[CHE]).addScaledVector(_right, 0.4).addScaledVector(_up, 0.1);
     placeBetween(this.armR, _a, P[HR]);
+    if (this.sleeveR.visible) placeBetween(this.sleeveR, _a, _b.copy(_a).lerp(P[HR], 0.42));
     _a.copy(P[PEL]).addScaledVector(_right, -0.2).addScaledVector(_up, -0.1);
     placeBetween(this.legL, _a, P[FL]);
+    if (this.shorts) placeBetween(this.shortL, _a, _b.copy(_a).lerp(P[FL], 0.5));
     _a.copy(P[PEL]).addScaledVector(_right, 0.2).addScaledVector(_up, -0.1);
     placeBetween(this.legR, _a, P[FR]);
+    if (this.shorts) placeBetween(this.shortR, _a, _b.copy(_a).lerp(P[FR], 0.5));
     this.handL.position.copy(P[HL]); this.handR.position.copy(P[HR]);
     this.shoeL.position.copy(P[FL]); this.shoeR.position.copy(P[FR]);
     this.shoeL.quaternion.copy(this.body.quaternion); this.shoeR.quaternion.copy(this.body.quaternion);

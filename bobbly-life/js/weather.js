@@ -283,7 +283,6 @@ function hudEl() {
 }
 export function initWeather() {
   buildRain();
-  buildDeck();
   for (const c of G.clouds || []) for (const s of c.children) if (s.material) cloudMats.add(s.material);
 }
 
@@ -331,7 +330,7 @@ export function updateWeather(dt) {
     if (G.sky) { const u = G.sky.material.uniforms; u.horizon.value.lerp(tmp, oc * 0.8 * (1 - space)); u.top.value.lerp(tmp.multiplyScalar(0.8), oc * 0.85 * (1 - space)); }
     if (space < 0.01) G.landFog.far = (G.fogBaseFar || 1500) * lerp(1, 0.3, W.rain * 0.8 + W.storm * 0.2);
   } else if (space < 0.01 && G.fogBaseFar) G.landFog.far = G.fogBaseFar;
-  if (L.hemi && G.flash > 0) { L.hemi.intensity += G.flash * 2.2; L.amb.intensity = 0.12 + G.flash * 1.2; } else if (L.amb) L.amb.intensity = 0.12;
+  if (L.hemi && G.flash > 0) { L.hemi.intensity += G.flash * 2.2; L.amb.intensity += G.flash * 1.2; }
   for (const m of cloudMats) m.color.multiplyScalar(1 - 0.6 * oc);
   if (deck) {
     deck.visible = oc > 0.05 && space < 0.3;
@@ -352,8 +351,9 @@ export function updateWeather(dt) {
     }
   }
   // wet roads look darker
-  for (const m of G.roadMats || []) m.color.setScalar(1 - 0.38 * W.wet);
+  for (const m of G.roadMats || []) { m.color.setScalar(1 - 0.38 * W.wet); if (m.roughness !== undefined) m.roughness = lerp(0.92, 0.12, W.wet); }
   if (G.terrainMat) G.terrainMat.color.setScalar(1 - 0.18 * W.wet);
+  if (G.foliage) { G.foliage.time.value = G.time; G.foliage.wind.value = 1 + W.storm * 3 + W.rain * 0.8; }
   ambience('rain', G.underwater ? 0 : W.rain);
   ambience('wind', G.underwater ? 0 : W.overcast * 0.15 + W.storm * 0.35);
   // little weather badge under the money

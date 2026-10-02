@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, clamp, lerp, WATER_Y, textSprite, mergeStatic } from './state.js';
-import { heightAt } from './terrain.js';
+import { heightAt, editGrid } from './terrain.js';
 import { addCollider, ramps, LOC } from './world.js';
 import { Vehicle, VTYPES } from './vehicles.js';
 import { sfx } from './audio.js';
@@ -331,8 +331,33 @@ function placeCars() {
     off += c.type.len + 0.6;
   }
 }
-export function initTrain() {
+// Shape the real ground to the railway: dig cuttings through hills and pile embankments over dips, so the
+// train never runs inside the terrain. Only water and deep valleys keep bridges.
+function prepareGround() {
   computeHeights();
+  const bridge = (i) => TERR[i] < WATER_Y + 0.3 || PY[i] - TERR[i] > 10;
+  const nearest = (x, z) => {
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    let bi = -1, bd = 1e9;
+    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+      const l = grid.get((cx + a) * 1000 + cz + b); if (!l) continue;
+      for (const i of l) { const d = Math.hypot(PX[i] - x, PZ[i] - z); if (d < bd) { bd = d; bi = i; } }
+    }
+    return [bi, bd];
+  };
+  editGrid((x, z) => { const [i, d] = nearest(x, z); return i >= 0 && d < 46; }, (x, z, h) => {
+    const [i, d] = nearest(x, z);
+    // stay well clear of bridges (the river or lake must stay open underneath)
+    const t = PY[i] - 0.55;
+    if (h < t) for (let k = -14; k <= 14; k += 2) if (bridge(wrap(i + k))) return h;   // never fill in under a bridge
+    const w = d < 12 ? 1 : 1 - Math.min(1, (d - 12) / 34);
+    const s = w * w * (3 - 2 * w);
+    return h + (t - h) * s;
+  });
+  for (let i = 0; i < N; i++) TERR[i] = heightAt(PX[i], PZ[i]);
+}
+G.onHeights = prepareGround;
+export function initTrain() {
   buildTrack();
   STATIONS.forEach(buildStation);
   TR.s = STATIONS[0].s + 30;

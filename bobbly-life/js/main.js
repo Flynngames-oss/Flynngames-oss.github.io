@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { G, loadSave, writeSave, clamp, rand, pick, COLORS, angleLerp, UP } from './state.js';
 import { buildWorld, buildLights, updateWorld, LOC, groundHeight, nearColliders, setShadows } from './world.js';
 import { Character, updateNPC, randomOutfit, PARTS, SKIN_TONES, HAIRS, HAIR_COLORS } from './character.js';
@@ -23,6 +24,11 @@ import { initRocket, updateRocket } from './rocket.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WEAPONS, fire, spawnShot, applyHit, updateWeapons, updateGunMeshes } from './weapons.js';
 import { initOcean, updateOcean } from './ocean.js';
+import { setNormalMaker } from './character.js';
+import { normalFromHeight } from './textures.js';
+setNormalMaker(normalFromHeight);
+import { initSky, updateSky } from './sky.js';
+import { initGrass, updateGrass } from './grass.js';
 import { initWeather, updateWeather, weatherNet, applyWeatherNet } from './weather.js';
 import { initTrain, updateTrain, onTrainNet } from './train.js';
 import { initPark, updatePark, onRidesNet } from './park.js';
@@ -80,11 +86,14 @@ aoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rin
 // sprites (clouds, signs, smoke) have no depth to shade, so leave them out of the AO pass
 aoPass.overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.isSprite) o.visible = false; }); };
 composer.addPass(aoPass);
+// soft glow round bright things: the sun on water, street lamps, headlights, lightning
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.28, 0.55, 0.88);
+composer.addPass(bloomPass);
 const gradePass = new ShaderPass(GradeShader);
 composer.addPass(gradePass);
 composer.addPass(new OutputPass());
 let useGrade = true;
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); aoPass.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); aoPass.setSize(innerWidth, innerHeight); bloomPass.setSize(innerWidth / 2, innerHeight / 2); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
 const TIPS = [
   'Hold left click to grab things — and people. Let go to throw.',
@@ -159,8 +168,10 @@ initPolice();
 initQuests();
 initOcean();
 initWeather();
+initSky();
 initTrain();
 initPark();
+initGrass();
 G.netSend = (m) => NET.send(m);
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
@@ -725,6 +736,7 @@ function applyGraphics() {
   renderer.setPixelRatio(high ? Math.min(devicePixelRatio, isTouch ? 1.25 : 1.5) : 0.85);
   setShadows(high, ultra);
   aoPass.enabled = ultra;
+  bloomPass.enabled = high;
   useGrade = high;
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight);
   camera.far = high ? 2200 : 1200; camera.updateProjectionMatrix();
@@ -1014,9 +1026,11 @@ function update(dt) {
   updateRemoteExtras();
   updateWorld(dt, player.vehicle ? player.vehicle.pos : player.pos);
   updateWeather(dt);
+  updateSky(dt);
   updateCamera(dt);
   updateCockpit(dt, player);
   updateOcean(dt, player);
+  updateGrass();
   gradePass.uniforms.uw.value += ((G.gradeUW || 0) - gradePass.uniforms.uw.value) * Math.min(1, dt * 6);
   gradePass.uniforms.time.value = G.time;
   gradePass.uniforms.flash.value = G.flash || 0;

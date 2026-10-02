@@ -74,7 +74,7 @@ export function defaultSave() {
   return {
     name: 'Bobbler' + Math.floor(Math.random() * 900 + 100),
     money: 100,
-    outfit: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [] },
+    outfit: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [], top: 'tshirt', bottom: 'jeans', shoes: '#f2f2ee' },
     ownedHats: ['none', 'cap'],
     ownedGlasses: ['none'],
     ownedCars: ['sedan'],
