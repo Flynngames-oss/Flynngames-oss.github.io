@@ -1,11 +1,12 @@
 // HUD, shops, phone, minimap, chat.
+import * as THREE from 'three';
 import { G, COLORS, addMoney, writeSave, LAND, noEmoji } from './state.js';
 import { HATS, GLASSES, EYES, SKINS, HAIRS, HAIR_COLORS, SKIN_TONES, TOPS, BOTTOMS } from './character.js';
 import { VTYPES } from './vehicles.js';
 import { JOBS, startJob } from './jobs.js';
 import { LOC, ROADS, colliders, groundHeight } from './world.js';
 import { PRESENT_SPOTS } from './props.js';
-import { WORLD, heightAt, biome, HIGHWAYS } from './terrain.js';
+import { WORLD, heightAt, biome, HIGHWAYS, groundColor, ZONES } from './terrain.js';
 import { sfx } from './audio.js';
 import { WEAPONS } from './weapons.js';
 import { setWeather, forceTornado } from './weather.js';
@@ -100,7 +101,7 @@ function clothingPanel(title) {
     }
     if (tab === 'bottoms') {
       html += `<div class="grid">${BOTTOMS.map(t => `<div class="item ${(o.bottom || 'jeans') === t.id ? 'equipped' : ''}" data-bottom="${t.id}"><span class="emo">${t.emo}</span>${t.name}</div>`).join('')}</div>`;
-      html += `<h3>👟 Sneakers</h3><div class="swatches">${['#f2f2ee', '#3a3f4a', '#202226', '#b8322a', '#2f5fa8', '#8a6a4a', '#46a85a', '#ff8a2a', '#b46cff'].map(c => `<div class="sw ${o.shoes === c ? 'sel' : ''}" data-shoe="${c}" style="background:${c}"></div>`).join('')}</div><p class="small">The colour of trousers comes from the Colors tab (Pants).</p>`;
+      html += `<h3>👟 Feet & sneakers</h3><div class="swatches"><div class="sw ${!o.shoes || o.shoes === 'bare' ? 'sel' : ''}" data-shoe="bare" title="Bare bean feet" style="background:${o.skin || '#ffd23f'};border-radius:50%"></div>${['#f2f2ee', '#3a3f4a', '#202226', '#b8322a', '#2f5fa8', '#8a6a4a', '#46a85a', '#ff8a2a', '#b46cff'].map(c => `<div class="sw ${o.shoes === c ? 'sel' : ''}" data-shoe="${c}" style="background:${c}"></div>`).join('')}</div><p class="small">The colour of trousers comes from the Colors tab (Pants).</p>`;
     }
     if (tab === 'hats') html += itemGrid(HATS, 'ownedHats', 'hat');
     if (tab === 'glasses') html += itemGrid(GLASSES, 'ownedGlasses', 'glasses');
@@ -178,14 +179,80 @@ function dealerPanel() {
 
 // [emoji, name, x, z, facing]
 const TRAVEL = [
-  ['🐠', 'Coral Bay — Dive Shop', 'diveShop'], ['🎢', 'Bobbly Land Theme Park', 'themePark'], ['🚉', 'Bobbly Central Station', 'stn_Bobbly Central'], ['🚉', 'Lakeside Station', 'stn_Lakeside'], ['🚉', 'West Beach Station', 'stn_West Beach'],
+  ['🏖️', 'Slippy Bay — Dive Shop', 'diveShop'], ['🎣', 'Slippy Bay Pier & Beach', -94, -716, Math.PI / 2], ['🌳', 'Bobbly Park (pond & big slide)', 'townPark'], ['🎢', 'Bobbly Land Theme Park', 'themePark'],
+  ['🚡', 'Cable Car to Bouncy Peaks', 'cableBase'], ['⛰️', 'Bouncy Peaks (summit!)', 'peak'], ['🕳️', 'Mystery Cave', 'mysteryCave'], ['🏎️', 'Crazy Go-Kart Track', 'kart'], ['🌬️', 'Windmill', 'windmill'], ['🗼', 'Lighthouse', 'lighthouse'],
+  ['🚉', 'Bobbly Central Station', 'stn_Bobbly Central'], ['🚉', 'Lakeside Station', 'stn_Lakeside'], ['🚉', 'West Beach Station', 'stn_West Beach'],
   ['🏙️', 'Twin Towers', 'twin'], ['🛗', 'Twin Towers — rooftop deck', 'twinTop'], ['🛫', 'Bobbly International Airport', 'intl'], ['🛩️', 'SW Regional Airport', 'swAir'],
   ['✈️', 'Town Airfield', -130, 158, Math.PI / 2], ['⛲', 'Town Square', 0, -14, Math.PI], ['🔫', 'Blaster Shop', -70, -48, -Math.PI / 2],
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
-  ['🌳', 'Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0], ['🎣', 'Pier & Beach', 180, 0, Math.PI / 2],
-  ['⛰️', 'Mount Bobble (top!)', 'peak'], ['🎬', 'Bobblywood Sign', 'sign'], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Valley Suburbs', 'valley'], ['🏞️', 'East Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'], ['🚀', 'Space Center', 'space'], ['🌾', 'Hill Farm', 'farm'], ['🏘️', 'Sunset Hills Village', 'village'], ['🏰', 'Old Castle', 'castle'], ['⛺', 'Campsite', 'camp'],
+  ['🤸', 'Trampoline Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0],
+  ['🎬', 'Bobblywood Sign', 'sign'], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Valley Suburbs', 'valley'], ['🏞️', 'Mountain Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'], ['🚀', 'Space Center', 'space'], ['🌾', 'Hill Farm', 'farm'], ['🏘️', 'Sunset Hills Village', 'village'], ['🏰', 'Old Castle', 'castle'], ['⛺', 'Campsite', 'camp'],
 ];
+// the illustrated island map (north at the top)
+const MAP_LABELS = [
+  ['🏘️', 'Bobbly Town', 0, 0], ['🏙️', 'Mega City', -600, -100], ['🕳️', 'Mystery Cave', -330, 760], ['🏎️', 'Crazy Go-Kart Track', -925, 680],
+  ['🏔️', 'Bouncy Peaks', 620, 900], ['🎢', 'Bobbly Land', 826, -64], ['🌈', 'Funky Forest', 1060, 160], ['🌳', 'Bobbly Park', 370, 0],
+  ['🏖️', 'Slippy Bay', 160, -800], ['🏴‍☠️', 'Treasure Island', 880, -1228], ['🌴', 'Palm Islet', -150, -1050], ['🌬️', 'Windmill', -120, 300],
+  ['🏡', 'Sunny Suburbs', 350, 310], ['✈️', 'Airport', 660, -520], ['🚀', 'Space Center', 830, -275], ['🏰', 'Old Castle', -880, 960], ['🎬', 'Bobblywood', -430, 640], ['🚡', 'Cable Car', 796, 335],
+];
+let mapArt = null;
+const mc = new THREE.Color();
+function drawIslandArt() {
+  const S = 720, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d'), img = x.createImageData(S, S), k = (WORLD * 2) / S;
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const wx = -WORLD + (i + 0.5) * k, wz = WORLD - (j + 0.5) * k, h = heightAt(wx, wz), b = biome(wx, wz);
+    let r, g, bl;
+    if (h < -0.6) { const d = Math.min(1, (-0.6 - h) / 14); r = 120 - d * 70; g = 200 - d * 70; bl = 235 - d * 30; }
+    else { groundColor(wx, wz, h, mc).convertLinearToSRGB(); r = mc.r * 255 + b.funky * 60; g = mc.g * 255; bl = mc.b * 255 + b.funky * 70; }
+    const n = ((i * 7 + j * 13) % 9) - 4;
+    const q = (j * S + i) * 4; img.data[q] = r + n; img.data[q + 1] = g + n; img.data[q + 2] = bl + n; img.data[q + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  const P = (wx, wz) => [(wx + WORLD) / k, (WORLD - wz) / k];
+  // built-up areas
+  for (const [key, col] of [['city', 'rgba(170,176,188,0.9)'], ['suburb', 'rgba(232,214,190,0.75)'], ['valley', 'rgba(232,214,190,0.75)'], ['intl', 'rgba(170,176,188,0.85)'], ['swAir', 'rgba(170,176,188,0.85)'], ['space', 'rgba(190,190,186,0.8)'], ['park', 'rgba(255,170,200,0.6)']]) {
+    const Z = ZONES[key]; if (!Z) continue; const [x0, y0] = P(Z.x0, Z.z1), [x1, y1] = P(Z.x1, Z.z0); x.fillStyle = col; x.fillRect(x0, y0, x1 - x0, y1 - y0);
+  }
+  // roads
+  x.strokeStyle = 'rgba(90,96,108,0.85)'; x.lineWidth = 3;
+  for (const hw of HIGHWAYS) { const [a1, b1] = P(hw.x0, hw.z0), [a2, b2] = P(hw.x1, hw.z1); x.beginPath(); x.moveTo(a1, b1); x.lineTo(a2, b2); x.stroke(); }
+  const [tx0, tz0] = P(-185, 185); x.fillStyle = 'rgba(200,190,170,0.9)'; x.fillRect(tx0, tz0, 370 / k, 370 / k);
+  return c;
+}
+function islandMapPanel() {
+  openPanel('🗺️ Bobbly Island Map', (el) => {
+    el.innerHTML = '<canvas id="islandMap" width="720" height="720" style="width:100%;max-width:720px;border-radius:14px;border:6px solid #c8a46a;background:#e8d6a8"></canvas><p class="small">Tap a place on the list in Fast Travel to go there. Treasure Island has no fast travel — take a boat!</p>';
+    if (!mapArt) mapArt = drawIslandArt();
+    const cv = el.querySelector('#islandMap'), x = cv.getContext('2d'), S = cv.width, k = (WORLD * 2) / S;
+    const P = (wx, wz) => [(wx + WORLD) / k, (WORLD - wz) / k];
+    const draw = () => {
+      x.drawImage(mapArt, 0, 0);
+      x.font = '800 30px Fredoka, sans-serif'; x.textAlign = 'center'; x.fillStyle = '#ff7a3a'; x.strokeStyle = '#fff'; x.lineWidth = 6;
+      x.strokeText('BOBBLY ISLAND', S / 2, 40); x.fillText('BOBBLY ISLAND', S / 2, 40);
+      for (const [e, name, wx, wz] of MAP_LABELS) {
+        const [px, py] = P(wx, wz);
+        x.font = '24px sans-serif'; x.fillText(e, px, py + 8);
+        x.font = '700 13px Fredoka, sans-serif'; x.lineWidth = 4; x.strokeStyle = 'rgba(255,255,255,0.9)'; x.fillStyle = '#3a2a1a';
+        x.strokeText(name, px, py + 26); x.fillText(name, px, py + 26);
+        x.fillStyle = '#ff7a3a';
+      }
+      // X marks the spot
+      const [ix, iy] = P(880, -1228); x.strokeStyle = '#d8322a'; x.lineWidth = 4; x.beginPath(); x.moveTo(ix - 7, iy - 18); x.lineTo(ix + 7, iy - 4); x.moveTo(ix + 7, iy - 18); x.lineTo(ix - 7, iy - 4); x.stroke();
+      // compass
+      x.save(); x.translate(60, S - 70); x.fillStyle = '#fff'; x.strokeStyle = '#3a2a1a'; x.lineWidth = 2; x.beginPath(); x.arc(0, 0, 30, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#d8322a'; x.beginPath(); x.moveTo(0, -26); x.lineTo(7, 0); x.lineTo(-7, 0); x.fill(); x.fillStyle = '#3a2a1a'; x.beginPath(); x.moveTo(0, 26); x.lineTo(7, 0); x.lineTo(-7, 0); x.fill();
+      x.font = '700 13px sans-serif'; x.fillText('N', 0, -32); x.restore();
+      // you are here
+      const pl = G.player.vehicle ? G.player.vehicle.pos : G.player.pos, [mx, my] = P(pl.x, pl.z);
+      x.fillStyle = '#ff3b3b'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.arc(mx, my, 8, 0, 7); x.fill(); x.stroke();
+      x.font = '700 12px sans-serif'; x.fillStyle = '#ff3b3b'; x.lineWidth = 3; x.strokeText('YOU', mx, my - 12); x.fillText('YOU', mx, my - 12);
+    };
+    draw();
+  });
+}
+
 
 function blasterPanel() {
   openPanel('🔫 Blaster Shop', (el) => {
@@ -249,6 +316,7 @@ function phonePanel() {
       <h3>🚗 My Vehicles</h3>
       <div class="grid">${s.ownedCars.map(id => `<div class="item owned" data-car="${id}"><span class="emo">${VTYPES[id].emo}</span>${VTYPES[id].name}<div class="price">Spawn</div></div>`).join('')}</div>
       ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}
+      <div class="tabs"><button class="btn small green" id="phMap">🗺️ Island Map</button></div>
       <h3>🚀 Fast Travel</h3>
       <div class="grid">${TRAVEL.map((t, i) => `<div class="item" data-go="${i}"><span class="emo">${t[0]}</span>${t[1]}<div class="price">Go!</div></div>`).join('')}</div>
       <h3>💼 Jobs &amp; Activities</h3>
@@ -280,6 +348,7 @@ function phonePanel() {
         <button class="btn small gray" id="phWp">❌ Clear waypoint</button>
         <button class="btn small gray" id="phHelp">❓ Help</button>
       </div>`;
+    const mb = el.querySelector('#phMap'); if (mb) mb.onclick = () => { closePanel(); islandMapPanel(); };
     el.querySelectorAll('[data-wpn]').forEach(b => b.onclick = () => { G.equipWeapon(G.player.weapon === b.dataset.wpn ? null : b.dataset.wpn); rerender(); });
     el.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { closePanel(); G.spawnMyVehicle(b.dataset.car); });
     el.querySelectorAll('[data-job]').forEach(b => b.onclick = () => { G.waypoint = JOBS[b.dataset.job].loc; toast('📍 Waypoint set: ' + JOBS[b.dataset.job].name); closePanel(); });
@@ -492,7 +561,7 @@ export function setPrompt(text) {
 // ---------------------------------------------------------------- init
 export function initUI() {
   G.chatLine = chatLine;
-  G.toast = toast; G.setJob = setJob; G.clearJob = clearJob; G.onMoney = onMoney; G.openDiveShop = diveShopPanel;
+  G.toast = toast; G.setJob = setJob; G.clearJob = clearJob; G.onMoney = onMoney; G.openDiveShop = diveShopPanel; G.openMap = islandMapPanel;
   shownMoney = G.save.money;
   $('moneyVal').textContent = shownMoney;
   $('panelClose').onclick = closePanel;

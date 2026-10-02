@@ -74,8 +74,8 @@ export function defaultSave() {
   return {
     name: 'Bobbler' + Math.floor(Math.random() * 900 + 100),
     money: 100,
-    outfit: { skin: '#e0ac86', shirt: '#2f3e5c', pants: '#3b4a66', hat: 'none', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#3b2a20', extras: [], top: 'tshirt', bottom: 'jeans', shoes: '#f2f2ee' },
-    ownedHats: ['none', 'cap'],
+    outfit: { skin: '#ffd23f', shirt: '#2f6fd8', pants: '#ff7a1a', hat: 'propeller', glasses: 'none', eyes: 'round', hair: 'none', hairColor: '#3b2a20', extras: [], top: 'hoodie', bottom: 'cargo', shoes: 'bare' },
+    ownedHats: ['none', 'cap', 'propeller'],
     ownedGlasses: ['none'],
     ownedCars: ['sedan'],
     ownedWeapons: [],
@@ -96,6 +96,13 @@ export function loadSave() {
       s = Object.assign(s, d);
       s.outfit = Object.assign(defaultSave().outfit, d.outfit || {});
       s.stats = Object.assign(defaultSave().stats, d.stats || {});
+      // the new yellow bean look: players still in the old starting clothes get it automatically
+      if (!d.beanLook) {
+        const o = d.outfit || {};
+        if (!o.skin || (o.skin === '#e0ac86' && o.shirt === '#2f3e5c')) s.outfit = defaultSave().outfit;
+        if (!s.ownedHats.includes('propeller')) s.ownedHats.push('propeller');
+        s.beanLook = true;
+      }
     }
   } catch (e) { /* storage blocked: play without saving */ }
   G.save = s;

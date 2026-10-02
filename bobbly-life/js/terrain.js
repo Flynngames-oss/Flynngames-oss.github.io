@@ -33,34 +33,52 @@ function ridged(x, z, oct = 5) {
 const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const mix = (a, b, t) => a + (b - a) * t;
 
-// ---------------------------------------------------------------- highways, lakes, landmarks
+// ---------------------------------------------------------------- the island layout
+// Bobbly Island (north is +z): Bobbly Town in the middle with Mega City to the west, the Mystery Cave in the rocky
+// north-west hills, the Crazy Go-Kart Track out west, Bouncy Peaks (snowy mountains) in the north-east, the
+// theme park and Park Lake east of town with the Funky Forest beyond, Slippy Bay opening to the sea in the south
+// with sandy beaches, a palm islet in the bay and Treasure Island off the south-east coast.
 export const HIGHWAYS = [
   { name: 'North Highway', x0: -30, z0: LAND, x1: -30, z1: 1050 },
-  { name: 'South Highway', x0: 30, z0: -LAND, x1: 30, z1: -1050 },
+  { name: 'South Highway', x0: 30, z0: -LAND, x1: 30, z1: -480 },
   { name: 'West Highway', x0: -LAND, z0: 30, x1: -1050, z1: 30 },
 ];
-export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 620, z: 700, r: 90 }];
-export const BAY = { x0: 200, x1: 520, z0: -170, z1: 170 };
-// Sea floor of Coral Bay: sandy shallows, reef terraces, a sandy channel and a 40 m deep basin
-export function bayFloor(x, z) {
-  const din = Math.min(x - BAY.x0, BAY.x1 - x, z - BAY.z0, BAY.z1 - z);      // distance in from the shore
-  const shelf = sm(6, 70, din), deep = sm(55, 150, din);
-  let h = -4 - 10 * shelf - 24 * deep;
-  // reef bumps and terraces in the middle depths, smoother sand in the deep basin
-  const reef = fbm(x / 34 + 40, z / 34 - 11, 4);
-  h += (reef - 0.22) * 18 * shelf * (1 - deep * 0.6);
-  h += Math.max(0, reef - 0.3) * 40 * shelf * (1 - deep);
-  // gentle sand ripples
-  h += Math.sin(x / 5.5 + Math.sin(z / 9) * 1.6) * 0.25 * shelf;
-  return Math.min(h, -2.2);
+export const LAKES = [{ x: -640, z: 430, r: 120 }, { x: 620, z: 760, r: 90 }, { x: 860, z: 150, r: 70 }, { x: 370, z: 0, r: 78 }];
+// Slippy Bay: the reef (the old Coral Bay lagoon, moved south of town) sits at the head of a wide bay that opens
+// to the sea. BAY is the reef area; BAY_SHIFT maps the reef's original layout into it.
+export const BAY_SHIFT = { x: -260, z: -720 };
+export const BAY = { x0: -60, x1: 260, z0: -890, z1: -550 };
+export const SLIPPY = { x0: -60, x1: 405, z1: -548 };
+export const ISLANDS = [{ name: 'Treasure Island', x: 880, z: -1228, r: 58, h: 7 }, { name: 'Palm Islet', x: -150, z: -1050, r: 34, h: 3.5 }];
+export const CAVE = { x: -330, z: 760, hillX: -330, hillZ: 860 };
+// signed distance into Slippy Bay from its shore (positive = water); it widens towards the sea
+export function bayDist(x, z) {
+  const t = sm(SLIPPY.z1 - 40, -1150, z);
+  const x0 = SLIPPY.x0 - t * 230 + (fbm(3.1, z / 120, 2) - 0.5) * 40 * t;
+  const x1 = SLIPPY.x1 + t * 200 + (fbm(9.7, z / 120, 2) - 0.5) * 40 * t;
+  const z1 = SLIPPY.z1 + (fbm(x / 110, 5.5, 2) - 0.5) * 30 * sm(SLIPPY.x0 + 60, SLIPPY.x0 + 160, x);
+  return Math.min(x - x0, x1 - x, z1 - z);
 }
-// Flat building zones: Mega City (west) and the Suburbs (north-east)
+// Sea floor of Slippy Bay: sandy shallows, reef terraces, and a deep basin
+export function bayFloor(x, z) {
+  const din = bayDist(x, z);
+  const shelf = sm(6, 70, din), deep = sm(55, 150, din);
+  let h = -0.3 - 3.7 * sm(0, 22, din) - 10 * shelf - 24 * deep;
+  // reef bumps and terraces in the middle depths (around the reef), smoother sand elsewhere
+  const reefArea = 1 - sm(0, 80, Math.max(BAY.x0 - x, 0, x - BAY.x1, BAY.z0 - z, z - BAY.z1));
+  const reef = fbm(x / 34 + 40, z / 34 - 11, 4);
+  h += (reef - 0.22) * 18 * shelf * (1 - deep * 0.6) * reefArea;
+  h += Math.max(0, reef - 0.3) * 40 * shelf * (1 - deep) * reefArea;
+  h += Math.sin(x / 5.5 + Math.sin(z / 9) * 1.6) * 0.25 * shelf;
+  return Math.min(h, -0.25);
+}
+// Flat building zones
 export const ZONES = {
   city: { x0: -1000, x1: -200, z0: -470, z1: 280, h: 0 },
-  valley: { x0: 80, x1: 700, z0: -1000, z1: -660, h: 'auto' },
+  valley: { x0: 600, x1: 980, z0: -980, z1: -700, h: 'auto' },
   suburb: { x0: 140, x1: 560, z0: 185, z1: 440, h: 0 },
   space: { x0: 720, x1: 940, z0: -380, z1: -170, h: 'auto' },
-  farm1: { x0: 760, x1: 960, z0: 40, z1: 220, h: 'auto' },
+  townpark: { x0: 200, x1: 545, z0: -178, z1: 178, h: 0 },
   farm2: { x0: -980, x1: -800, z0: -700, z1: -540, h: 'auto' },
   village2: { x0: 1000, x1: 1120, z0: -620, z1: -500, h: 'auto' },
   gasN: { x0: -20, x1: 10, z0: 690, z1: 730, h: 'auto' },
@@ -70,13 +88,17 @@ export const ZONES = {
   swAir: { x0: -1095, x1: -745, z0: -1085, z1: -975, h: 'auto' },
   jail: { x0: -175, x1: -105, z0: -305, z1: -235, h: 0 },
   park: { x0: 668, x1: 985, z0: -150, z1: 22, h: 'auto' },
+  kart: { x0: -1060, x1: -790, z0: 560, z1: 800, h: 'auto' },
+  cave: { x0: -366, x1: -294, z0: 722, z1: 790, h: 'auto' },
+  cable: { x0: 776, x1: 816, z0: 318, z1: 352, h: 'auto' },
   intlRw: { x0: 346, x1: 985, z0: -490, z1: -420, h: 'intl' },   // the long international runway
 };
+export const FUNKY = { x: 1060, z: 120, r: 330 };     // the Funky Forest: bright pink, purple and teal trees
 // Rivers split the island into regions (highways cross them on bridges)
 export const RIVERS = [
   { w: 24, pts: [[120, 1150], [60, 720], [-60, 520], [-160, 390], [-460, 335], [-820, 300], [-1340, 280]] },
-  { w: 22, pts: [[1340, 620], [920, 470], [640, 260], [560, 175]] },
-  { w: 22, pts: [[360, -175], [330, -420], [220, -560], [-60, -640], [-420, -900], [-720, -1340]] },
+  { w: 22, pts: [[1340, 620], [1060, 470], [920, 230], [870, 160]] },
+  { w: 18, pts: [[372, -76], [350, -300], [300, -450], [240, -570]] },
 ];
 function polyDist(x, z, pts) {
   let d = 1e9;
@@ -98,11 +120,19 @@ function segDist(x, z, s) {
 // Biome weights (0..1)
 export function biome(x, z) {
   return {
-    north: sm(250, 800, z) * (1 - sm(500, 900, Math.abs(x) - 200) * 0.3),
-    south: sm(250, 750, -z),
-    west: sm(250, 700, -x) * (1 - sm(250, 800, z)) ,
+    north: sm(380, 860, z) * sm(-380, 120, x),                              // Bouncy Peaks (north-east)
+    south: sm(300, 750, -z) * 0.6,
+    west: sm(250, 700, -x) * (1 - sm(250, 800, z) * 0.6),
     east: sm(250, 600, x),
+    funky: 1 - sm(FUNKY.r * 0.7, FUNKY.r, Math.hypot(x - FUNKY.x, z - FUNKY.z)),
   };
+}
+// distance from the coast (positive = inland). The island is a big rounded blob with a wobbly shoreline.
+export function coastDist(x, z) {
+  const n = Math.pow(Math.pow(Math.abs(x), 6) + Math.pow(Math.abs(z), 6), 1 / 6);
+  const a = Math.atan2(z, x);
+  const wob = (fbm(Math.cos(a) * 3 + 11, Math.sin(a) * 3 - 4, 3) - 0.5) * 110;
+  return 1150 + wob - n;
 }
 
 function rawHeight(x, z, noRiver = false, noZones = false) {
@@ -111,24 +141,29 @@ function rawHeight(x, z, noRiver = false, noZones = false) {
   const low = (fbm(x / 700 + 3, z / 700 - 7, 3) - 0.5) * 50;
   const hills = fbm(x / 180 + 10, z / 180, 4);
   const ridge = ridged(x / 320 + 5, z / 320 + 2, 5);
-  const dunes = Math.sin(x / 38 + fbm(x / 200, z / 200, 2) * 7) * 0.5 + 0.5;
   const profile = 14 + (low + 25) * 0.4 + b.north * 30;
   let h = profile;
   h += b.west * (hills - 0.3) * 60;
   h += b.north * (Math.pow(ridge, 1.3) * 330 + fbm(x / 90, z / 90, 3) * 25);
-  h += b.south * ((hills - 0.4) * 50 + dunes * 0);   // golden California hills
+  h += b.south * (hills - 0.4) * 40;
   h += b.east * (hills - 0.5) * 22;
+  // the rocky hill in the north-west with the Mystery Cave in it
+  const ch = Math.hypot(x - CAVE.hillX, z - CAVE.hillZ);
+  h += (1 - sm(60, 260, ch)) * (70 + ridged(x / 60, z / 60, 3) * 30);
   // gentle corridors along the highways
   let dr = 1e9;
   for (const hw of HIGHWAYS) dr = Math.min(dr, segDist(x, z, hw));
   h = mix(profile, h, sm(12, 90, dr));
+  // sandy beaches: the land slopes gently down to Slippy Bay
+  const bd = bayDist(x, z);
+  if (bd < 0) h = mix(0.35 - bd * 0.025, h, sm(30, 170, -bd));
   // flat building zones
   if (!noZones) for (const k in ZONES) {
-    const r = ZONES[k];
-    if (r.h === 'auto') r.h = rawHeight((r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2, true, true);
-    else if (typeof r.h === 'string') r.h = ZONES[r.h].h;
-    const zx = Math.max(r.x0 - x, 0, x - r.x1), zz = Math.max(r.z0 - z, 0, z - r.z1);
-    h = mix(r.h, h, sm(0, r.h ? 50 : 70, Math.hypot(zx, zz)));
+    const rz = ZONES[k];
+    if (rz.h === 'auto') rz.h = rawHeight((rz.x0 + rz.x1) / 2, (rz.z0 + rz.z1) / 2, true, true);
+    else if (typeof rz.h === 'string') rz.h = ZONES[rz.h].h;
+    const zx = Math.max(rz.x0 - x, 0, x - rz.x1), zz = Math.max(rz.z0 - z, 0, z - rz.z1);
+    h = mix(rz.h, h, sm(0, rz.h ? 50 : 70, Math.hypot(zx, zz)));
   }
   // flat town in the middle
   h *= sm(LAND + 8, 330, r);
@@ -137,13 +172,21 @@ function rawHeight(x, z, noRiver = false, noZones = false) {
     const d = polyDist(x, z, rv.pts);
     if (d < rv.w + 40) h = mix(h, -3.5, 1 - sm(rv.w * 0.5, rv.w * 0.5 + 26, d));
   }
-  // Coral Bay east of town (where the pier is): shallow by the beach, a deep reef lagoon further out
-  const bx = Math.max(BAY.x0 - x, 0, x - BAY.x1), bz = Math.max(BAY.z0 - z, 0, z - BAY.z1);
-  h = mix(h, bayFloor(x, z), 1 - sm(0, 12, Math.hypot(bx, bz)));
+  // Slippy Bay
+  if (bd > -12) h = mix(h, bayFloor(x, z), sm(-12, 6, bd));
   // lakes
   for (const l of LAKES) h = mix(h, -4, 1 - sm(l.r * 0.6, l.r, Math.hypot(x - l.x, z - l.z)));
-  // ocean all around the island
-  h = mix(h, -9, sm(WORLD - 190, WORLD - 30, r));
+  // the sea all around the island (beaches first), but never under an airport or town
+  const cd = coastDist(x, z), keep = noZones ? 0 : inZone(x, z, 40) ? 1 : 0;
+  if (!keep) {
+    h = mix(Math.min(h, 0.4 + cd * 0.02), h, sm(20, 120, cd));
+    h = mix(h, -6 - Math.min(22, -cd * 0.12), sm(10, -40, cd));
+  }
+  // islands
+  for (const il of ISLANDS) {
+    const d = Math.hypot(x - il.x, z - il.z);
+    if (d < il.r * 1.6) h = Math.max(h, il.h * (1 - sm(il.r * 0.35, il.r, d)) + (fbm(x / 12, z / 12, 2) - 0.5) * 2 * (1 - sm(0, il.r, d)) - 4 * sm(il.r, il.r * 1.6, d));
+  }
   return h;
 }
 
@@ -177,41 +220,69 @@ export function slopeAt(x, z) {
 
 // ---------------------------------------------------------------- meshes
 const C = (h) => new THREE.Color(h);
-const COL = { grass: C('#7fae4f'), forest: C('#5a8f42'), sand: C('#f2dc9a'), desert: C('#b8aa6a'), rock: C('#9b9186'), snow: C('#f4f8ff'), beach: C('#f2dc9a'), dark: C('#4f8f3f'), seaSand: C('#b9a57c'), algae: C('#6f8a4a') };
+const COL = { grass: C('#6cc84a'), forest: C('#4fa83e'), sand: C('#f6dc8a'), desert: C('#a8c25a'), rock: C('#a8a092'), snow: C('#f6faff'), beach: C('#f6dc8a'), dark: C('#4f8f3f'), seaSand: C('#e0c88a'), algae: C('#6f8a4a'), funky: C('#7ad06a') };
+// The colour of the ground anywhere on the island (the terrain and the island map both use it).
+export function groundColor(x, z, h, c) {
+  const b = biome(x, z);
+  const r = Math.max(Math.abs(x), Math.abs(z));
+  const slope = slopeAt(x, z);
+  c.copy(COL.grass).lerp(COL.forest, b.west).lerp(COL.desert, b.south).lerp(COL.funky, b.funky * 0.6);
+  // sand only along the water: beaches, the bay, the coast and round the islands
+  if (r > LAND + 1) {
+    let near = Math.max(sm(-80, -40, bayDist(x, z)), 1 - sm(40, 80, coastDist(x, z)));
+    for (const il of ISLANDS) near = Math.max(near, 1 - sm(il.r + 8, il.r + 30, Math.hypot(x - il.x, z - il.z)));
+    c.lerp(COL.beach, near * (1 - sm(1.6, 3.6, h)));
+  }
+  if (h < -3) {
+    // sea floor: pale sand in the shallows, darker sand and rock down deep, with patchy algae
+    c.lerp(COL.seaSand, Math.min(1, (-3 - h) / 30));
+    const patch = fbm(x / 22 + 7, z / 22 + 3, 3);
+    if (patch > 0.58) c.lerp(COL.algae, Math.min(0.55, (patch - 0.58) * 3));
+  }
+  if (slope > 0.55) c.lerp(COL.rock, Math.min(1, (slope - 0.55) * 3));
+  const snowLine = 95 - b.north * 30;                     // Bouncy Peaks are snowy lower down
+  if (h > snowLine) c.lerp(COL.snow, Math.min(1, (h - snowLine) / 22));
+  if (ISLANDS.some(il => Math.hypot(x - il.x, z - il.z) < il.r * 0.92) && h > -1) c.copy(COL.beach);
+  return c;
+}
+
+// The ground is built as square tiles so the ones behind you or past the fog aren't drawn.
 export function buildTerrainMesh(scene) {
-  const segs = N - 1;
-  const g = new THREE.PlaneGeometry(WORLD * 2, WORLD * 2, segs, segs);
-  g.rotateX(-Math.PI / 2);
-  const pos = g.attributes.position;
-  const cols = new Float32Array(pos.count * 3);
   const c = new THREE.Color();
-  for (let k = 0; k < pos.count; k++) {
-    const x = pos.getX(k), z = pos.getZ(k);
-    const i = Math.round((x + WORLD) / STEP), j = Math.round((z + WORLD) / STEP);
-    const h = grid[j * N + i];
-    pos.setY(k, h);
-    const b = biome(x, z);
-    const r = Math.max(Math.abs(x), Math.abs(z));
-    const slope = slopeAt(x, z);
-    c.copy(COL.grass).lerp(COL.forest, b.west).lerp(COL.desert, b.south);
-    if (h < 0.8 && r > LAND + 1) c.copy(COL.beach);
-    if (h < -3) {
-      // sea floor: pale sand in the shallows, darker sand and rock down deep, with patchy algae
-      c.lerp(COL.seaSand, Math.min(1, (-3 - h) / 30));
-      const patch = fbm(x / 22 + 7, z / 22 + 3, 3);
-      if (patch > 0.58) c.lerp(COL.algae, Math.min(0.55, (patch - 0.58) * 3));
-    }
-    if (slope > 0.55) c.lerp(COL.rock, Math.min(1, (slope - 0.55) * 3));
-    if (h > 95) c.lerp(COL.snow, Math.min(1, (h - 95) / 25));
+  const cols = new Float32Array(N * N * 3), nrm = new Float32Array(N * N * 3);
+  const H = (i, j) => grid[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, x = -WORLD + i * STEP, z = -WORLD + j * STEP, h = grid[k];
+    groundColor(x, z, h, c);
     const v = (hash(i, j) - 0.5) * 0.06;
     cols[k * 3] = c.r + v; cols[k * 3 + 1] = c.g + v; cols[k * 3 + 2] = c.b + v;
+    const nx = -(H(i + 1, j) - H(i - 1, j)) / (2 * STEP), nz = -(H(i, j + 1) - H(i, j - 1)) / (2 * STEP), l = Math.hypot(nx, 1, nz);
+    nrm[k * 3] = nx / l; nrm[k * 3 + 1] = 1 / l; nrm[k * 3 + 2] = nz / l;
   }
-  g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  g.computeVertexNormals();
-  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-  return mesh;
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const T = 30, tiles = [];
+  for (let tj = 0; tj < N - 1; tj += T) for (let ti = 0; ti < N - 1; ti += T) {
+    const nI = Math.min(T, N - 1 - ti), nJ = Math.min(T, N - 1 - tj), vw = nI + 1;
+    const pos = new Float32Array((nI + 1) * (nJ + 1) * 3), col = new Float32Array(pos.length), nor = new Float32Array(pos.length), uv = new Float32Array((nI + 1) * (nJ + 1) * 2), idx = [];
+    for (let j = 0; j <= nJ; j++) for (let i = 0; i <= nI; i++) {
+      const gi = ti + i, gj = tj + j, k = gj * N + gi, o = j * vw + i, x = -WORLD + gi * STEP, z = -WORLD + gj * STEP;
+      pos[o * 3] = x; pos[o * 3 + 1] = grid[k]; pos[o * 3 + 2] = z;
+      col.set(cols.subarray(k * 3, k * 3 + 3), o * 3); nor.set(nrm.subarray(k * 3, k * 3 + 3), o * 3);
+      uv[o * 2] = (x + WORLD) / (2 * WORLD); uv[o * 2 + 1] = (WORLD - z) / (2 * WORLD);
+    }
+    for (let j = 0; j < nJ; j++) for (let i = 0; i < nI; i++) {
+      const a = j * vw + i, bb = (j + 1) * vw + i, cc = (j + 1) * vw + i + 1, d = j * vw + i + 1;
+      idx.push(a, bb, d, bb, cc, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeBoundingSphere();
+    const mesh = new THREE.Mesh(g, material);
+    mesh.receiveShadow = true; mesh.matrixAutoUpdate = false;
+    scene.add(mesh); tiles.push(mesh);
+  }
+  return { material, tiles };
 }
 
 // Road strips that follow the ground.

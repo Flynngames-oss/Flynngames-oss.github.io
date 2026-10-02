@@ -73,8 +73,8 @@ export function initQuests() {
     Q.flynn = questNPC('King Flynn', outfitOf('flynn'), cx, y + 0.9, cz - 3.6, 0, '#d4a82a');
     G.interacts.push({ x: cx, z: cz - 2, r: 5, label: () => '👑 Talk to King Flynn', action: talkFlynn });
   }
-  // --- George's treehouse, hidden in the western woods (no fast travel, no map icon)
-  buildTreehouse(-1050, 400);
+  // --- George's treehouse, hidden deep in the Funky Forest in the east (no fast travel, no map icon)
+  buildTreehouse(1100, 300);
   // --- Jacob on the Twin Towers' rooftop deck
   if (LOC.twinTop) {
     const T = LOC.twinTop;
@@ -87,13 +87,13 @@ export function initQuests() {
 // ---------------------------------------------------------------- Flynn
 function talkFlynn() {
   const have = G.save.presents.length, need = PRESENT_SPOTS.length;
-  if (G.save.ownedSkins.includes('flynn')) { say('King Flynn', 'Welcome back! You may dress as the King of Bobbly Island whenever you like. Have you met my son George? He hides in his treehouse in the <b>western woods</b>.'); return; }
+  if (G.save.ownedSkins.includes('flynn')) { say('King Flynn', 'Welcome back! You may dress as the King of Bobbly Island whenever you like. Have you met my son George? He hides in his treehouse deep in the <b>Funky Forest</b> in the east.'); return; }
   if (have >= need) {
     say('King Flynn', `All <b>${need}</b> presents?! Incredible! As owner of Bobbly Island I declare you royalty. Take my crown!`);
     unlock('flynn', 1000);
     return;
   }
-  say('King Flynn', `I am <b>King Flynn</b>, owner of all of Bobbly Island! Bring me proof you've explored my island: find <b>all ${need} presents</b> hidden around it. You have <b>${have}</b> so far. Some are in the mountains, on rooftops and far out in the wild…<br><small>Psst — my son George hides in a treehouse somewhere in the western woods.</small>`, 11000);
+  say('King Flynn', `I am <b>King Flynn</b>, owner of all of Bobbly Island! Bring me proof you've explored my island: find <b>all ${need} presents</b> hidden around it. You have <b>${have}</b> so far. Some are in the mountains, on rooftops and far out in the wild…<br><small>Psst — my son George hides in a treehouse somewhere in the colourful Funky Forest, east of the theme park.</small>`, 11000);
 }
 
 // ---------------------------------------------------------------- George + the runaway drone

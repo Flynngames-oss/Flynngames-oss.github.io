@@ -281,6 +281,25 @@ function buildMesh(v) {
 let personalCounter = 0;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _c1 = new THREE.Vector3(), _c2 = new THREE.Vector3(), _t = new THREE.Vector3();
 
+// Go-kart for the Crazy Go-Kart Track: low, light and twitchy
+VTYPES.kart = { name: 'Go-Kart', emo: '🏎️', price: 0, len: 2.3, wid: 1.45, h: 0.9, wr: 0.19, max: 27, acc: 26, turn: 2.6, color: '#e8322a', seats: 1, custom: true, noShop: true };
+(G.railMesh ||= {}).kart = (v, body) => {
+  const paint = paintMat(v.color), dark = new THREE.MeshStandardMaterial({ color: '#202226', roughness: 0.7 }), steel = new THREE.MeshStandardMaterial({ color: '#c8ccd2', metalness: 0.8, roughness: 0.3 });
+  const box = (w, h, d, m, x, y, z, rx = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.rotation.x = rx; o.castShadow = true; body.add(o); return o; };
+  box(1.0, 0.08, 2.1, dark, 0, 0.16, 0);                       // floor pan
+  box(0.9, 0.22, 0.6, paint, 0, 0.3, 0.85, -0.25);              // nose
+  for (const sx of [-1, 1]) box(0.22, 0.24, 1.0, paint, sx * 0.62, 0.3, -0.05);   // side pods
+  box(1.3, 0.12, 0.25, paint, 0, 0.32, 1.12);                   // front bumper
+  box(0.55, 0.5, 0.12, dark, 0, 0.5, -0.5, 0.25);               // seat back
+  box(0.55, 0.1, 0.5, dark, 0, 0.27, -0.25);                    // seat
+  box(1.1, 0.3, 0.3, steel, 0, 0.42, -0.95);                    // engine
+  const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.035, 6, 14, Math.PI), steel); hoop.position.set(0, 0.62, -0.62); body.add(hoop);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.025, 6, 14), dark); wheel.position.set(0, 0.62, 0.28); wheel.rotation.x = -1.0; body.add(wheel);
+  const num = new THREE.Mesh(new THREE.CircleGeometry(0.16, 14), new THREE.MeshStandardMaterial({ color: '#ffffff' })); num.position.set(0, 0.38, 1.13); body.add(num);
+  for (const [z, st] of [[0.78, true], [-0.78, false]]) for (const sx of [-1, 1]) addWheel(v, body, sx * 0.72, 0.19, z, 0.19, st ? 0.18 : 0.26, 'sport', st);
+  v.seats = [[0, 0.3, -0.25]];
+};
+
 export class Vehicle {
   constructor(typeId, x, z, yaw = 0, { id = null, color = null, owner = null, livery = null } = {}) {
     if (livery != null) this.livery = livery;
