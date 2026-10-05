@@ -237,4 +237,11 @@ export function send(msg) {
   else if (hostConn && hostConn.open) hostConn.send(msg);
 }
 
+// host only: tell a player they've been removed, then drop them
+export function kick(id, why) {
+  if (G.net.mode !== 'host') return;
+  const c = conns.get(id);
+  if (c && c.open) c.send({ t: 'kicked', why, from: G.net.myId });
+  setTimeout(() => dropPeer(id), 400);
+}
 export function playerCount() { return G.net.mode === 'solo' ? 1 : G.remotes.size + 1; }
