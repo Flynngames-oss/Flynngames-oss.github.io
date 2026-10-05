@@ -168,3 +168,18 @@ body.touch #hint { display: none; }
 #modeBar.blue { border-color: #5f8fff; } #modeBar.red { border-color: #ff5a5a; }
 #modeCover { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4,6,12,.94); z-index: 40; color: #fff; font-family: 'Barlow Condensed', sans-serif; font-size: 40px; font-weight: 800; text-align: center; pointer-events: none; }
 #modeCover span { display: block; font-size: 120px; color: #ffd23a; } #modeCover small { display: block; font-size: 22px; opacity: .8; font-weight: 600; }
+
+/* ---------- admin ---------- */
+.admin-btn { background: linear-gradient(135deg, #ffd23f, #ff8a2a) !important; color: #3a2400 !important; font-weight: 800; }
+.adm-hero { margin: 10px 0 4px; padding: 12px 14px; border-radius: 10px; background: linear-gradient(135deg, rgba(255,210,63,.25), rgba(255,90,140,.18)); border: 1px solid rgba(255,210,63,.6); color: #ffe48a; font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 1px; }
+.adm-hero .small { display: block; font-size: 14px; color: #f4e6c0; font-family: inherit; letter-spacing: 0; font-weight: 400; }
+.adm-player { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+.adm-player b { color: #ffe48a; }
+#panel input[type=number], #panel input[type=password], #panel input:not([type]) { background: rgba(255,255,255,.08); color: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 15px; }
+#adminBanner { position: fixed; top: 18%; left: 50%; transform: translate(-50%, -30px) scale(.9); opacity: 0; pointer-events: none; z-index: 60; text-align: center; transition: all .35s cubic-bezier(.2,1.6,.4,1); padding: 16px 30px; border-radius: 14px; background: linear-gradient(135deg, rgba(40,20,0,.85), rgba(80,30,60,.85)); border: 2px solid #ffd23f; box-shadow: 0 0 40px rgba(255,210,63,.5); max-width: 80vw; }
+#adminBanner.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#adminBanner .ab-crown { color: #ffd23f; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; letter-spacing: 3px; font-size: 16px; }
+#adminBanner .ab-text { color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 32px; }
+#kickedScreen { position: fixed; inset: 0; z-index: 99; background: rgba(10,10,20,.92); display: flex; align-items: center; justify-content: center; color: #fff; text-align: center; }
+#kickedScreen h1 { font-family: 'Barlow Condensed', sans-serif; font-size: 44px; }
+.btn.red { background: #e8463a; color: #fff; border-color: #e8463a; }

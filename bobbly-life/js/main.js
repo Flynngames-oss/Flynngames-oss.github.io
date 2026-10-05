@@ -14,6 +14,9 @@ import { updateProps, kickProps, spawnPresents, updatePresents, updateTrees, hit
 import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './jobs.js';
 import * as UI from './ui.js';
 import * as NET from './net.js';
+import * as ADMIN from './admin.js';
+G.adminSpeedMult = ADMIN.speedMult; G.adminJumpMult = ADMIN.jumpMult;
+ADMIN.restore();
 import { initAudio, sfx, setEngine, setMusic, musicPlaying, ambience } from './audio.js';
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
 import { updateDebris } from './debris.js';
@@ -277,6 +280,7 @@ function onKey(code) {
   }
   if (code === 'KeyJ') quitJob();
   if (code === 'KeyN' && G.openMap) { G.openMap(); return; }
+  if (code === 'Backquote' && ADMIN.isAdmin()) { if (G.ui.panel) UI.closePanel(); else G.openAdmin(); return; }
   if (code === 'KeyM') { G.save.music = !musicPlaying(); setMusic(G.save.music); writeSave(); UI.toast(G.save.music ? '🎵 Music on' : '🔇 Music off'); }
   if (code === 'KeyV') {
     G.cam.fp = !G.cam.fp;
@@ -524,10 +528,14 @@ function updateGrab() {
 }
 
 // ---------------------------------------------------------------- multiplayer glue
-function addRemote(id, name, outfit) {
-  if (id === G.net.myId || G.remotes.has(id)) return G.remotes.get(id);
+// nobody can pretend to be the admin by putting a crown in their name
+const cleanName = (n) => String(n || 'Player').replace(/👑|\[ADMIN\]/gi, '').trim().slice(0, 20) || 'Player';
+function addRemote(id, name, outfit, did) {
+  name = cleanName(name);
+  if (id === G.net.myId) return null;
+  if (G.remotes.has(id)) { const r0 = G.remotes.get(id); if (did) r0.did = did; return r0; }
   const r = new Character(outfit || randomOutfit(), { isRemote: true, name });
-  r.netId = id;
+  r.netId = id; r.did = did;
   r.setName(name || 'Player');
   r.place(LOC.spawn.x, 0, LOC.spawn.z);
   G.remotes.set(id, r);
@@ -556,18 +564,19 @@ function updateRoomInfo() {
 }
 
 NET.on('hello', (m) => {
-  const r = addRemote(m.from, m.name, m.outfit);
+  if (G.net.mode === 'host' && ADMIN.isBanned(m.did)) { NET.kick(m.from, 'banned'); return; }
+  const r = addRemote(m.from, m.name, m.outfit, m.did);
   UI.toast(`👋 ${m.name} joined the game!`);
   UI.chatLine('🌐', `${m.name} joined`, '#9be05a');
   if (G.net.mode === 'host') {
-    const players = [{ id: G.net.myId, name: G.save.name, outfit: G.save.outfit }];
-    for (const [id, rr] of G.remotes) if (id !== m.from) players.push({ id, name: rr.name, outfit: rr.outfit });
+    const players = [{ id: G.net.myId, name: G.save.name, outfit: G.save.outfit, did: G.save.deviceId }];
+    for (const [id, rr] of G.remotes) if (id !== m.from) players.push({ id, name: rr.name, outfit: rr.outfit, did: rr.did });
     NET.send({ t: 'welcome', to: m.from, players, d: G.dayTime, wx: weatherNet() });
   }
   void r;
 });
 NET.on('welcome', (m) => {
-  for (const p of m.players) addRemote(p.id, p.name, p.outfit);
+  for (const p of m.players) addRemote(p.id, p.name, p.outfit, p.did);
   G.dayTime = m.d;
   applyWeatherNet(m.wx);
   updateRoomInfo();
@@ -585,7 +594,7 @@ NET.on('disconnected', () => {
 });
 NET.on('outfit', (m) => {
   const r = G.remotes.get(m.from);
-  if (r) { r.setOutfit(m.outfit); if (m.name !== r.name) r.setName(m.name); }
+  if (r) { r.setOutfit(m.outfit); const nm = r.isAdminPlayer ? '👑 ' + cleanName(m.name) + ' [ADMIN]' : cleanName(m.name); if (nm !== r.name) r.setName(nm); }
 });
 NET.on('chat', (m) => {
   const r = G.remotes.get(m.from);
@@ -725,6 +734,7 @@ function buildTitle() {
       if (err) { $('titleMsg').style.color = '#d24'; $('titleMsg').textContent = err; return; }
       startGame();
       UI.toast(`🌐 Room created! Code: ${code} — click "Copy invite link" at the top to invite friends.`, '', 9000);
+      G.onNetJoin && G.onNetJoin();
     }, (msg) => { $('titleMsg').textContent = msg; });
   };
   $('btnJoin').onclick = () => {
@@ -736,7 +746,8 @@ function buildTitle() {
       busy(false);
       if (err) { $('titleMsg').style.color = '#d24'; $('titleMsg').textContent = err; return; }
       startGame();
-      NET.send({ t: 'hello', name: G.save.name, outfit: G.save.outfit });
+      NET.send({ t: 'hello', name: G.save.name, outfit: G.save.outfit, did: G.save.deviceId });
+      G.onNetJoin && G.onNetJoin();
       UI.toast('🌐 Joined room ' + code + '!');
     }, (msg) => { $('titleMsg').textContent = msg; });
   };
@@ -791,7 +802,7 @@ function startGame() {
 // ---------------------------------------------------------------- per-frame player control
 function controlPlayer(dt) {
   const p = player;
-  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze || G.cableRide || G.slideRide;
+  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze || G.cableRide || G.slideRide || G.adminFreeze;
   let ix = 0, iy = 0;
   if (!blocked) {
     ix = (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + touch.mx;
@@ -1028,6 +1039,7 @@ function update(dt) {
   updatePolice(dt);
   updateQuests(dt);
   for (const c of G.characters) c.update(dt);
+  ADMIN.updateAdmin(dt);
   updateRocket(dt);
   pushCharacters();
   for (const c of G.characters) if (!c.isRemote) kickProps(c);

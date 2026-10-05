@@ -652,7 +652,7 @@ export class Character {
     if (this.diving) return this.dive(dt);
     if (this.wingsuit) return this.glide(dt);
     const mlen = Math.hypot(c.mx, c.mz);
-    const speed = this.swimming ? 4 : this.chute ? 10 : c.run ? 10.5 : 6;
+    const speed = (this.swimming ? 4 : this.chute ? 10 : c.run ? 10.5 : 6) * (this.isPlayer && G.adminSpeedMult ? G.adminSpeedMult() : 1);
     const acc = this.grounded ? 32 : 9;
     const tx = c.mx * speed, tz = c.mz * speed;
     this.vel.x += clamp(tx - this.vel.x, -acc * dt, acc * dt);
@@ -660,7 +660,7 @@ export class Character {
     if (c.aim !== undefined && c.aim !== null) this.facing = angleLerp(this.facing, c.aim, 1 - Math.exp(-18 * dt));
     else if (mlen > 0.1 && !this.fishing) this.facing = angleLerp(this.facing, Math.atan2(c.mx, c.mz), 1 - Math.exp(-10 * dt));
     if (c.jump && this.grounded) {
-      this.vel.y = this.swimming ? 6 : 8.2; this.grounded = false;
+      this.vel.y = (this.swimming ? 6 : 8.2) * (this.isPlayer && G.adminJumpMult ? G.adminJumpMult() : 1); this.grounded = false;
       if (this.isPlayer) sfx.jump();
     }
     c.jump = false;

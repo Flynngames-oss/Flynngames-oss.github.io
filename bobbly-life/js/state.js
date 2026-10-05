@@ -73,6 +73,7 @@ const SAVE_KEY = 'bobblylife-save-v1';
 export function defaultSave() {
   return {
     name: 'Bobbler' + Math.floor(Math.random() * 900 + 100),
+    deviceId: 'd' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36),
     money: 100,
     outfit: { skin: '#ffd23f', shirt: '#2f6fd8', pants: '#ff7a1a', hat: 'propeller', glasses: 'none', eyes: 'round', hair: 'none', hairColor: '#3b2a20', extras: [], top: 'hoodie', bottom: 'cargo', shoes: 'bare' },
     ownedHats: ['none', 'cap', 'propeller'],
@@ -106,6 +107,7 @@ export function loadSave() {
     }
   } catch (e) { /* storage blocked: play without saving */ }
   G.save = s;
+  writeSave();          // keeps this device's id the same next time
   return s;
 }
 export function writeSave() {

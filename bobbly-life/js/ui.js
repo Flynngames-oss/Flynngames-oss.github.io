@@ -10,6 +10,7 @@ import { WORLD, heightAt, biome, HIGHWAYS, groundColor, ZONES } from './terrain.
 import { sfx } from './audio.js';
 import { WEAPONS } from './weapons.js';
 import { setWeather, forceTornado } from './weather.js';
+import * as ADMIN from './admin.js';
 import { startMode, stopMode } from './modes.js';
 
 const $ = (id) => document.getElementById(id);
@@ -316,7 +317,7 @@ function phonePanel() {
       <h3>🚗 My Vehicles</h3>
       <div class="grid">${s.ownedCars.map(id => `<div class="item owned" data-car="${id}"><span class="emo">${VTYPES[id].emo}</span>${VTYPES[id].name}<div class="price">Spawn</div></div>`).join('')}</div>
       ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}
-      <div class="tabs"><button class="btn small green" id="phMap">🗺️ Island Map</button></div>
+      <div class="tabs"><button class="btn small green" id="phMap">🗺️ Island Map</button>${ADMIN.isAdmin() ? '<button class="btn small admin-btn" id="phAdmin">👑 Admin Panel</button>' : ''}</div>
       <h3>🚀 Fast Travel</h3>
       <div class="grid">${TRAVEL.map((t, i) => `<div class="item" data-go="${i}"><span class="emo">${t[0]}</span>${t[1]}<div class="price">Go!</div></div>`).join('')}</div>
       <h3>💼 Jobs &amp; Activities</h3>
@@ -349,6 +350,7 @@ function phonePanel() {
         <button class="btn small gray" id="phHelp">❓ Help</button>
       </div>`;
     const mb = el.querySelector('#phMap'); if (mb) mb.onclick = () => { closePanel(); islandMapPanel(); };
+    const ab = el.querySelector('#phAdmin'); if (ab) ab.onclick = () => G.openAdmin();
     el.querySelectorAll('[data-wpn]').forEach(b => b.onclick = () => { G.equipWeapon(G.player.weapon === b.dataset.wpn ? null : b.dataset.wpn); rerender(); });
     el.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { closePanel(); G.spawnMyVehicle(b.dataset.car); });
     el.querySelectorAll('[data-job]').forEach(b => b.onclick = () => { G.waypoint = JOBS[b.dataset.job].loc; toast('📍 Waypoint set: ' + JOBS[b.dataset.job].name); closePanel(); });
@@ -562,6 +564,7 @@ export function setPrompt(text) {
 export function initUI() {
   G.chatLine = chatLine;
   G.toast = toast; G.setJob = setJob; G.clearJob = clearJob; G.onMoney = onMoney; G.openDiveShop = diveShopPanel; G.openMap = islandMapPanel;
+  G.openAdmin = () => ADMIN.openAdmin({ openPanel, closePanel, toast, rerender });
   shownMoney = G.save.money;
   $('moneyVal').textContent = shownMoney;
   $('panelClose').onclick = closePanel;
@@ -593,6 +596,7 @@ export function initUI() {
     e.stopPropagation();
     if (e.key === 'Enter') {
       const t = inp.value.trim().slice(0, 100);
+      if (t === '/admin') { closeChat(); G.openAdmin(); return; }
       if (t) { chatLine(G.save.name, t); G.onChat && G.onChat(t); }
       closeChat();
     } else if (e.key === 'Escape') closeChat();
