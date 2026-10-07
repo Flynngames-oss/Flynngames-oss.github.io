@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Senders</title>
+<meta name="description" content="Senders - a downhill mountain bike game. Procedural mountains, big jumps, tricks, bails and boss jumps.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800;1,900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "./js/audio.js": "./js/audio.js?v=1",
+    "./js/bike.js": "./js/bike.js?v=1",
+    "./js/bikeModel.js": "./js/bikeModel.js?v=1",
+    "./js/camera.js": "./js/camera.js?v=1",
+    "./js/career.js": "./js/career.js?v=1",
+    "./js/course.js": "./js/course.js?v=1",
+    "./js/fx.js": "./js/fx.js?v=1",
+    "./js/grass.js": "./js/grass.js?v=1",
+    "./js/input.js": "./js/input.js?v=1",
+    "./js/main.js": "./js/main.js?v=1",
+    "./js/music.js": "./js/music.js?v=1",
+    "./js/post.js": "./js/post.js?v=1",
+    "./js/rider.js": "./js/rider.js?v=1",
+    "./js/scenery.js": "./js/scenery.js?v=1",
+    "./js/shaders.js": "./js/shaders.js?v=1",
+    "./js/sky.js": "./js/sky.js?v=1",
+    "./js/terrainMesh.js": "./js/terrainMesh.js?v=1",
+    "./js/textures.js": "./js/textures.js?v=1",
+    "./js/tricks.js": "./js/tricks.js?v=1",
+    "./js/ui.js": "./js/ui.js?v=1",
+    "./js/util.js": "./js/util.js?v=1",
+    "./js/worlds.js": "./js/worlds.js?v=1"
+} }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ============ BOOT ============ -->
+<div id="boot">
+  <div class="boot-inner">
+    <div class="logo big">SENDERS</div>
+    <div class="tagline">Downhill · Freeride · Send it</div>
+    <div class="bar"><div id="bootFill"></div></div>
+    <div class="bar-row"><span id="bootText">Loading…</span><span id="bootPct">0%</span></div>
+    <div class="tip" id="bootTip"></div>
+  </div>
+</div>
+
+<!-- ============ TITLE ============ -->
+<div id="title" class="screen hidden">
+  <div class="title-side">
+    <div class="logo">SENDERS</div>
+    <div class="tagline">Downhill · Freeride · Send it</div>
+    <div class="menu" id="mainMenu">
+      <button class="mbtn hidden" data-act="continue" id="btnContinue"><b>Continue Career</b><small id="continueSub"></small></button>
+      <button class="mbtn primary" data-act="career"><b>New Career</b><small>Five worlds · limited lives · boss jumps</small></button>
+      <button class="mbtn" data-act="freeride"><b>Free Ride</b><small>Pick a world and just ride. No lives.</small></button>
+      <button class="mbtn" data-act="daily"><b>Daily Send</b><small id="dailySub">Today's mountain — same for everyone</small></button>
+      <button class="mbtn" data-act="rider"><b>Rider &amp; Bike</b><small>Paint your bike and gear</small></button>
+      <button class="mbtn" data-act="settings"><b>Settings</b><small>Graphics, sound and camera</small></button>
+      <button class="mbtn" data-act="controls"><b>How to Ride</b><small>Controls, tricks and tips</small></button>
+    </div>
+    <div class="profile" id="profileStrip"></div>
+  </div>
+</div>
+
+<!-- ============ WORLD SELECT ============ -->
+<div id="worlds" class="screen panel-screen hidden">
+  <div class="screen-head"><h1 id="worldsTitle">Choose a world</h1><button class="btn ghost" data-act="back">Back</button></div>
+  <div class="world-grid" id="worldGrid"></div>
+</div>
+
+<!-- ============ CAREER MAP ============ -->
+<div id="map" class="screen panel-screen hidden">
+  <div class="screen-head">
+    <div><div class="eyebrow" id="mapWorldNo"></div><h1 id="mapWorld"></h1><div class="sub" id="mapTag"></div></div>
+    <div class="map-stats"><div class="lives" id="mapLives"></div><div class="stat"><small>Career rep</small><b id="mapRep">0</b></div></div>
+  </div>
+  <div class="map-cols" id="mapCols"></div>
+  <div class="map-foot">
+    <button class="btn ghost" data-act="quitCareer">Save &amp; Quit</button>
+    <div class="map-hint" id="mapHint">Pick your trail</div>
+    <button class="btn primary" id="btnRide" data-act="ride" disabled>Drop In ▶</button>
+  </div>
+</div>
+
+<!-- ============ LOADING A TRACK ============ -->
+<div id="gen" class="overlay hidden">
+  <div class="gen-inner">
+    <div class="eyebrow" id="genWorld"></div>
+    <h1 id="genName"></h1>
+    <div class="bar"><div id="genFill"></div></div>
+    <div class="bar-row"><span id="genText">Shaping the mountain…</span><span id="genPct">0%</span></div>
+    <div class="tip" id="genTip"></div>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="hudTL"><div class="lives" id="lives"></div><div class="rep"><small>REP</small><b id="repVal">0</b></div></div>
+  <div id="hudTC"><div class="track-name" id="trackName"></div><div class="progress"><div class="prog-fill" id="progFill"></div><div id="progMarks"></div><div class="prog-dot" id="progDot"></div></div></div>
+  <div id="hudTR"><div class="timer" id="timer">0:00.00</div><div class="sub" id="camName"></div></div>
+  <div id="objective" class="hidden"><small>BONUS ♥</small><span id="objText"></span></div>
+  <div id="combo" class="hidden"><div class="combo-row"><b id="comboMult">x1</b><span id="comboScore">0</span></div><div class="combo-bar"><div id="comboFill"></div></div><div class="combo-names" id="comboNames"></div></div>
+  <div id="trickText"></div>
+  <div id="speedo"><b id="speedVal">0</b><small>km/h</small></div>
+  <div id="center"></div>
+  <div id="toasts"></div>
+  <div id="warn" class="hidden"></div>
+  <div id="keys">W pedal · S brake · A/D steer · Space pop · ↑↓ flip · I J K L tricks · U/O spins · R reset · C cam · Esc pause</div>
+</div>
+
+<!-- ============ INTRO CARD ============ -->
+<div id="intro" class="overlay hidden">
+  <div class="intro-card">
+    <div class="eyebrow" id="introWorld"></div>
+    <h1 id="introName"></h1>
+    <div class="ratings" id="introRatings"></div>
+    <div class="intro-obj" id="introObj"></div>
+    <div class="intro-go" id="introGo">Press <b>Space</b> to drop in</div>
+  </div>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div id="pause" class="overlay hidden">
+  <div class="card menu-card">
+    <h1>Paused</h1>
+    <div class="menu">
+      <button class="mbtn primary" data-act="resume"><b>Resume</b></button>
+      <button class="mbtn" data-act="respawn"><b>Back to trail</b><small>Reset at the last safe spot</small></button>
+      <button class="mbtn" data-act="restart" id="btnRestart"><b>Restart run</b><small id="restartSub">From the top</small></button>
+      <button class="mbtn" data-act="settings"><b>Settings</b></button>
+      <button class="mbtn" data-act="controls"><b>How to Ride</b></button>
+      <button class="mbtn" data-act="quitRun"><b>Quit to menu</b><small id="quitSub"></small></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ RESULTS ============ -->
+<div id="results" class="overlay hidden">
+  <div class="card results-card">
+    <div class="eyebrow" id="resWorld"></div>
+    <h1 id="resTitle">Run complete</h1>
+    <div class="res-grid" id="resGrid"></div>
+    <div class="res-obj" id="resObj"></div>
+    <div class="res-buttons" id="resButtons"></div>
+  </div>
+</div>
+
+<!-- ============ RIDER ============ -->
+<div id="riderPanel" class="overlay side hidden">
+  <div class="card">
+    <h1>Rider &amp; Bike</h1>
+    <div class="sw-row"><span>Frame</span><div class="swatches" id="swFrame"></div></div>
+    <div class="sw-row"><span>Bike accent</span><div class="swatches" id="swAccent"></div></div>
+    <div class="sw-row"><span>Jersey</span><div class="swatches" id="swJersey"></div></div>
+    <div class="sw-row"><span>Jersey stripe</span><div class="swatches" id="swJacc"></div></div>
+    <div class="sw-row"><span>Pants</span><div class="swatches" id="swPants"></div></div>
+    <div class="sw-row"><span>Helmet</span><div class="swatches" id="swHelmet"></div></div>
+    <div class="row-buttons"><button class="btn ghost" data-act="randomRider">Randomise</button><button class="btn primary" data-act="back">Done</button></div>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="settings" class="overlay hidden">
+  <div class="card">
+    <h1>Settings</h1>
+    <div class="set-row"><span>Graphics</span><div class="seg" id="segQuality"><button data-q="0">Low</button><button data-q="1">Medium</button><button data-q="2">High</button><button data-q="3">Ultra</button></div></div>
+    <div class="set-row"><span>Music</span><input type="range" id="volMusic" min="0" max="1" step="0.05"></div>
+    <div class="set-row"><span>Sound effects</span><input type="range" id="volSfx" min="0" max="1" step="0.05"></div>
+    <div class="set-row"><span>Camera</span><div class="seg" id="segCam"><button data-c="0">Chase</button><button data-c="1">Far</button><button data-c="2">Helmet</button><button data-c="3">TV</button></div></div>
+    <div class="set-row"><span>Key hints</span><div class="seg" id="segHints"><button data-h="1">On</button><button data-h="0">Off</button></div></div>
+    <div class="small" id="fpsInfo"></div>
+    <div class="row-buttons"><button class="btn primary" data-act="back">Done</button></div>
+  </div>
+</div>
+
+<!-- ============ CONTROLS ============ -->
+<div id="controls" class="overlay hidden">
+  <div class="card wide">
+    <h1>How to Ride</h1>
+    <div class="ctrl-grid">
+      <div><h3>Riding</h3>
+        <p><kbd>W</kbd> pedal &nbsp; <kbd>S</kbd> brake &nbsp; <kbd>A</kbd><kbd>D</kbd> steer</p>
+        <p><kbd>Space</kbd> hold to crouch, release to <b>pop</b> — time it on a lip for big air</p>
+        <p><kbd>↑</kbd><kbd>↓</kbd> lean — hold <kbd>↓</kbd> on the ground to <b>manual</b></p>
+        <p><kbd>R</kbd> back to trail &nbsp; <kbd>C</kbd> camera &nbsp; <kbd>M</kbd> music &nbsp; <kbd>Esc</kbd> pause</p>
+      </div>
+      <div><h3>In the air</h3>
+        <p><kbd>↓</kbd> (or <kbd>S</kbd>) <b>backflip</b> &nbsp; <kbd>↑</kbd> (or <kbd>W</kbd>) <b>frontflip</b></p>
+        <p><kbd>A</kbd><kbd>D</kbd> <b>spin</b> — go all the way round for a 360</p>
+        <p>Hold <kbd>I</kbd> Superman · <kbd>K</kbd> Tabletop · <kbd>J</kbd> No Hander · <kbd>L</kbd> Can-Can</p>
+        <p>Tap <kbd>O</kbd> Tailwhip · <kbd>U</kbd> Barspin</p>
+        <p><b>Let go of tricks before you land</b> and land with your wheels lined up with the slope!</p>
+      </div>
+      <div><h3>Gamepad</h3>
+        <p><b>RT</b> pedal · <b>LT</b> brake · <b>Left stick</b> steer / lean / flip / spin</p>
+        <p><b>A</b> pop · <b>Right stick</b> tricks · <b>LB</b> barspin · <b>RB</b> tailwhip</p>
+        <p><b>Y</b> camera · <b>B</b> reset · <b>Start</b> pause</p>
+      </div>
+      <div><h3>Career</h3>
+        <p>Pick a trail on each level of the map. Every bail costs a <b>♥</b>. Complete a trail's <b>bonus objective</b> to win one back.</p>
+        <p>Tricks chain into <b>combos</b> — keep landing clean to grow the multiplier. Bail and you lose it.</p>
+        <p>Beat the <b>boss jump</b> at the end of each world to move on.</p>
+      </div>
+    </div>
+    <div class="row-buttons"><button class="btn primary" data-act="back">Got it</button></div>
+  </div>
+</div>
+
+<!-- ============ TOUCH ============ -->
+<div id="touch" class="hidden">
+  <div class="tl">
+    <button data-t="left" class="tb big">◀</button><button data-t="right" class="tb big">▶</button>
+    <div class="tcol"><button data-t="up" class="tb">▲</button><button data-t="down" class="tb">▼</button></div>
+  </div>
+  <div class="tr">
+    <div class="tcol"><button data-t="t1" class="tb sm">SUPER</button><button data-t="t2" class="tb sm">NO HAND</button><button data-t="t3" class="tb sm">WHIP</button></div>
+    <div class="tcol"><button data-t="jump" class="tb">POP</button><button data-t="brake" class="tb">BRAKE</button></div>
+    <button data-t="pedal" class="tb big pedal">PEDAL</button>
+  </div>
+  <div class="ttop"><button data-t="pause" class="tb sm">❚❚</button><button data-t="cam" class="tb sm">CAM</button><button data-t="reset" class="tb sm">RESET</button></div>
+</div>
+
+<script type="module" src="js/main.js?v=1"></script>
+</body>
+</html>
