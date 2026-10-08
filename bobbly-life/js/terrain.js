@@ -91,6 +91,7 @@ export const ZONES = {
   kart: { x0: -1060, x1: -790, z0: 560, z1: 800, h: 'auto' },
   cave: { x0: -366, x1: -294, z0: 722, z1: 790, h: 'auto' },
   cable: { x0: 776, x1: 816, z0: 318, z1: 352, h: 'auto' },
+  stunt: { x0: -720, x1: -380, z0: -885, z1: -740, h: 'auto' },
   intlRw: { x0: 346, x1: 985, z0: -490, z1: -420, h: 'intl' },   // the long international runway
 };
 export const FUNKY = { x: 1060, z: 120, r: 330 };     // the Funky Forest: bright pink, purple and teal trees
@@ -220,7 +221,8 @@ export function slopeAt(x, z) {
 
 // ---------------------------------------------------------------- meshes
 const C = (h) => new THREE.Color(h);
-const COL = { grass: C('#6cc84a'), forest: C('#4fa83e'), sand: C('#f6dc8a'), desert: C('#a8c25a'), rock: C('#a8a092'), snow: C('#f6faff'), beach: C('#f6dc8a'), dark: C('#4f8f3f'), seaSand: C('#e0c88a'), algae: C('#6f8a4a'), funky: C('#7ad06a') };
+// natural colours (the ground shader lays real photos over them; the island map uses them as they are)
+const COL = { grass: C('#6c8a42'), forest: C('#56763a'), sand: C('#dcc89e'), desert: C('#a2a462'), rock: C('#8c8478'), snow: C('#f4f7fa'), beach: C('#dcc89e'), dark: C('#4f7040'), seaSand: C('#cdb88f'), algae: C('#5f7a45'), funky: C('#78b860') };
 // The colour of the ground anywhere on the island (the terrain and the island map both use it).
 export function groundColor(x, z, h, c) {
   const b = biome(x, z);

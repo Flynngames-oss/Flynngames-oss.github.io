@@ -11,6 +11,7 @@ import { sfx } from './audio.js';
 import { WEAPONS } from './weapons.js';
 import { setWeather, forceTornado } from './weather.js';
 import * as ADMIN from './admin.js';
+import { GADGETS, buyOrEquip } from './gadgets.js';
 import { startMode, stopMode } from './modes.js';
 import { ARCADE, startArcade, stopArcade, surprise } from './arcade.js';
 
@@ -189,14 +190,14 @@ const TRAVEL = [
   ['🚗', 'Car Dealer', 0, -56, Math.PI], ['👕', 'Clothing Store', 0, 54, 0], ['🍕', 'Pizza Place', 52, 0, Math.PI / 2],
   ['🚕', 'Taxi Depot', -52, 0, -Math.PI / 2], ['🚒', 'Fire Station', 52, 50, 0], ['🛹', 'Stunt Park', -52, -52, Math.PI],
   ['🤸', 'Trampoline Park', -60, 50, 0], ['🪓', 'Sawmill', -106, -14, 0],
-  ['🎬', 'Bobblywood Sign', 'sign'], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Valley Suburbs', 'valley'], ['🏞️', 'Mountain Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'], ['🚀', 'Space Center', 'space'], ['🌾', 'Hill Farm', 'farm'], ['🏘️', 'Sunset Hills Village', 'village'], ['🏰', 'Old Castle', 'castle'], ['⛺', 'Campsite', 'camp'],
+  ['🎬', 'Bobblywood Sign', 'sign'], ['🏕️', 'Forest Lake Cabin', 'cabin'], ['🌴', 'Valley Suburbs', 'valley'], ['🏞️', 'Mountain Lake', 'eastLake'], ['🏙️', 'Mega City', 'city'], ['🏡', 'Sunny Suburbs', 'suburb'], ['🚀', 'Space Center', 'space'], ['🌾', 'Hill Farm', 'farm'], ['🔥', 'Stunt Valley — MEGA RAMP', 'stunt2'], ['💥', 'Human Cannonball', 'cannon'], ['🏘️', 'Sunset Hills Village', 'village'], ['🏰', 'Old Castle', 'castle'], ['⛺', 'Campsite', 'camp'],
 ];
 // the illustrated island map (north at the top)
 const MAP_LABELS = [
   ['🏘️', 'Bobbly Town', 0, 0], ['🏙️', 'Mega City', -600, -100], ['🕳️', 'Mystery Cave', -330, 760], ['🏎️', 'Crazy Go-Kart Track', -925, 680],
   ['🏔️', 'Bouncy Peaks', 620, 900], ['🎢', 'Bobbly Land', 826, -64], ['🌈', 'Funky Forest', 1060, 160], ['🌳', 'Bobbly Park', 370, 0],
   ['🏖️', 'Slippy Bay', 160, -800], ['🏴‍☠️', 'Treasure Island', 880, -1228], ['🌴', 'Palm Islet', -150, -1050], ['🌬️', 'Windmill', -120, 300],
-  ['🏡', 'Sunny Suburbs', 350, 310], ['✈️', 'Airport', 660, -520], ['🚀', 'Space Center', 830, -275], ['🏰', 'Old Castle', -880, 960], ['🎬', 'Bobblywood', -430, 640], ['🚡', 'Cable Car', 796, 335],
+  ['🏡', 'Sunny Suburbs', 350, 310], ['✈️', 'Airport', 660, -520], ['🚀', 'Space Center', 830, -275], ['🏰', 'Old Castle', -880, 960], ['🎬', 'Bobblywood', -430, 640], ['🚡', 'Cable Car', 796, 335], ['🔥', 'Stunt Valley', -550, -812],
 ];
 let mapArt = null;
 const mc = new THREE.Color();
@@ -319,6 +320,16 @@ function phonePanel() {
       <div class="grid">${s.ownedCars.map(id => `<div class="item owned" data-car="${id}"><span class="emo">${VTYPES[id].emo}</span>${VTYPES[id].name}<div class="price">Spawn</div></div>`).join('')}</div>
       ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}
       <div class="tabs"><button class="btn small green" id="phMap">🗺️ Island Map</button>${ADMIN.isAdmin() ? '<button class="btn small admin-btn" id="phAdmin">👑 Admin Panel</button>' : ''}</div>
+      <h3>🎒 Gadgets</h3>
+      <div class="grid">${Object.entries(GADGETS).map(([id, g]) => `<div class="item ${(s.gadgets || []).includes(id) ? 'owned' : ''} ${s.gadget === id ? 'equipped' : ''}" data-gad="${id}"><span class="emo">${g.emo}</span>${g.name}<div class="small">${g.desc}</div><div class="price">${s.gadget === id ? 'Equipped' : (s.gadgets || []).includes(id) ? 'Equip' : '$' + g.price}</div></div>`).join('')}</div>
+      <h3>💥 Boss Battles &amp; Stunts</h3>
+      <div class="grid">
+        <div class="item" data-boss="robot"><span class="emo">🤖</span>Robot Attack!<div class="small">A 46 m robot wades out of the sea and smashes Mega City. Shoot its glowing chest core! Win $5000 + a secret costume.</div><div class="price">${G.battle && G.battle.kind ? 'Battle on!' : 'Start'}</div></div>
+        <div class="item" data-boss="ufo"><span class="emo">👽</span>UFO Invasion!<div class="small">Flying saucers beam people up. Shoot them all down! Win $3000 + a secret costume.</div><div class="price">${G.battle && G.battle.kind ? 'Battle on!' : 'Start'}</div></div>
+        <div class="item" data-wp="stunt2"><span class="emo">🔥</span>MEGA Jump<div class="small">Drive up the lift, floor it down the 46 m ramp and clear the 64 m gap. +$500</div><div class="price">Set waypoint</div></div>
+        <div class="item" data-wp="cannon"><span class="emo">🎯</span>Human Cannonball<div class="small">Get fired out of the cannon and land on the bullseye. Up to +$500</div><div class="price">Set waypoint</div></div>
+        ${G.battle && G.battle.kind && G.net.mode !== 'client' ? '<div class="item" data-boss="end"><span class="emo">🏳️</span>End the battle<div class="price">Stop</div></div>' : ''}
+      </div>
       <h3>🚀 Fast Travel</h3>
       <div class="grid">${TRAVEL.map((t, i) => `<div class="item" data-go="${i}"><span class="emo">${t[0]}</span>${t[1]}<div class="price">Go!</div></div>`).join('')}</div>
       <h3>💼 Jobs &amp; Activities</h3>
@@ -357,6 +368,13 @@ function phonePanel() {
       </div>`;
     const mb = el.querySelector('#phMap'); if (mb) mb.onclick = () => { closePanel(); islandMapPanel(); };
     const ab = el.querySelector('#phAdmin'); if (ab) ab.onclick = () => G.openAdmin();
+    el.querySelectorAll('[data-boss]').forEach(b => b.onclick = () => {
+      const k = b.dataset.boss;
+      if (k === 'end') { G.endBattle(); closePanel(); return; }
+      if (G.battle && G.battle.kind) { toast('A battle is already happening!'); return; }
+      closePanel(); G.startBattle(k);
+    });
+    el.querySelectorAll('[data-gad]').forEach(b => b.onclick = () => { buyOrEquip(b.dataset.gad); rerender(); });
     el.querySelectorAll('[data-wpn]').forEach(b => b.onclick = () => { G.equipWeapon(G.player.weapon === b.dataset.wpn ? null : b.dataset.wpn); rerender(); });
     el.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { closePanel(); G.spawnMyVehicle(b.dataset.car); });
     el.querySelectorAll('[data-job]').forEach(b => b.onclick = () => { G.waypoint = JOBS[b.dataset.job].loc; toast('📍 Waypoint set: ' + JOBS[b.dataset.job].name); closePanel(); });

@@ -1,5 +1,14 @@
-// Procedurally painted textures (all original, drawn at startup — no image files).
+// Textures painted at startup. Where a real photo texture has loaded (photos.js) it's used as the base layer
+// and the details (windows, road lines, slab joints...) are painted on top; otherwise everything is hand-painted.
 import * as THREE from 'three';
+import { PH } from './photos.js';
+const photo = (k) => PH[k] && PH[k].image;
+// cover a canvas with a photo, repeated reps x reps times
+function tilePhoto(x, img, n, reps = 1, alpha = 1) {
+  const s = n / reps; x.globalAlpha = alpha;
+  for (let i = 0; i < reps; i++) for (let j = 0; j < reps; j++) x.drawImage(img, i * s, j * s, s, s);
+  x.globalAlpha = 1;
+}
 
 function canvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return [c, c.getContext('2d')]; }
 function tex(c, srgb = true) {
@@ -36,6 +45,7 @@ function speckle(x, n, size, count, lo, hi, alpha = 1) {
 
 // Greyscale grass/ground detail: multiplied with the terrain's vertex colours.
 export function grassDetail() {
+  if (PH.grass) return PH.grass;
   // clean cartoon lawn: soft light and dark patches with a few tiny blades (greyscale, tinted by the ground colour)
   const n = 512, [c, x] = canvas(n);
   x.fillStyle = '#ececec'; x.fillRect(0, 0, n, n);
@@ -53,6 +63,7 @@ export function grassDetail() {
 
 // Rock face: layered strata, cracks and lichen (greyscale, tinted by the terrain colour)
 export function rockTexture() {
+  if (PH.rock) return PH.rock;
   const n = 512, [c, x] = canvas(n);
   x.fillStyle = '#b4b4b4'; x.fillRect(0, 0, n, n);
   for (let yy = 0; yy < n; yy += 4 + rnd() * 18) { const v = 120 + rnd() * 110 | 0; x.fillStyle = `rgba(${v},${v},${v},0.55)`; x.fillRect(0, yy, n, 2 + rnd() * 10); }
@@ -64,6 +75,7 @@ export function rockTexture() {
 }
 // Fine sand with ripples and shell grit
 export function sandTexture() {
+  if (PH.sand) return PH.sand;
   const n = 512, [c, x] = canvas(n);
   x.fillStyle = '#e4e4e4'; x.fillRect(0, 0, n, n);
   for (let yy = 0; yy < n; yy += 2) { const v = 205 + Math.sin(yy * 0.19 + Math.sin(yy * 0.05) * 3) * 22 | 0; x.fillStyle = `rgba(${v},${v},${v},0.35)`; x.fillRect(0, yy, n, 2); }
@@ -72,6 +84,16 @@ export function sandTexture() {
 }
 
 export function pavingTexture() {
+  if (photo('concrete')) {
+    // real concrete, cut into 1.5 m slabs: each slab a slightly different shade, worn dark joints, a few stains
+    const n = 512, [c, x] = canvas(n);
+    tilePhoto(x, photo('concrete'), n, 2);
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { const v = rnd() < 0.5 ? 0 : 255; x.fillStyle = `rgba(${v},${v},${v},${0.03 + rnd() * 0.06})`; x.fillRect(i * 256, j * 256, 256, 256); }
+    for (let i = 0; i < 5; i++) { const px = rnd() * n, py = rnd() * n, r = 10 + rnd() * 40, g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, 'rgba(60,55,45,0.12)'); g.addColorStop(1, 'rgba(60,55,45,0)'); x.fillStyle = g; x.fillRect(px - r, py - r, r * 2, r * 2); }
+    x.fillStyle = 'rgba(40,38,34,0.55)'; for (const k of [0, 256]) { x.fillRect(k, 0, 3, n); x.fillRect(0, k, n, 3); }
+    x.fillStyle = 'rgba(255,255,255,0.18)'; for (const k of [3, 259]) { x.fillRect(k, 0, 2, n); x.fillRect(0, k, n, 2); }
+    return tex(c);
+  }
   const n = 256, [c, x] = canvas(n);
   x.fillStyle = '#f2f2f2'; x.fillRect(0, 0, n, n);
   const t = 64;
@@ -93,7 +115,9 @@ export function asphaltTexture(lines = true) {
   const n = 512, k = n / 128, [c, x] = canvas(n), [hC, hh] = canvas(n);
   x.fillStyle = '#4a4e55'; x.fillRect(0, 0, n, n);
   hh.fillStyle = '#707070'; hh.fillRect(0, 0, n, n);
-  for (let i = 0; i < 26000; i++) {
+  // real asphalt photo (4 x 4 per road width, so the stones are the right size)
+  if (photo('asphalt')) { tilePhoto(x, photo('asphalt'), n, 4); tilePhoto(hh, photo('asphalt'), n, 4); }
+  else for (let i = 0; i < 26000; i++) {
     const v = Math.floor(60 + rnd() * 75), px = rnd() * n, py = rnd() * n, sz = 0.8 + rnd() * 1.8;
     x.fillStyle = `rgba(${v},${v},${v + 3},0.75)`; x.fillRect(px, py, sz, sz);
     const hv = 90 + rnd() * 120 | 0; hh.fillStyle = `rgb(${hv},${hv},${hv})`; hh.fillRect(px, py, sz, sz);
@@ -120,14 +144,18 @@ export function asphaltNormal(lines = true) { if (!asphaltCache.has(lines)) asph
 export function wallTextures(kind = 'office') {
   if (kind === 'house') return houseTextures();
   const n = 512, bay = 128, [c, x] = canvas(n);
+  const brick = kind === 'brick' && photo('bricks');
   x.fillStyle = '#e9e7e2'; x.fillRect(0, 0, n, n);
-  speckle(x, n, 2, 9000, 205, 250, 0.35);
+  if (brick) tilePhoto(x, photo('bricks'), n, 4);                        // real brick, one photo per 4 m bay
+  else if (photo('concrete')) { tilePhoto(x, photo('concrete'), n, 4); x.fillStyle = 'rgba(236,233,226,0.35)'; x.fillRect(0, 0, n, n); }
+  else speckle(x, n, 2, 9000, 205, 250, 0.35);
   const [e, y] = canvas(n);
   y.fillStyle = '#000'; y.fillRect(0, 0, n, n);
   // roughness (green) + metalness (blue): glass is smooth and mirror-like, concrete is rough
   const [rmC, rm] = canvas(n); rm.fillStyle = 'rgb(0,235,0)'; rm.fillRect(0, 0, n, n);
   const [hC, hh] = canvas(n); hh.fillStyle = '#9a9a9a'; hh.fillRect(0, 0, n, n);
   for (let i = 0; i < 6000; i++) { const v = 140 + rnd() * 30 | 0; hh.fillStyle = `rgb(${v},${v},${v})`; hh.fillRect(rnd() * n, rnd() * n, 2, 2); }
+  if (brick) { tilePhoto(hh, photo('bricks'), n, 4); hh.globalCompositeOperation = 'saturation'; hh.fillStyle = '#808080'; hh.fillRect(0, 0, n, n); hh.globalCompositeOperation = 'source-over'; }   // mortar lines sit back
   for (let r = 0; r < 4; r++) {
     hh.fillStyle = '#b8b8b8'; hh.fillRect(0, r * bay + 112, n, 8);       // floor band sticks out a little
     // floor slab line
@@ -183,7 +211,8 @@ function houseTextures() {
   rm.fillStyle = 'rgb(0,220,0)'; rm.fillRect(0, 0, n, n);
   for (let yy = 0; yy < n; yy += 8) { const g = hh.createLinearGradient(0, yy, 0, yy + 8); g.addColorStop(0, '#606060'); g.addColorStop(0.85, '#c8c8c8'); g.addColorStop(1, '#505050'); hh.fillStyle = g; hh.fillRect(0, yy, n, 8); }
   x.fillStyle = '#efece6'; x.fillRect(0, 0, n, n);
-  for (let yy = 0; yy < n; yy += 8) { x.fillStyle = 'rgba(0,0,0,0.07)'; x.fillRect(0, yy + 6, n, 2); x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(0, yy, n, 1); }
+  if (photo('concrete')) { x.globalCompositeOperation = 'multiply'; tilePhoto(x, photo('concrete'), n, 4, 0.55); x.globalCompositeOperation = 'source-over'; }
+  for (let yy = 0; yy < n; yy += 8) { x.fillStyle = 'rgba(0,0,0,0.09)'; x.fillRect(0, yy + 6, n, 2); x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(0, yy, n, 1); }
   speckle(x, n, 2, 4000, 215, 250, 0.25);
   const [e, y] = canvas(n);
   y.fillStyle = '#000'; y.fillRect(0, 0, n, n);
@@ -240,6 +269,7 @@ export function roofTexture() {
     }
     x.fillStyle = 'rgba(0,0,0,0.38)'; x.fillRect(0, (r + 1) * rh - 3, n, 3);      // shadow under each course
   }
+  if (photo('asphalt')) { x.globalCompositeOperation = 'overlay'; tilePhoto(x, photo('asphalt'), n, 2, 0.9); x.globalCompositeOperation = 'source-over'; }
   speckle(x, n, 1.5, 9000, 90, 255, 0.35);                                           // granules
   roofCache = { map: tex(c), normal: normalFromHeight(hC, 3) };
   return roofCache.map;
@@ -253,8 +283,8 @@ export function concreteTexture() {
   const n = 256, [c, x] = canvas(n), [hC, hh] = canvas(n);
   x.fillStyle = '#e6e3dc'; x.fillRect(0, 0, n, n);
   hh.fillStyle = '#909090'; hh.fillRect(0, 0, n, n);
-  speckle(x, n, 2, 7000, 200, 245, 0.45);
-  speckle(hh, n, 2, 5000, 120, 170, 0.6);
+  if (photo('concrete')) { tilePhoto(x, photo('concrete'), n, 1); x.fillStyle = 'rgba(240,236,228,0.25)'; x.fillRect(0, 0, n, n); tilePhoto(hh, photo('concrete'), n, 1, 0.7); }
+  else { speckle(x, n, 2, 7000, 200, 245, 0.45); speckle(hh, n, 2, 5000, 120, 170, 0.6); }
   for (let i = 0; i < 26; i++) {                                                     // rain streaks
     const px = rnd() * n, len = 30 + rnd() * 120, g = x.createLinearGradient(0, 0, 0, len);
     g.addColorStop(0, 'rgba(70,64,58,0.12)'); g.addColorStop(1, 'rgba(70,64,58,0)');

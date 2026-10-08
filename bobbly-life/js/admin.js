@@ -91,6 +91,7 @@ function apply(c, local, m) {
   switch (c.cmd) {
     case 'weather': if (a.s === 'tornado') { if (G.net.mode !== 'client') forceTornado(); } else setWeather(a.s, G.net.mode === 'client'); break;
     case 'time': G.dayTime = a.d; break;
+    case 'boss': if (G.net.mode !== 'client') { if (a.k === 'end') G.endBattle && G.endBattle(); else if (G.startBattle && !(G.battle && G.battle.kind)) G.startBattle(a.k === 'ufo' ? 'ufo' : 'robot'); } break;
     case 'money': if (forMe(a) && !(local && a.to === 'all')) { const n = a.op === 'set' ? a.n - G.save.money : a.n; addMoney(n, a.op === 'set' ? '👑 The admin set your money' : n >= 0 ? '👑 Gift from the admin!' : '👑 The admin took some money'); } break;
     case 'tp': if (forMe(a) && !local) { if (P.vehicle) P.vehicle.removeOccupant(P); P.place(a.x, a.y, a.z, P.facing); G.toast && G.toast('👑 The admin teleported you!'); } break;
     case 'flop': if (forMe(a) && !local) P.flop(new THREE.Vector3((Math.random() - 0.5) * 8, a.big ? 40 : 6, (Math.random() - 0.5) * 8), a.big ? 4 : 2); break;
@@ -190,6 +191,8 @@ export function openAdmin(UI) {
       <div class="tabs">${Object.entries(VTYPES).filter(([, t]) => !t.rail && !t.ride && !t.bumper).map(([id, t]) => `<button class="btn small blue" data-veh="${id}">${t.emo} ${t.name}</button>`).join('')}</div>
       <h3>🌦️ Weather (for everyone)</h3>
       <div class="tabs">${WX.map(([k, n]) => `<button class="btn small ${G.weather && G.weather.state === k ? 'green' : 'gray'}" data-wx="${k}">${n}</button>`).join('')}</div>
+      <h3>💥 Boss battles (for everyone)</h3>
+      <div class="tabs"><button class="btn small red" data-bs="robot">🤖 Giant Robot attack</button><button class="btn small green" data-bs="ufo">👽 UFO Invasion</button><button class="btn small gray" data-bs="end">🏳️ End battle</button></div>
       <h3>🕐 Time of day (for everyone)</h3>
       <div class="tabs">${TIMES.map(([d, n]) => `<button class="btn small gray" data-time="${d}">${n}</button>`).join('')}</div>
       <h3>📢 Announcement (big message on everyone's screen)</h3>
@@ -211,6 +214,7 @@ export function openAdmin(UI) {
     el.querySelector('#admUnlock').onclick = () => { unlockAll(false); re(); };
     el.querySelectorAll('[data-veh]').forEach(b => b.onclick = () => { UI.closePanel(); const id = b.dataset.veh; if (!G.save.ownedCars.includes(id) && !VTYPES[id].noShop) G.save.ownedCars.push(id); G.spawnMyVehicle(id); });
     el.querySelectorAll('[data-wx]').forEach(b => b.onclick = () => { cmd('weather', { s: b.dataset.wx }); UI.toast('🌦️ Weather changed!'); setTimeout(re, 100); });
+    el.querySelectorAll('[data-bs]').forEach(b => b.onclick = () => { cmd('boss', { k: b.dataset.bs }); UI.closePanel(); });
     el.querySelectorAll('[data-time]').forEach(b => b.onclick = () => { cmd('time', { d: +b.dataset.time }); UI.toast('🕐 Time changed!'); });
     el.querySelector('#admSend').onclick = () => { const t = el.querySelector('#admMsg').value.trim(); if (t) { cmd('announce', { text: t }); el.querySelector('#admMsg').value = ''; } };
     const pos = () => ({ x: me2.root.x + (Math.random() - 0.5) * 4, y: me2.root.y + 0.5, z: me2.root.z + (Math.random() - 0.5) * 4 });

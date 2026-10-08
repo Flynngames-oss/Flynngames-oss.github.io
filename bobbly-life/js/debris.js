@@ -61,20 +61,104 @@ export function sparks(pos, n = 12) {
 export function fire(pos, n = 2, size = 1) {
   for (let i = 0; i < n; i++) puff(_v.set(pos.x + rand(-0.6, 0.6) * size, pos.y + rand(0, 0.5), pos.z + rand(-0.6, 0.6) * size), new THREE.Vector3(rand(-0.4, 0.4), rand(2, 4), rand(-0.4, 0.4)), Math.random() < 0.5 ? '#ff7a1a' : '#ffb030', rand(0.8, 1.4) * size, 0.6, rand(0.4, 0.8), true);
 }
-// Big explosion: fireball, flying sparks and a column of black smoke.
+// Big explosion: a boiling fireball, a shockwave ring racing across the ground, burning debris, sparks, a tall
+// column of black smoke, a scorch mark, a flash on screen and (for really big ones near you) slow motion.
+const booms = [];
+let fireMat = null;
+function fireballMat() {
+  if (fireMat) return fireMat;
+  fireMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false,
+    uniforms: { uT: { value: 0 }, uSeed: { value: 0 } },
+    vertexShader: `uniform float uT, uSeed; varying float vN; varying vec3 vNrm;
+      float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719)) + uSeed) * 43758.5453); }
+      float n(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      void main(){ vec3 p = position; float k = n(p * 2.2 + uT * 3.0) * 0.6 + n(p * 5.0 - uT * 4.0) * 0.4; vN = k;
+        vNrm = normalize(normalMatrix * normal); p *= 0.75 + k * 0.55; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`,
+    fragmentShader: `uniform float uT; varying float vN; varying vec3 vNrm;
+      void main(){ float heat = clamp(1.25 - uT * 1.4 + vN * 0.5, 0.0, 1.0);
+        vec3 c = mix(vec3(0.25, 0.05, 0.02), vec3(1.0, 0.45, 0.08), smoothstep(0.1, 0.5, heat));
+        c = mix(c, vec3(1.0, 0.9, 0.55), smoothstep(0.55, 0.9, heat)); c = mix(c, vec3(1.0), smoothstep(0.92, 1.0, heat));
+        float rim = pow(1.0 - abs(vNrm.z), 2.0);
+        float a = clamp(1.4 - uT * 1.2, 0.0, 1.0) * (0.75 + 0.25 * vN) * (1.0 - rim * 0.5);
+        gl_FragColor = vec4(c * (2.2 + heat * 2.0), a); }`,
+  });
+  return fireMat;
+}
+const BALLG = new THREE.IcosahedronGeometry(1, 3), RINGG = new THREE.RingGeometry(0.85, 1, 48);
+let ringMat = null, scorchMat = null;
+function scorch() {
+  if (scorchMat) return scorchMat;
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d'), g = x.createRadialGradient(64, 64, 6, 64, 64, 62);
+  g.addColorStop(0, 'rgba(10,8,6,0.95)'); g.addColorStop(0.6, 'rgba(25,20,15,0.6)'); g.addColorStop(1, 'rgba(30,25,20,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  scorchMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  return scorchMat;
+}
+const burnMat = new THREE.MeshStandardMaterial({ color: '#2a2422', roughness: 0.9 });
 export function explosion(pos, size = 1) {
   sfx.boom();
-  for (let i = 0; i < 18 * size; i++) puff(_v.set(pos.x + rand(-1.5, 1.5) * size, pos.y + rand(0, 2) * size, pos.z + rand(-1.5, 1.5) * size), new THREE.Vector3(rand(-6, 6), rand(2, 9), rand(-6, 6)).multiplyScalar(size), i % 3 ? '#ff8a20' : '#ffd060', rand(2, 4) * size, 3 * size, rand(0.5, 1.1), true);
-  for (let i = 0; i < 14 * size; i++) puff(_v.set(pos.x + rand(-2, 2) * size, pos.y + rand(0, 3) * size, pos.z + rand(-2, 2) * size), new THREE.Vector3(rand(-2, 2), rand(3, 7), rand(-2, 2)), '#1e1e20', rand(2.5, 4) * size, 2.5 * size, rand(3, 6));
-  sparks(pos, 30);
-  if (G.camera && G.camera.position.distanceTo(pos) < 60 * size) G.camShake = Math.max(G.camShake || 0, 0.35 * size);
+  const cam = G.camera ? G.camera.position.distanceTo(pos) : 1e9;
+  // fireball
+  const ball = new THREE.Mesh(BALLG, fireballMat().clone());
+  ball.material.uniforms.uSeed.value = Math.random() * 100;
+  ball.position.copy(pos); ball.scale.setScalar(0.5 * size); ball.renderOrder = 5;
+  G.scene.add(ball);
+  booms.push({ m: ball, t: 0, kind: 'ball', size, life: 1.3 });
+  // shockwave ring along the ground
+  if (!ringMat) ringMat = new THREE.MeshBasicMaterial({ color: '#fff3d0', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+  const ring = new THREE.Mesh(RINGG, ringMat.clone());
+  const gy = groundHeight(pos.x, pos.z, pos.y + 1, 0.3);
+  ring.rotation.x = -Math.PI / 2; ring.position.set(pos.x, Math.max(gy, pos.y - 3) + 0.3, pos.z);
+  G.scene.add(ring);
+  booms.push({ m: ring, t: 0, kind: 'ring', size, life: 0.6 });
+  if (pos.y - gy < 4) {
+    const sc = new THREE.Mesh(new THREE.CircleGeometry(1, 20), scorch());
+    sc.rotation.x = -Math.PI / 2; sc.position.set(pos.x, gy + 0.05, pos.z); sc.scale.setScalar(3.5 * size);
+    G.scene.add(sc); booms.push({ m: sc, t: 0, kind: 'scorch', life: 40 });
+    dust(_v.set(pos.x, gy, pos.z), Math.round(8 * size), 2.2 * size);
+  }
+  // fire, smoke and sparks
+  for (let i = 0; i < 16 * size; i++) puff(_v.set(pos.x + rand(-1.5, 1.5) * size, pos.y + rand(0, 2) * size, pos.z + rand(-1.5, 1.5) * size), new THREE.Vector3(rand(-6, 6), rand(2, 9), rand(-6, 6)).multiplyScalar(size), i % 3 ? '#ff8a20' : '#ffd060', rand(2, 4) * size, 3 * size, rand(0.5, 1.1), true);
+  for (let i = 0; i < 18 * size; i++) puff(_v.set(pos.x + rand(-2, 2) * size, pos.y + rand(0, 3) * size, pos.z + rand(-2, 2) * size), new THREE.Vector3(rand(-2, 2), rand(4, 9), rand(-2, 2)), i % 2 ? '#1e1e20' : '#3a3634', rand(2.5, 4.5) * size, 2.2 * size, rand(4, 8));
+  sparks(pos, Math.round(30 * size));
+  // burning debris
+  for (let i = 0; i < Math.round(6 * size); i++) {
+    const v = new THREE.Vector3(rand(-14, 14), rand(8, 22), rand(-14, 14)).multiplyScalar(Math.sqrt(size));
+    chunk(burnMat, rand(0.3, 0.9), rand(0.2, 0.6), rand(0.3, 0.9), pos, v, 12);
+    pieces[pieces.length - 1].burn = 1.6;
+  }
+  // screen flash, shake and slow motion
+  if (cam < 90 * size) {
+    const k = Math.max(0, 1 - cam / (90 * size));
+    G.boomFlash = Math.max(G.boomFlash || 0, 0.9 * k);
+    G.camShake = Math.max(G.camShake || 0, 0.55 * size * k + 0.15);
+    if (size >= 1.5 && cam < 70 * size && !(G.slowmo > 0) && performance.now() - (G.lastSlowmo || 0) > 8000) { G.slowmo = 1.4; G.lastSlowmo = performance.now(); }
+  }
+}
+function updateBooms(dt) {
+  for (let i = booms.length - 1; i >= 0; i--) {
+    const b = booms[i];
+    b.t += dt;
+    if (b.t > b.life) { G.scene.remove(b.m); if (b.kind !== 'scorch') b.m.material.dispose(); booms.splice(i, 1); continue; }
+    const f = b.t / b.life;
+    if (b.kind === 'ball') { b.m.material.uniforms.uT.value = f; b.m.scale.setScalar(b.size * (1.5 + 5.5 * Math.pow(f, 0.4))); b.m.position.y += dt * 3 * b.size; }
+    else if (b.kind === 'ring') { b.m.scale.setScalar(b.size * (2 + 26 * Math.pow(f, 0.6))); b.m.material.opacity = 0.8 * (1 - f); }
+    else if (b.kind === 'scorch' && f > 0.85) b.m.scale.multiplyScalar(1 - dt * 0.6);
+  }
+  if (G.boomFlash) G.boomFlash = Math.max(0, G.boomFlash - dt * 2.5);
 }
 
 export function updateDebris(dt) {
+  updateBooms(dt);
   for (let i = pieces.length - 1; i >= 0; i--) {
     const d = pieces[i], o = d.o;
     d.t += dt;
     if (d.t > d.life) { G.scene.remove(o); pieces.splice(i, 1); continue; }
+    if (d.burn > 0) { d.burn -= dt; if (Math.random() < 0.5) fire(o.position, 1, 0.5); }
     if (d.rest) continue;
     d.v.y -= 24 * dt;
     o.position.addScaledVector(d.v, dt);

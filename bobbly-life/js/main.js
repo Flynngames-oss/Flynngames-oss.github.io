@@ -37,6 +37,10 @@ import { initTrain, updateTrain, onTrainNet } from './train.js';
 import { initPark, updatePark, onRidesNet } from './park.js';
 import { initModes, updateModes, onModeMsg, startMode, stopMode } from './modes.js';
 import { updateArcade, arcadeKey } from './arcade.js';
+import { updateGadgets, grappleKey } from './gadgets.js';
+import { updateBattle, cutsceneCamera, skipCutscene } from './boss.js';
+import { initCreatures, updateCreatures } from './creatures.js';
+import { loadPhotos } from './photos.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -49,13 +53,13 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-// Colour grade: bright, saturated cartoon colours with a soft vignette, plus FXAA (smooths jagged edges, cheap
+renderer.toneMappingExposure = 0.92;
+// Colour grade: natural colours with a little extra contrast and a soft vignette, plus FXAA (smooths jagged edges, cheap
 // enough for Chromebooks).
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, sat: { value: 1.16 }, contrast: { value: 1.04 }, vig: { value: 0.42 }, uw: { value: 0 }, time: { value: 0 }, flash: { value: 0 }, fxaa: { value: 1 }, res: { value: new THREE.Vector2(1280, 720) } },
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.03 }, contrast: { value: 1.08 }, vig: { value: 0.34 }, uw: { value: 0 }, time: { value: 0 }, flash: { value: 0 }, fxaa: { value: 1 }, res: { value: new THREE.Vector2(1280, 720) }, blur: { value: 0 }, boom: { value: 0 }, slow: { value: 0 }, rays: { value: 0 }, sun: { value: new THREE.Vector2(0.5, 0.5) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig, uw, time, flash, fxaa; uniform vec2 res; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, contrast, vig, uw, time, flash, fxaa, blur, boom, slow, rays; uniform vec2 res, sun; varying vec2 vUv;
     float lu(vec3 c){ float l = dot(c, vec3(0.299, 0.587, 0.114)); return l / (1.0 + l); }
     vec3 aa(vec2 uv){
       vec2 px = 1.0 / res;
@@ -82,13 +86,27 @@ const GradeShader = {
         float b = 0.0022 * uw;
         c.rgb = texture2D(tDiffuse, uv).rgb * 0.36 + (texture2D(tDiffuse, uv + vec2(b, 0.0)).rgb + texture2D(tDiffuse, uv - vec2(b, 0.0)).rgb + texture2D(tDiffuse, uv + vec2(0.0, b * 1.6)).rgb + texture2D(tDiffuse, uv - vec2(0.0, b * 1.6)).rgb) * 0.16;
       } else if (fxaa > 0.5) c.rgb = aa(uv);
+      // speed blur: the edges of the screen streak outwards when you go really fast
+      if (blur > 0.01) {
+        vec2 d = (uv - 0.5) * blur * 0.06; vec3 acc = c.rgb;
+        for (int i = 1; i < 7; i++) acc += texture2D(tDiffuse, uv - d * float(i)).rgb;
+        c.rgb = mix(c.rgb, acc / 7.0, smoothstep(0.05, 0.45, length(uv - 0.5)));
+      }
+      // sun rays: bright sky streams out from behind trees and buildings
+      if (rays > 0.01) {
+        vec2 st = (sun - uv) / 18.0; vec2 q = uv; float lit = 0.0, w = 1.0;
+        for (int i = 0; i < 18; i++) { q += st; vec3 s2 = texture2D(tDiffuse, q).rgb; lit += smoothstep(1.1, 2.4, dot(s2, vec3(0.33))) * w; w *= 0.93; }
+        c.rgb += vec3(1.0, 0.86, 0.62) * lit * 0.045 * rays;
+      }
       vec3 col = c.rgb;
+      col += boom * vec3(1.0, 0.62, 0.25);
       col += flash * vec3(0.75, 0.8, 1.0);
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(l), col, sat);
       col = (col - 0.18) * contrast + 0.18;
       vec2 d = vUv - 0.5; col *= 1.0 - (vig + uw * 0.9) * dot(d, d) * 1.3;
       col = mix(col, col * vec3(0.78, 1.0, 1.06), uw * 0.5);
+      col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))) * vec3(1.05, 0.98, 0.9), slow * 0.45);
       gl_FragColor = vec4(max(col, 0.0), c.a);
     }`,
 };
@@ -108,7 +126,8 @@ aoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rin
 aoPass.overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.isSprite) o.visible = false; }); };
 composer.addPass(aoPass);
 // soft glow round bright things: the sun on water, street lamps, headlights, lightning
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.28, 0.55, 0.88);
+// (threshold above the brightest sky, so only real highlights glow: the sun on water, lamps, explosions)
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.3, 0.55, 1.45);
 composer.addPass(bloomPass);
 const gradePass = new ShaderPass(GradeShader);
 composer.addPass(gradePass);
@@ -140,6 +159,7 @@ async function progress(p, text) {
 }
 loadSave();
 buildLights();
+await loadPhotos(renderer, (f) => progress(f * 0.04, 'Loading real textures'));
 await buildWorld(progress);
 await progress(0.9, 'Spawning people and traffic');
 
@@ -195,6 +215,7 @@ initSky();
 initTrain();
 initPark();
 initGrass();
+initCreatures();   // animated robots + foxes load in the background
 G.netSend = (m) => NET.send(m);
 for (let i = 0; i < 44; i++) {
   const s = i < 24 ? pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) < 160)) : pick(G.locations.sidewalks.filter(p => Math.hypot(p.x, p.z) >= 160));
@@ -262,6 +283,7 @@ addEventListener('keyup', (e) => {
 addEventListener('blur', () => { for (const k in K) K[k] = false; G.mouse.grab = false; G.mouse.fire = false; });
 
 function onKey(code) {
+  if (G.cutscene && (code === 'Escape' || code === 'Enter' || code === 'Space')) { skipCutscene(); return; }
   if (code === 'Escape') {
     if (G.ui.panel) UI.closePanel();
     else if (G.ui.help) UI.showHelp(false);
@@ -291,6 +313,7 @@ function onKey(code) {
   }
   if (code === 'KeyG') cycleWeapon();
   if (code === 'KeyQ' && player.vehicle) sfx.honk();
+  else if (code === 'KeyQ') grappleKey();
   const emotes = { Digit1: 'wave', Digit2: 'dance', Digit3: 'cheer', Digit4: 'sit' };
   if (emotes[code] && !player.vehicle) { player.emote = player.emote === emotes[code] ? null : emotes[code]; player.emoteT = 0; }
 }
@@ -807,7 +830,7 @@ function startGame() {
 // ---------------------------------------------------------------- per-frame player control
 function controlPlayer(dt) {
   const p = player;
-  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze || G.cableRide || G.slideRide || G.adminFreeze;
+  const blocked = G.ui.panel || G.ui.help || G.ui.chatOpen || !G.started || G.rocketRide || G.arrested || G.modeFreeze || G.cableRide || G.slideRide || G.adminFreeze || G.cutscene;
   let ix = 0, iy = 0;
   if (!blocked) {
     ix = (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0) + touch.mx;
@@ -885,6 +908,7 @@ function pointSolid(x, y, z) {
 let camOrbit = 0;
 function updateCamera(dt) {
   if (G.camOverride) { const o = G.camOverride; camera.position.copy(o.pos); camera.lookAt(o.look); return; }   // photo / debug camera
+  if (cutsceneCamera(dt, camera)) return;   // boss-battle intro movie
   if (!G.started) {
     // Home screen: your Bobbler dances on the right, the town behind them
     camOrbit += dt * 0.25;
@@ -1016,10 +1040,14 @@ function updateRemoteExtras() {
 
 // ---------------------------------------------------------------- loop
 let last = performance.now(), frame = 0;
+const _sunV = new THREE.Vector3();
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const real = Math.min(0.05, (now - last) / 1000);
   last = now;
+  // slow motion for huge explosions
+  if (G.slowmo > 0) G.slowmo -= real;
+  const dt = G.slowmo > 0 ? real * 0.28 : real;
   update(dt);
   if (G.noRender) return;
   if (useGrade) composer.render(); else renderer.render(scene, camera);
@@ -1045,6 +1073,9 @@ function update(dt) {
   updateQuests(dt);
   for (const c of G.characters) c.update(dt);
   ADMIN.updateAdmin(dt);
+  updateGadgets(dt);
+  updateBattle(dt);
+  updateCreatures(dt);
   updateRocket(dt);
   pushCharacters();
   for (const c of G.characters) if (!c.isRemote) kickProps(c);
@@ -1078,6 +1109,19 @@ function update(dt) {
   gradePass.uniforms.uw.value += ((G.gradeUW || 0) - gradePass.uniforms.uw.value) * Math.min(1, dt * 6);
   gradePass.uniforms.time.value = G.time;
   gradePass.uniforms.flash.value = G.flash || 0;
+  { // speed blur, explosion flash, slow motion and sun rays
+    const U = gradePass.uniforms, v = player.vehicle, sp = v ? Math.abs(v.speed || 0) : player.vel.length();
+    U.blur.value += ((G.save.gfx === 'low' ? 0 : Math.min(0.9, Math.max(0, (sp - 28) / 45))) - U.blur.value) * Math.min(1, dt * 4);
+    U.boom.value = G.boomFlash || 0;
+    U.slow.value += ((G.slowmo > 0 ? 1 : 0) - U.slow.value) * Math.min(1, dt * 8);
+    let rv = 0;
+    if (G.save.gfx !== 'low' && !G.underwater) {
+      const a = (G.dayTime - 0.25) * Math.PI * 2;
+      _sunV.set(Math.cos(a) * 0.8, Math.sin(a), 0.45).normalize().multiplyScalar(500).add(camera.position).project(camera);
+      if (_sunV.z < 1 && Math.abs(_sunV.x) < 1.6 && Math.abs(_sunV.y) < 1.6 && Math.sin(a) > -0.05) { U.sun.value.set(_sunV.x * 0.5 + 0.5, _sunV.y * 0.5 + 0.5); rv = (1 - (G.overcast || 0)) * Math.min(1, Math.sin(a) * 6 + 0.3); }
+    }
+    U.rays.value += (rv - U.rays.value) * Math.min(1, dt * 3);
+  }
   if (G.started) {
     UI.updateHUD();
     if (frame % 2 === 0) UI.drawMinimap();

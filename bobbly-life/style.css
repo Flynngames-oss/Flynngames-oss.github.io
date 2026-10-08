@@ -185,3 +185,24 @@ body.touch #hint { display: none; }
 .btn.red { background: #e8463a; color: #fff; border-color: #e8463a; }
 #arcadeBar { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: none; padding: 7px 16px; border-radius: 10px; background: rgba(20,24,34,.85); color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: .4px; white-space: nowrap; pointer-events: none; border: 1px solid rgba(120,255,170,.7); }
 .item.surprise { background: linear-gradient(135deg, rgba(255,90,180,.35), rgba(90,170,255,.35)); border-color: #ffd23a; }
+/* ---------- gadgets ---------- */
+#gadgetHud { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: 1px; text-align: center; text-shadow: 0 2px 4px rgba(0,0,0,.8); pointer-events: none; display: none; }
+#fuelBar { width: 220px; height: 10px; margin: 4px auto 0; border-radius: 6px; background: rgba(0,0,0,.45); overflow: hidden; border: 1px solid rgba(255,255,255,.4); }
+#fuelFill { height: 100%; width: 100%; background: #ffb030; }
+/* boss battles */
+#bossHud { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); width: min(560px, 80vw); text-align: center; pointer-events: none; display: none; z-index: 40; font-family: 'Barlow Condensed', sans-serif; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.9); }
+#bossName { font-weight: 800; font-size: 26px; letter-spacing: 2px; }
+#bossBar { height: 16px; border-radius: 8px; background: rgba(0,0,0,.55); border: 2px solid #fff; overflow: hidden; margin: 4px 0; box-shadow: 0 0 18px rgba(255,60,40,.6); }
+#bossFill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff2a2a, #ff9a2a); transition: width .2s; }
+#bossTip { font-size: 15px; font-weight: 600; opacity: .9; }
+#cutscene { position: fixed; inset: 0; pointer-events: none; z-index: 55; opacity: 0; transition: opacity .4s; }
+#cutscene.show { opacity: 1; pointer-events: auto; cursor: pointer; }
+#cutscene .cs-bar { position: absolute; left: 0; right: 0; height: 12vh; background: #000; transition: transform .6s; }
+#cutscene .cs-bar.top { top: 0; transform: translateY(-100%); }
+#cutscene .cs-bar.bot { bottom: 0; transform: translateY(100%); }
+#cutscene.show .cs-bar { transform: none; }
+#cutscene .cs-title { position: absolute; left: 0; right: 0; bottom: 17vh; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: clamp(30px, 6vw, 64px); color: #ffd23f; letter-spacing: 3px; text-shadow: 0 4px 0 #a33, 0 0 30px rgba(255,80,40,.8); }
+#cutscene .cs-sub { position: absolute; left: 10%; right: 10%; bottom: 13.5vh; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: clamp(15px, 2.2vw, 22px); color: #fff; text-shadow: 0 2px 4px #000; }
+#cutscene .cs-skip { position: absolute; right: 18px; bottom: 3vh; color: #aaa; font: 600 14px 'Barlow Condensed', sans-serif; }
+#bigBanner { position: fixed; top: 22%; left: 50%; transform: translate(-50%, -30px) scale(.9); opacity: 0; pointer-events: none; z-index: 60; text-align: center; transition: all .35s cubic-bezier(.2,1.6,.4,1); padding: 18px 34px; border-radius: 16px; background: linear-gradient(135deg, rgba(60,20,0,.88), rgba(120,40,10,.88)); border: 3px solid #ffd23f; box-shadow: 0 0 50px rgba(255,170,40,.7); max-width: 86vw; color: #fff; font: 800 clamp(22px, 4vw, 40px) 'Barlow Condensed', sans-serif; letter-spacing: 1px; }
+#bigBanner.show { opacity: 1; transform: translate(-50%, 0) scale(1); }

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { G, mat, rand, pick } from './state.js';
 import { groundHeight, nearColliders } from './world.js';
+import { explosion, smoke, fire as fireFx, sparks } from './debris.js';
 import { PARTS } from './character.js';
 import { sfx } from './audio.js';
 
@@ -10,6 +11,7 @@ export const WEAPONS = {
   foam:   { name: 'Foam Dart Blaster', emo: '🔫', price: 150, rate: 0.3, speed: 48, grav: 3, size: 0.12, push: 10, dmg: 1, color: '#ff8a3d', desc: 'One dart = one flop.' },
   paint:  { name: 'Paintball Gun', emo: '🎨', price: 350, rate: 0.11, speed: 52, grav: 4, size: 0.13, push: 5, dmg: 0.34, paint: true, desc: 'Rapid fire, splats paint everywhere.' },
   rocket: { name: 'Confetti Rocket', emo: '🚀', price: 1200, rate: 1.1, speed: 32, grav: 0, size: 0.3, push: 16, dmg: 1, explode: 7, color: '#ffd54a', desc: 'BOOM! Launches people, props and cars.' },
+  mega: { name: 'MEGA Rocket Launcher', emo: '☄️', price: 2500, rate: 1.4, speed: 46, grav: 0, size: 0.45, push: 30, dmg: 1, explode: 15, color: '#ff5a2a', desc: 'HUGE explosions. Smashes cars, knocks down buildings and hurts bosses!' },
 };
 const PAINT = ['#ff5b6e', '#3fa7ff', '#46c25a', '#ffd54a', '#b46cff', '#ff8a3d'];
 
@@ -33,6 +35,11 @@ export function buildGunMesh(id) {
     add('#4a4f5a', 0, 0.05, 0.25, 0.14, 0.16, 0.7);
     add('#b46cff', 0, 0.22, 0.2, 0.16, 0.16, 0.16, new THREE.SphereGeometry(1, 10, 8));
     add('#4a4f5a', 0, -0.12, 0.05, 0.1, 0.25, 0.1);
+  } else if (id === 'mega') {
+    add('#3a3f46', 0, 0.14, 0.15, 0.24, 1.5, 0.24, cyl).rotation.x = Math.PI / 2;
+    add('#ff5a2a', 0, 0.14, 0.92, 0.27, 0.12, 0.27, cyl).rotation.x = Math.PI / 2;
+    add('#ffd23a', 0, 0.32, 0.2, 0.08, 0.1, 0.4);
+    add('#3a3f46', 0, -0.1, 0.05, 0.1, 0.28, 0.12);
   } else if (id === 'rocket') {
     add('#46a05a', 0, 0.12, 0.1, 0.16, 1.1, 0.16, cyl).rotation.x = Math.PI / 2;
     add('#ff5b6e', 0, 0.12, 0.7, 0.12, 0.25, 0.12, new THREE.ConeGeometry(1, 1, 10)).rotation.x = Math.PI / 2;
@@ -75,9 +82,10 @@ export function spawnShot(type, pos, vel, visual, color) {
   const w = WEAPONS[type];
   const col = color || (w.paint ? pick(PAINT) : w.color);
   let mesh;
-  if (type === 'rocket') {
+  if (type === 'rocket' || type === 'mega') {
     mesh = new THREE.Group();
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8), mat('#ff5b6e'));
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8), mat(type === 'mega' ? '#3a3f46' : '#ff5b6e'));
+    if (type === 'mega') mesh.scale.setScalar(1.8);
     b.rotation.x = Math.PI / 2; mesh.add(b);
     const f = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), mat('#ffb21a', { emissive: '#ff8800', emissiveIntensity: 1 }));
     f.position.z = -0.5; mesh.add(f);
@@ -87,14 +95,14 @@ export function spawnShot(type, pos, vel, visual, color) {
   }
   mesh.position.copy(pos);
   G.scene.add(mesh);
-  shots.push({ type, w, pos: mesh.position, vel: vel.clone(), mesh, life: type === 'rocket' ? 4 : 2, visual, color: col });
+  shots.push({ type, w, pos: mesh.position, vel: vel.clone(), mesh, life: type === 'rocket' || type === 'mega' ? 4 : 2, visual, color: col });
 }
 
 // Local player fires. Returns shot info for networking.
 export function fire(player, camera) {
   const w = WEAPONS[player.weapon];
   camera.getWorldDirection(_d);
-  if (player.weapon !== 'rocket') { _d.x += rand(-0.02, 0.02); _d.y += rand(-0.02, 0.02) + (w.grav > 5 ? 0.06 : 0.01); _d.z += rand(-0.02, 0.02); }
+  if (player.weapon !== 'rocket' && player.weapon !== 'mega') { _d.x += rand(-0.02, 0.02); _d.y += rand(-0.02, 0.02) + (w.grav > 5 ? 0.06 : 0.01); _d.z += rand(-0.02, 0.02); }
   _d.normalize();
   _o.copy(player.p[PARTS.HR]).addScaledVector(_d, 0.7);
   _o.y += 0.1;
@@ -102,7 +110,7 @@ export function fire(player, camera) {
   vel.x += player.vel.x; vel.z += player.vel.z;
   spawnShot(player.weapon, _o, vel, false);
   const last = shots[shots.length - 1];
-  if (player.weapon === 'rocket') sfx.whoosh(); else if (player.weapon === 'water') { if (Math.random() < 0.3) sfx.water(); } else if (player.weapon === 'paint') sfx.pop2(); else sfx.pew();
+  if (player.weapon === 'rocket' || player.weapon === 'mega') sfx.whoosh(); else if (player.weapon === 'water') { if (Math.random() < 0.3) sfx.water(); } else if (player.weapon === 'paint') sfx.pop2(); else sfx.pew();
   // recoil wobble
   player.v[PARTS.HR].addScaledVector(_d, -3);
   player.v[PARTS.HEAD].addScaledVector(_d, -1);
@@ -121,16 +129,30 @@ export function applyHit(ch, dir, w) {
   else { ch.vel.x += _t.x * 0.25; ch.vel.z += _t.z * 0.25; for (const v of ch.v) v.addScaledVector(dir, w.push * 0.4); }
 }
 
-function explode(pos, visual) {
-  boomFx(pos, true);
+function explode(pos, visual, type) {
+  const mega = type === 'mega';
+  if (mega) explosion(pos, 1.7); else boomFx(pos, true);
+  const R = mega ? 15 : 7;
+  // bosses and UFOs feel blasts too
+  // (a boss made of several hit zones only takes one blast — its best zone, listed first)
+  const done = new Set();
+  for (const t of G.shotTargets || []) if (t.alive && !visual && !done.has(t.owner || t) && Math.hypot(t.x - pos.x, t.y - pos.y, t.z - pos.z) < R + t.r) { done.add(t.owner || t); t.hit(mega ? 7 : 1.5, pos); }
   if (visual) return;
-  const R = 7;
+  if (mega && G.hitBuilding) {
+    // knock chunks out of buildings (enough rockets bring them down)
+    const seen = new Set();
+    for (const c of nearColliders(pos.x, pos.z)) {
+      if (c.off || !c.b || seen.has(c.b)) continue;
+      const dx = Math.max(c.minX - pos.x, 0, pos.x - c.maxX), dy = Math.max(c.minY - pos.y, 0, pos.y - c.maxY), dz = Math.max(c.minZ - pos.z, 0, pos.z - c.maxZ);
+      if (Math.hypot(dx, dy, dz) < 6) { seen.add(c.b); G.hitBuilding(c, pos, 1100); }
+    }
+  }
   for (const ch of G.characters) {
     const p = ch.p[PARTS.PEL];
     const d = p.distanceTo(pos);
     if (d > R) continue;
     const k = (1 - d / R);
-    _t.subVectors(p, pos).setY(0).normalize().multiplyScalar(18 * k); _t.y = 8 + 10 * k;
+    _t.subVectors(p, pos).setY(0).normalize().multiplyScalar((mega ? 30 : 18) * k); _t.y = (mega ? 14 : 8) + (mega ? 18 : 10) * k;
     if (ch.isRemote) G.onRemoteHit && G.onRemoteHit(ch, _t);
     else if (ch.vehicle) { if (ch.vehicle.driver === ch && !ch.vehicle.type.heli && !ch.vehicle.type.plane) { ch.vehicle.vy += 10 * k; ch.vehicle.onGround = false; } }
     else ch.flop(_t, 2.5);
@@ -148,8 +170,9 @@ function explode(pos, visual) {
     if (d > R) continue;
     if (v.type.plane && !v.onGround) { v.planeCrash(false); continue; }
     if (v.type.heli) { v.vy += 8; continue; }
-    v.vy += 11 * (1 - d / R); v.onGround = false; v.bounceV += 4;
+    v.vy += (mega ? 20 : 11) * (1 - d / R); v.onGround = false; v.bounceV += 4;
     v.speed *= 0.3;
+    if (mega && d < R * 0.5 && v.spin !== undefined) v.spin = (v.spin || 0) + (Math.random() - 0.5) * 6;
   }
   for (const f of (G.job && G.job.fires) || []) if (f.hp > 0 && f.pos.distanceTo(pos) < R) f.hp -= 60;
 }
@@ -199,7 +222,7 @@ export function updateWeapons(dt) {
           const r = 0.5 + s.w.size;
           if (ch.p[PARTS.CHE].distanceTo(s.pos) < r || ch.p[PARTS.HEAD].distanceTo(s.pos) < r || ch.p[PARTS.PEL].distanceTo(s.pos) < r) {
             _d.copy(s.vel).normalize();
-            if (s.w.explode) { explode(s.pos, false); }
+            if (s.w.explode) { explode(s.pos, false, s.type); }
             else if (ch.isRemote) G.onRemoteShot && G.onRemoteShot(ch, _d, s.type);
             else applyHit(ch, _d, s.w);
             if (s.w.paint) splat(s.pos, s.color, false);
@@ -209,8 +232,15 @@ export function updateWeapons(dt) {
         }
         if (!dead) for (const pr of G.props) {
           if (pr.held || pr.inVehicle || pr.pos.distanceTo(s.pos) > pr.r + s.w.size) continue;
-          if (s.w.explode) explode(s.pos, false);
+          if (s.w.explode) explode(s.pos, false, s.type);
           else { pr.cargoOf = null; pr.vel.addScaledVector(_d.copy(s.vel).normalize(), s.w.push * 0.8); pr.vel.y += 1.5; }
+          dead = true; break;
+        }
+        // bosses and UFOs
+        if (!dead) for (const t of G.shotTargets || []) {
+          if (!t.alive || Math.hypot(t.x - s.pos.x, t.y - s.pos.y, t.z - s.pos.z) > t.r + s.w.size) continue;
+          if (s.w.explode) explode(s.pos, s.visual, s.type);
+          else { if (!s.visual) t.hit(s.w.dmg * 0.6, s.pos); sparks(s.pos); }
           dead = true; break;
         }
         if (!dead && s.w.fire && G.job && G.job.fires) {
@@ -223,18 +253,18 @@ export function updateWeapons(dt) {
       if (dead) break;
       const gh = groundHeight(s.pos.x, s.pos.z, s.pos.y, 0);
       if (s.pos.y < Math.max(gh, -0.6)) {
-        if (s.w.explode) explode(s.pos, s.visual);
+        if (s.w.explode) explode(s.pos, s.visual, s.type);
         else if (s.w.paint) splat(_o.set(s.pos.x, Math.max(gh, -0.6), s.pos.z), s.color, true);
         dead = true;
       } else if (solid(s.pos)) {
-        if (s.w.explode) explode(s.pos, s.visual);
+        if (s.w.explode) explode(s.pos, s.visual, s.type);
         else if (s.w.paint) splat(s.pos, s.color, false);
         dead = true;
       }
     }
     s.life -= dt;
-    if (s.type === 'rocket') s.mesh.lookAt(_o.copy(s.pos).add(s.vel));
-    if (s.life <= 0 && s.w.explode && !dead) { explode(s.pos, s.visual); dead = true; }
+    if (s.type === 'rocket' || s.type === 'mega') { s.mesh.lookAt(_o.copy(s.pos).add(s.vel)); if (s.type === 'mega') { smoke(s.pos, 1, false); fireFx(s.pos, 1, 0.6); } }
+    if (s.life <= 0 && s.w.explode && !dead) { explode(s.pos, s.visual, s.type); dead = true; }
     if (dead || s.life <= 0) { G.scene.remove(s.mesh); shots.splice(i, 1); }
   }
   for (let i = fx.length - 1; i >= 0; i--) {
