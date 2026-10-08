@@ -909,23 +909,29 @@ function foliageMat(map, extra = {}) {
   const m = new THREE.MeshLambertMaterial(Object.assign({ map, alphaTest: 0.42, side: THREE.DoubleSide, vertexColors: true }, extra));
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uWind = foliageWind; sh.uniforms.uTime = foliageTime;
-    sh.vertexShader = 'uniform float uWind, uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+    sh.vertexShader = 'uniform float uWind, uTime;\nvarying vec3 vFW;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       { vec3 ip = vec3(0.0);
         #ifdef USE_INSTANCING
           ip = instanceMatrix[3].xyz;
         #endif
         float k = (position.y + 0.6) * uWind;
         transformed.x += sin(uTime * 1.6 + ip.x * 0.11 + position.y * 2.0) * 0.035 * k + sin(uTime * 5.3 + position.x * 9.0) * 0.012 * uWind;
-        transformed.z += cos(uTime * 1.3 + ip.z * 0.13) * 0.03 * k; }`);
+        transformed.z += cos(uTime * 1.3 + ip.z * 0.13) * 0.03 * k; }`).replace('#include <project_vertex>', `#include <project_vertex>
+      { vec4 fw = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          fw = instanceMatrix * fw;
+        #endif
+        vFW = (modelMatrix * fw).xyz; }`);
     // far away the texture's smaller copies blur the leaf edges and the crown would go see-through: boost alpha
-    sh.fragmentShader = sh.fragmentShader.replace('#include <alphatest_fragment>', `
+    sh.fragmentShader = 'varying vec3 vFW;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', `
+      diffuseColor.a *= smoothstep(1.4, 3.0, length(vFW - cameraPosition));   // leaves right in front of the camera fade away
       #ifdef USE_MAP
         { vec2 tx = vMapUv * 1024.0; float mip = max(0.0, 0.5 * log2(max(dot(dFdx(tx), dFdx(tx)), dot(dFdy(tx), dFdy(tx)))));
           diffuseColor.a *= 1.0 + mip * 0.3; }
       #endif
       #include <alphatest_fragment>`);
   };
-  m.customProgramCacheKey = () => 'foliage2' + (extra.color || '');
+  m.customProgramCacheKey = () => 'foliage3' + (extra.color || '');
   return m;
 }
 function card(parts, cx, cy, cz, size, rx, ry, rz, shade, center) {
