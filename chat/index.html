@@ -130,7 +130,47 @@ footer {
 }
 #emojiPanel button { border: 0; background: transparent; font-size: 22px; border-radius: 8px; height: 36px; padding: 0; }
 #emojiPanel button:hover { background: var(--panel2); }
+/* ---------- calls ---------- */
+.iconbtn.call { background: var(--ok); color: #fff; border-color: transparent; }
+.iconbtn.call:disabled { opacity: .45; cursor: default; }
+#callBanner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 700;
+}
+#callBanner .who { flex: 1; min-width: 160px; }
+#callBanner.ringing .who { animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { from { opacity: 1; } to { opacity: .55; } }
+.btn.small { padding: 7px 12px; font-size: 13px; }
+.btn.green { background: var(--ok); }
+.btn.red { background: var(--bad); }
+#call { background: #0c0f16; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+#tiles {
+  display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  max-height: 48vh; overflow-y: auto;
+}
+.tile {
+  position: relative; aspect-ratio: 4 / 3; background: #1b2130; border-radius: 12px; overflow: hidden;
+  border: 2px solid transparent; transition: border-color .15s;
+}
+.tile.talking { border-color: var(--ok); }
+.tile video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+.tile.me video { transform: scaleX(-1); }
+.tile .cover {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #1b2130;
+}
+.tile .cover .avatar { width: 64px; height: 64px; font-size: 28px; }
+.tile .label {
+  position: absolute; left: 6px; bottom: 6px; right: 6px; display: flex; gap: 6px; align-items: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+}
+.tile .label span { background: rgba(0, 0, 0, .55); padding: 2px 8px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.callbar { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.callbar .iconbtn { background: #262e40; color: #fff; border-color: #343d52; padding: 8px 14px; font-size: 14px; }
+.callbar .iconbtn.off { background: #fff; color: #1b2130; }
+.callbar .iconbtn.hang { background: var(--bad); border-color: transparent; }
 @media (max-width: 560px) {
+  header { flex-wrap: wrap; }
+  #tiles { grid-template-columns: repeat(2, 1fr); max-height: 42vh; }
   .msg { max-width: 92%; }
   .hide-sm { display: none; }
   #emojiPanel { grid-template-columns: repeat(6, 36px); }
@@ -173,12 +213,28 @@ footer {
       <div class="status"><span id="dot" class="dot"></span><span id="statusText">Connecting…</span></div>
     </div>
     <div class="spacer"></div>
+    <button id="voiceBtn" class="iconbtn call" type="button" title="Start or join a voice call">📞 <span class="hide-sm">Call</span></button>
+    <button id="videoBtn" class="iconbtn call" type="button" title="Start or join a video call">📹 <span class="hide-sm">Video</span></button>
     <button id="peopleBtn" class="iconbtn" type="button">👥 <span id="peopleCount">1</span></button>
     <button id="copyBtn" class="iconbtn" type="button">🔗 <span class="hide-sm">Invite</span></button>
     <button id="soundBtn" class="iconbtn" type="button" title="Sound on/off">🔔</button>
     <button id="leaveBtn" class="iconbtn" type="button">Leave</button>
   </header>
   <div id="people" class="hidden"></div>
+  <div id="callBanner" class="hidden">
+    <span class="who" id="callWho">📞 Call in progress</span>
+    <button id="joinVoiceBtn" class="btn small green" type="button">📞 Join voice</button>
+    <button id="joinVideoBtn" class="btn small green" type="button">📹 Join video</button>
+    <button id="dismissCallBtn" class="iconbtn" type="button" title="Hide">✕</button>
+  </div>
+  <div id="call" class="hidden">
+    <div id="tiles"></div>
+    <div class="callbar">
+      <button id="micBtn" class="iconbtn" type="button">🎤 Mute</button>
+      <button id="camBtn" class="iconbtn" type="button">📷 Camera on</button>
+      <button id="hangBtn" class="iconbtn hang" type="button">📞 Leave call</button>
+    </div>
+  </div>
   <div id="msgs" aria-live="polite"></div>
   <div id="typing"></div>
   <footer>
@@ -293,7 +349,10 @@ async function onPacket(payload, key) {
   S.seen.set(m.pid, Date.now());
   switch (m.t) {
     case 'here': if (m.uid !== me.uid) seePerson(m); break;
-    case 'bye': if (S.people.delete(m.uid)) { renderPeople(); renderTyping(); } break;
+    case 'bye': closePeer(m.uid); if (S.people.delete(m.uid)) { renderPeople(); renderTyping(); renderCallBanner(); } break;
+    case 'cjoin': onCallJoin(m); break;
+    case 'cleave': onCallLeave(m); break;
+    case 'sig': C.sigChain = C.sigChain.then(() => onSig(m)).catch(() => {}); break;
     case 'msg': if (m.m) { seePerson({ uid: m.m.uid, name: m.m.name, color: m.m.color, typing: false }); addMsg(m.m, true); } break;
     case 'sync?': if (m.uid !== me.uid) beat(); answerSync(m); break;
     case 'sync': S.syncAnswered.add(m.to); if (Array.isArray(m.msgs)) { let n = 0; for (const x of m.msgs) if (addMsg(x, false)) n++; if (n) { saveHistory(); } } break;
@@ -310,7 +369,9 @@ function answerSync(req) {
     send({ t: 'sync', to: req.uid, msgs: mine });
   }, 200 + Math.random() * 1200);
 }
-function beat() { send({ t: 'here', uid: me.uid, name: me.name, color: me.color, typing: S.typing }); }
+function beat() {
+  send({ t: 'here', uid: me.uid, name: me.name, color: me.color, typing: S.typing, call: C.on ? C.kind : null, cid: C.on ? C.cid : null, mic: C.mic, cam: C.cam });
+}
 function updateStatus() {
   const n = liveClients().length;
   const dot = $('dot');
@@ -328,15 +389,26 @@ function updateStatus() {
 function seePerson(p) {
   if (!p.uid || p.uid === me.uid) return;
   const was = S.people.get(p.uid);
-  S.people.set(p.uid, { name: clean(p.name, 20) || 'Someone', color: safeColor(p.color), last: Date.now(), typing: !!p.typing });
-  if (!was) { renderPeople(); sysMsg(`${clean(p.name, 20) || 'Someone'} joined`); }
-  else if (was.name !== p.name || was.color !== p.color) renderPeople();
+  const now = { name: clean(p.name, 20) || 'Someone', color: safeColor(p.color), last: Date.now(), typing: !!p.typing,
+    call: was ? was.call : null, cid: was ? was.cid : null, mic: was ? was.mic : true, cam: was ? was.cam : false };
+  if ('call' in p) {
+    const call = p.call === 'video' || p.call === 'voice' ? p.call : null;
+    Object.assign(now, { call, cid: call ? String(p.cid || '').slice(0, 20) || null : null, mic: p.mic !== false, cam: !!p.cam });
+  }
+  S.people.set(p.uid, now);
+  if (!was) { renderPeople(); sysMsg(`${now.name} joined`); }
+  else if (was.name !== now.name || was.color !== now.color) renderPeople();
   renderTyping();
+  if ('call' in p) {
+    if (!now.call) closePeer(p.uid);
+    else if (C.on) connectTo(p.uid);
+    renderCallBanner(); renderCall();
+  }
 }
 function prunePeople() {
   let changed = false;
-  for (const [uid, p] of S.people) if (Date.now() - p.last > AWAY_MS) { S.people.delete(uid); changed = true; }
-  if (changed) { renderPeople(); renderTyping(); }
+  for (const [uid, p] of S.people) if (Date.now() - p.last > AWAY_MS) { S.people.delete(uid); closePeer(uid); changed = true; }
+  if (changed) { renderPeople(); renderTyping(); renderCallBanner(); }
   for (const [pid, t] of S.seen) if (Date.now() - t > 120000) S.seen.delete(pid);
 }
 function renderPeople() {
@@ -484,7 +556,9 @@ function randomRoom() {
 async function enterRoom(code) {
   const { key, topic } = await roomCrypto(code);
   if (S.topic) for (const c of S.clients) { try { c.unsubscribe(S.topic); } catch (e) { /* ignore */ } }
+  endCall();
   Object.assign(S, { room: code, key, topic, msgs: [], msgIds: new Set(), people: new Map(), unread: 0 });
+  C.dismissed = false; renderCallBanner();
   for (const m of store.get('hist:' + code, [])) addMsg(m, false);
   const recent = [code, ...store.get('recent', []).filter(r => r !== code)].slice(0, 6);
   store.set('recent', recent);
@@ -500,10 +574,11 @@ async function enterRoom(code) {
   lastHello = 0;
   if (liveClients().length) hello();
   clearInterval(S.beatTimer);
-  S.beatTimer = setInterval(() => { beat(); prunePeople(); }, BEAT_MS);
+  S.beatTimer = setInterval(() => { beat(); prunePeople(); checkPeers(); }, BEAT_MS);
   $('text').focus();
 }
 function leaveRoom() {
+  endCall();
   send({ t: 'bye', uid: me.uid });
   clearInterval(S.beatTimer);
   if (S.topic) for (const c of S.clients) { try { c.unsubscribe(S.topic); } catch (e) { /* ignore */ } }
@@ -543,6 +618,345 @@ async function tryJoin() {
   await enterRoom(room);
 }
 
+// ------------------------------------------------------------------ calls (WebRTC peer-to-peer, set up through the room)
+// Everyone in a call connects directly to everyone else. The encrypted room channel carries the
+// "how to reach me" messages (offers, answers, network candidates); the audio/video goes straight
+// between browsers.
+const ICE = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+];
+const C = {
+  on: false, kind: null, cid: null, stream: null, mic: true, cam: false,
+  peers: new Map(),          // uid -> { pc, pcid, rpcid, polite, makingOffer, ignoreOffer, pendingIce, stream }
+  hiSent: new Map(),
+  tiles: new Map(),          // uid -> tile element
+  sigChain: Promise.resolve(),
+  dismissed: false, ringTimer: 0, ringUntil: 0, meters: new Map(), meterTimer: 0,
+};
+
+const inCallPeople = () => [...S.people.entries()].filter(([, p]) => p.call);
+function mediaError(e, kind) {
+  const what = kind === 'video' ? 'camera and microphone' : 'microphone';
+  if (e && e.name === 'NotAllowedError') return `Your ${what} is blocked. Click the camera icon in the address bar and allow it, then try again.`;
+  if (e && e.name === 'NotFoundError') return `No ${what} found on this device.`;
+  if (e && e.name === 'NotReadableError') return `Your ${what} is being used by another app or tab.`;
+  return `Couldn't start your ${what}.`;
+}
+
+async function startCall(kind) {
+  if (C.on || !S.room) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.RTCPeerConnection) {
+    sysMsg('This browser can\'t do calls. Try Chrome.'); return;
+  }
+  const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  const video = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } };
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio, video: kind === 'video' ? video : false });
+  } catch (e) {
+    if (kind === 'video') {
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio }); sysMsg('Couldn\'t use your camera, so you joined with voice only.'); }
+      catch (e2) { /* fall through */ }
+    }
+    if (!stream) { sysMsg(mediaError(e, kind)); return; }
+  }
+  if (C.on || !S.room) { stream.getTracks().forEach(t => t.stop()); return; }
+  Object.assign(C, { on: true, kind, cid: rid(10), stream, mic: true, cam: stream.getVideoTracks().length > 0, dismissed: false });
+  stopRing();
+  const others = inCallPeople();
+  sysMsg(others.length ? 'You joined the call.' : 'You started a call. Everyone in the room can join.');
+  send({ t: 'cjoin', uid: me.uid, cid: C.cid, kind, name: me.name, color: me.color });
+  beat();
+  for (const [uid] of others) connectTo(uid);
+  renderCall(); renderCallBanner();
+}
+function endCall() {
+  if (!C.on) return;
+  send({ t: 'cleave', uid: me.uid, cid: C.cid });
+  for (const uid of [...C.peers.keys()]) closePeer(uid);
+  C.hiSent.clear();
+  C.stream.getTracks().forEach(t => t.stop());
+  Object.assign(C, { on: false, kind: null, cid: null, stream: null, mic: true, cam: false });
+  beat();
+  sysMsg('You left the call.');
+  renderCall(); renderCallBanner();
+}
+
+// Who dials whom: between any two people, the one with the bigger id sends the first offer and the
+// other one asks for it ("hi"). After that either side may renegotiate (e.g. turning a camera on);
+// clashes then are handled the "perfect negotiation" way, where the polite side gives way.
+function connectTo(uid) {
+  if (!C.on || C.peers.has(uid) || uid === me.uid) return;
+  if (me.uid < uid) {
+    const last = C.hiSent.get(uid) || 0;
+    if (Date.now() - last > 3000) { C.hiSent.set(uid, Date.now()); sig({ uid, pcid: null, rpcid: null }, { hi: 1 }); }
+  } else {
+    createPeer(uid, true);
+  }
+}
+function createPeer(uid, withTracks) {
+  const pc = new RTCPeerConnection({ iceServers: ICE });
+  const p = {
+    uid, pc, pcid: rid(8), rpcid: null, polite: me.uid < uid, makingOffer: false, ignoreOffer: false,
+    pendingIce: [], stream: new MediaStream(), needTracks: !withTracks, born: Date.now(), lastOk: 0,
+    rcid: (S.people.get(uid) || {}).cid || null,   // which of their calls this connection belongs to
+  };
+  C.peers.set(uid, p);
+  if (withTracks) for (const t of C.stream.getTracks()) pc.addTrack(t, C.stream);
+  pc.ontrack = ({ track }) => {
+    p.stream.addTrack(track);
+    track.onmute = track.onunmute = track.onended = () => renderCall();
+    renderCall();
+  };
+  pc.onicecandidate = ({ candidate }) => { if (candidate && C.peers.get(uid) === p) sig(p, { ice: candidate.toJSON() }); };
+  pc.onnegotiationneeded = async () => {
+    if (p.needTracks) return;
+    try {
+      p.makingOffer = true;
+      await pc.setLocalDescription();
+      sig(p, { sdp: pc.localDescription.toJSON() });
+    } catch (e) { console.warn('call offer', e); } finally { p.makingOffer = false; }
+  };
+  pc.onconnectionstatechange = () => { if (pc.connectionState === 'connected') p.lastOk = Date.now(); renderCall(); };
+  renderCall();
+  return p;
+}
+function closePeer(uid) {
+  const p = C.peers.get(uid);
+  if (!p) return;
+  C.peers.delete(uid);
+  try { p.pc.close(); } catch (e) { /* ignore */ }
+  renderCall();
+}
+function sig(p, data) {
+  const person = S.people.get(p.uid);
+  send(Object.assign({ t: 'sig', from: me.uid, to: p.uid, cid: C.cid, tcid: person && person.cid, pcid: p.pcid, rpcid: p.rpcid }, data));
+}
+async function onSig(m) {
+  if (!C.on || m.to !== me.uid || m.from === me.uid) return;
+  if (m.tcid && m.tcid !== C.cid) return;                          // meant for a call we already left
+  let p = C.peers.get(m.from);
+  if (m.hi) {
+    // They want us to dial. Start fresh unless we only just dialed them.
+    if (p && Date.now() - p.born < 4000) return;
+    closePeer(m.from);
+    createPeer(m.from, true);
+    return;
+  }
+  if (p && m.rpcid && m.rpcid !== p.pcid) return;                  // reply to a connection we replaced
+  const offer = m.sdp && m.sdp.type === 'offer';
+  if (p && p.rpcid && m.pcid !== p.rpcid) {                        // they started a new connection
+    if (!offer) return;
+    closePeer(m.from); p = null;
+  }
+  if (!p) { if (!offer) return; p = createPeer(m.from, false); }
+  p.rpcid = m.pcid;
+  if (m.cid) p.rcid = m.cid;
+  const pc = p.pc;
+  try {
+    if (m.sdp) {
+      const collision = offer && (p.makingOffer || pc.signalingState !== 'stable');
+      p.ignoreOffer = !p.polite && collision;
+      if (p.ignoreOffer) return;
+      await pc.setRemoteDescription(m.sdp);
+      for (const c of p.pendingIce.splice(0)) await pc.addIceCandidate(c).catch(() => {});
+      if (offer) {
+        if (p.needTracks) {                                        // reuse the slots their offer made
+          p.needTracks = false;
+          for (const t of C.stream.getTracks()) pc.addTrack(t, C.stream);
+        }
+        await pc.setLocalDescription();
+        sig(p, { sdp: pc.localDescription.toJSON() });
+      }
+    } else if (m.ice) {
+      if (!pc.remoteDescription) p.pendingIce.push(m.ice);
+      else await pc.addIceCandidate(m.ice).catch(() => {});
+    }
+  } catch (e) { console.warn('call signalling', e); }
+}
+// Rebuild any connection that hasn't been working for a while (lost messages, network change).
+function checkPeers() {
+  if (!C.on) return;
+  for (const [uid, p] of [...C.peers]) {
+    if (p.pc.connectionState === 'connected') { p.lastOk = Date.now(); continue; }
+    if (Date.now() - Math.max(p.born, p.lastOk) > 20000) closePeer(uid);
+  }
+  for (const [uid] of inCallPeople()) connectTo(uid);
+}
+function onCallJoin(m) {
+  if (!m.uid || m.uid === me.uid) return;
+  const was = S.people.get(m.uid);
+  const wasInCall = inCallPeople().length > 0;
+  seePerson({ uid: m.uid, name: m.name || (was && was.name), color: m.color || (was ? was.color : '#6d7a90'), typing: false, call: m.kind, cid: m.cid, mic: true, cam: m.kind === 'video' });
+  const name = (S.people.get(m.uid) || {}).name || 'Someone';
+  if (C.on) {
+    const old = C.peers.get(m.uid);
+    if (old && old.rcid !== m.cid) closePeer(m.uid);   // they rejoined, so the old connection is dead
+    connectTo(m.uid);
+    sysMsg(`${name} joined the call.`);
+  } else {
+    sysMsg(wasInCall ? `${name} joined the call.` : `${name} started a ${m.kind === 'video' ? 'video ' : ''}call.`);
+    if (!wasInCall) { C.dismissed = false; startRing(); }
+  }
+  renderCallBanner();
+}
+function onCallLeave(m) {
+  const p = S.people.get(m.uid);
+  if (p && p.call) { p.call = null; p.cid = null; sysMsg(`${p.name} left the call.`); }
+  closePeer(m.uid);
+  if (!inCallPeople().length) stopRing();
+  renderCallBanner(); renderCall();
+}
+
+function toggleMic() {
+  if (!C.on) return;
+  C.mic = !C.mic;
+  C.stream.getAudioTracks().forEach(t => { t.enabled = C.mic; });
+  beat(); renderCall();
+}
+async function toggleCam() {
+  if (!C.on) return;
+  const vt = C.stream.getVideoTracks()[0];
+  if (vt) {
+    C.cam = !C.cam; vt.enabled = C.cam;
+  } else {
+    // Voice call: add a camera now. Every connection renegotiates by itself.
+    let s;
+    try { s = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } }); }
+    catch (e) { sysMsg(mediaError(e, 'video').replace('camera and microphone', 'camera')); return; }
+    if (!C.on) { s.getTracks().forEach(t => t.stop()); return; }
+    const t = s.getVideoTracks()[0];
+    C.stream.addTrack(t);
+    for (const p of C.peers.values()) if (!p.needTracks) { try { p.pc.addTrack(t, C.stream); } catch (e) { /* ignore */ } }
+    C.cam = true;
+  }
+  beat(); renderCall();
+}
+
+// ---- ringing
+function ringOnce() {
+  if (!S.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime;
+    for (const [f, at] of [[660, 0], [880, 0.18], [660, 0.6], [880, 0.78]]) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = f; o.type = 'sine';
+      g.gain.setValueAtTime(0.0001, t0 + at); g.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.16);
+      o.connect(g).connect(actx.destination); o.start(t0 + at); o.stop(t0 + at + 0.17);
+    }
+  } catch (e) { /* no audio */ }
+}
+function startRing() {
+  stopRing();
+  C.ringUntil = Date.now() + 30000;
+  ringOnce();
+  C.ringTimer = setInterval(() => { if (Date.now() > C.ringUntil || C.on) stopRing(); else ringOnce(); }, 2500);
+  if (document.hidden) document.title = '📞 Incoming call · Flynn Chat';
+  renderCallBanner();
+}
+function stopRing() {
+  clearInterval(C.ringTimer); C.ringTimer = 0;
+  if (S.room && !S.unread) document.title = `${S.room} · Flynn Chat`;
+  const b = $('callBanner'); if (b) b.classList.remove('ringing');
+}
+
+// ---- drawing
+function renderCallBanner() {
+  const others = inCallPeople();
+  const show = !C.on && others.length > 0 && !C.dismissed;
+  $('callBanner').classList.toggle('hidden', !show);
+  $('callBanner').classList.toggle('ringing', show && !!C.ringTimer);
+  if (show) {
+    const names = others.map(([, p]) => p.name);
+    $('callWho').textContent = `📞 ${names.length === 1 ? names[0] + ' is' : names.length + ' people are'} in a call`;
+  }
+  $('voiceBtn').disabled = $('videoBtn').disabled = C.on;
+  const label = others.length && !C.on ? 'Join' : null;
+  $('voiceBtn').title = label ? 'Join the call with voice' : 'Start a voice call';
+  $('videoBtn').title = label ? 'Join the call with video' : 'Start a video call';
+}
+function makeTile(uid) {
+  const el = document.createElement('div'); el.className = 'tile' + (uid === me.uid ? ' me' : '');
+  const v = document.createElement('video'); v.autoplay = true; v.playsInline = true;
+  if (uid === me.uid) v.muted = true;
+  const cover = document.createElement('div'); cover.className = 'cover';
+  const label = document.createElement('div'); label.className = 'label';
+  const name = document.createElement('span');
+  label.append(name);
+  el.append(v, cover, label);
+  el._v = v; el._cover = cover; el._name = name; el._label = label;
+  return el;
+}
+function renderCall() {
+  $('call').classList.toggle('hidden', !C.on);
+  if (!C.on) {
+    for (const el of C.tiles.values()) el.remove();
+    C.tiles.clear(); stopMeters();
+    return;
+  }
+  const want = [[me.uid, { name: me.name + ' (you)', color: me.color, mic: C.mic, cam: C.cam }, C.stream, null]];
+  for (const [uid, p] of C.peers) {
+    const person = S.people.get(uid) || { name: 'Someone', color: '#6d7a90', mic: true, cam: true };
+    want.push([uid, person, p.stream, p.pc]);
+  }
+  const box = $('tiles');
+  for (const [uid, el] of C.tiles) if (!want.some(w => w[0] === uid)) { el.remove(); C.tiles.delete(uid); stopMeter(uid); }
+  for (const [uid, person, stream, pc] of want) {
+    let el = C.tiles.get(uid);
+    if (!el) { el = makeTile(uid); C.tiles.set(uid, el); box.append(el); }
+    if (el._v.srcObject !== stream) { el._v.srcObject = stream; el._v.play().catch(() => {}); }
+    const liveVideo = stream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted && t.enabled);
+    const showVideo = person.cam !== false && liveVideo;
+    if (el._cover._key !== person.name + person.color) {
+      el._cover.textContent = ''; el._cover.append(avatar(person.name, person.color)); el._cover._key = person.name + person.color;
+    }
+    el._cover.classList.toggle('hidden', showVideo);
+    const state = pc ? pc.connectionState : 'connected';
+    el._name.textContent = (person.mic === false ? '🔇 ' : '') + person.name + (state === 'connected' ? '' : state === 'failed' ? ' · reconnecting…' : ' · connecting…');
+    if (stream.getAudioTracks().length) startMeter(uid, stream);
+  }
+  $('micBtn').textContent = C.mic ? '🎤 Mute' : '🔇 Unmute';
+  $('micBtn').classList.toggle('off', !C.mic);
+  $('camBtn').textContent = C.cam ? '📷 Camera off' : '📷 Camera on';
+  $('camBtn').classList.toggle('off', !C.cam);
+}
+
+// ---- green outline on whoever is talking
+function startMeter(uid, stream) {
+  const track = stream.getAudioTracks()[0];
+  const m = C.meters.get(uid);
+  if (m && m.track === track) return;
+  stopMeter(uid);
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+    const src = actx.createMediaStreamSource(new MediaStream([track]));
+    const an = actx.createAnalyser(); an.fftSize = 512;
+    src.connect(an);
+    C.meters.set(uid, { track, src, an, buf: new Uint8Array(an.fftSize) });
+  } catch (e) { return; }
+  if (!C.meterTimer) C.meterTimer = setInterval(tickMeters, 150);
+}
+function stopMeter(uid) {
+  const m = C.meters.get(uid);
+  if (m) { try { m.src.disconnect(); } catch (e) { /* ignore */ } C.meters.delete(uid); }
+}
+function stopMeters() { for (const uid of [...C.meters.keys()]) stopMeter(uid); clearInterval(C.meterTimer); C.meterTimer = 0; }
+function tickMeters() {
+  for (const [uid, m] of C.meters) {
+    m.an.getByteTimeDomainData(m.buf);
+    let sum = 0;
+    for (const v of m.buf) { const d = (v - 128) / 128; sum += d * d; }
+    const loud = Math.sqrt(sum / m.buf.length) > 0.04;
+    const muted = uid === me.uid ? !C.mic : (S.people.get(uid) || {}).mic === false;
+    const el = C.tiles.get(uid);
+    if (el) el.classList.toggle('talking', loud && !muted);
+  }
+}
+
 // ------------------------------------------------------------------ wire up
 $('joinBtn').onclick = tryJoin;
 $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('roomInput').focus(); });
@@ -572,7 +986,15 @@ for (const em of EMOJI) {
 }
 $('emojiBtn').onclick = () => ep.classList.toggle('hidden');
 document.addEventListener('click', e => { if (!ep.contains(e.target) && e.target !== $('emojiBtn')) ep.classList.add('hidden'); });
-window.addEventListener('pagehide', () => { if (S.room) send({ t: 'bye', uid: me.uid }); });
+window.addEventListener('pagehide', () => { if (S.room) { if (C.on) send({ t: 'cleave', uid: me.uid, cid: C.cid }); send({ t: 'bye', uid: me.uid }); } });
+$('voiceBtn').onclick = () => startCall('voice');
+$('videoBtn').onclick = () => startCall('video');
+$('joinVoiceBtn').onclick = () => startCall('voice');
+$('joinVideoBtn').onclick = () => startCall('video');
+$('dismissCallBtn').onclick = () => { C.dismissed = true; stopRing(); renderCallBanner(); };
+$('micBtn').onclick = toggleMic;
+$('camBtn').onclick = toggleCam;
+$('hangBtn').onclick = endCall;
 
 showJoin();
 const urlRoom = normRoom(new URLSearchParams(location.search).get('room'));
