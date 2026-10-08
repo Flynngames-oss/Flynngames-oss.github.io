@@ -210,6 +210,14 @@ function updateBullets(dt) {
       const t = clamp(_f.subVectors(D.pos, _a).dot(_b), 0, len);
       if (_a.addScaledVector(_b, t).distanceTo(D.pos) < 9) { hitDrone(b.m.position); b.t = 99; }
     }
+    // bosses and UFOs
+    if (b.t < 1.4) for (const T of G.shotTargets || []) {
+      if (!T.alive) continue;
+      _a.copy(b.m.position).addScaledVector(b.v, -dt);
+      _b.subVectors(b.m.position, _a); const len = _b.length(); if (len < 1e-3) continue; _b.normalize();
+      _f.set(T.x - _a.x, T.y - _a.y, T.z - _a.z); const t = clamp(_f.dot(_b), 0, len);
+      if (_f.addScaledVector(_b, -t).length() < T.r) { T.hit(0.25, b.m.position); sparks(b.m.position, 4); b.t = 99; break; }
+    }
     if (b.t > 1.4) { G.scene.remove(b.m); bullets.splice(i, 1); }
   }
 }

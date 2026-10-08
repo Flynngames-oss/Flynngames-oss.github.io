@@ -18,7 +18,7 @@ function segDist(x, z, s) {
 function buildMaps() {
   const S = Math.round(WORLD * 2 / RES);
   const hData = new Float32Array(S * S), cData = new Uint8Array(S * S * 4);
-  const grass = new THREE.Color('#7fae4f'), forest = new THREE.Color('#5a8f42'), desert = new THREE.Color('#b8aa6a'), c = new THREE.Color();
+  const grass = new THREE.Color('#6e8e40'), forest = new THREE.Color('#567838'), desert = new THREE.Color('#a39f62'), c = new THREE.Color();
   const blocked = new Uint8Array(S * S);
   // buildings, walls and other solid things
   for (const cl of colliders) {
@@ -154,7 +154,7 @@ export function updateGrass() {
   const W = G.weather || {};
   u.uWind.value = 1 + (W.storm || 0) * 2.5 + (W.rain || 0) * 0.8;
   u.uSunDir.value.copy(L.sun.position).sub(L.sun.target.position).normalize();
-  u.uSunCol.value.copy(L.sun.color).multiplyScalar(L.sun.intensity * 0.55);
+  u.uSunCol.value.copy(L.sun.color).multiplyScalar(L.sun.intensity * 0.43);
   u.uAmb.value.copy(L.hemi.color).multiplyScalar(L.hemi.intensity * 0.75);
   mesh.visible = cam.y < 160 && !G.underwater;
   // move the ring of grass patches with the camera (only when we cross into a new patch)

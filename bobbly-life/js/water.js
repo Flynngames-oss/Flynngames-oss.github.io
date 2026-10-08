@@ -28,7 +28,7 @@ export function makeWaterMaterial() {
       uNormals: { value: null }, uDepth: { value: null }, uWorld: { value: WORLD },
       uTime: { value: 0 }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color('#fff2d8') },
       uSky: { value: new THREE.Color('#5d8fc8') }, uHorizon: { value: new THREE.Color('#c8d8e4') },
-      uDeep: { value: new THREE.Color('#0b3a5c') }, uShallow: { value: new THREE.Color('#2fb3b0') },
+      uDeep: { value: new THREE.Color('#0a2c45') }, uShallow: { value: new THREE.Color('#2f7f7a') },
       uChop: { value: 1 }, uDay: { value: 1 }, uFlash: { value: 0 },
     }]),
     vertexShader: `varying vec3 vW;
