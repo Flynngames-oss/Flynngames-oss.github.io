@@ -15,7 +15,7 @@ import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './job
 import * as UI from './ui.js';
 import * as NET from './net.js';
 import * as ADMIN from './admin.js';
-G.adminSpeedMult = ADMIN.speedMult; G.adminJumpMult = ADMIN.jumpMult;
+G.adminSpeedMult = () => ADMIN.speedMult() * (G.fun ? G.fun.speed : 1); G.adminJumpMult = () => ADMIN.jumpMult() * (G.fun ? G.fun.jump : 1);
 ADMIN.restore();
 import { initAudio, sfx, setEngine, setMusic, musicPlaying, ambience } from './audio.js';
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
@@ -36,6 +36,7 @@ import { initWeather, updateWeather, weatherNet, applyWeatherNet } from './weath
 import { initTrain, updateTrain, onTrainNet } from './train.js';
 import { initPark, updatePark, onRidesNet } from './park.js';
 import { initModes, updateModes, onModeMsg, startMode, stopMode } from './modes.js';
+import { updateArcade, arcadeKey } from './arcade.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -278,6 +279,7 @@ function onKey(code) {
     if (player.ragdoll) { player.holdRag = false; player.ragMin = Math.min(player.ragMin, player.ragT); }
     else { stopFishing(); player.flop(null, 0.8); player.holdRag = true; }
   }
+  if (arcadeKey(code)) return;
   if (code === 'KeyJ') quitJob();
   if (code === 'KeyN' && G.openMap) { G.openMap(); return; }
   if (code === 'Backquote' && ADMIN.isAdmin()) { if (G.ui.panel) UI.closePanel(); else G.openAdmin(); return; }
@@ -1063,6 +1065,7 @@ function update(dt) {
     });
     updateJobs(dt);
     updateModes(dt);
+    updateArcade(dt);
   }
   updateRemoteExtras();
   updateWorld(dt, player.vehicle ? player.vehicle.pos : player.pos);

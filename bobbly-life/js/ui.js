@@ -12,6 +12,7 @@ import { WEAPONS } from './weapons.js';
 import { setWeather, forceTornado } from './weather.js';
 import * as ADMIN from './admin.js';
 import { startMode, stopMode } from './modes.js';
+import { ARCADE, startArcade, stopArcade, surprise } from './arcade.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -328,6 +329,10 @@ function phonePanel() {
         <div class="item" data-wp="blasters"><span class="emo">🔫</span>Blaster Shop<div class="price">Set waypoint</div></div>
         <div class="item" data-wp="mansion"><span class="emo">🏠</span>Dream House<div class="price">${s.house ? 'Your home' : '$2000'}</div></div>
       </div>
+      <h3>🕹️ Arcade (solo or with friends)</h3>
+      <div class="grid"><div class="item surprise" data-arc="surprise"><span class="emo">🎲</span>Surprise Me!<div class="small">A random mode or chaos event: meteors, moon gravity, beach ball storm...</div><div class="price">Go!</div></div>
+        ${Object.entries(ARCADE).map(([id, a]) => `<div class="item" data-arc="${id}"><span class="emo">${a.emo}</span>${a.name}<div class="small">${a.desc}</div><div class="price">${G.arcade.mode === id ? 'Playing (J to quit)' : 'Play'}</div></div>`).join('')}</div>
+      ${G.arcade.mode ? '<div class="tabs"><button class="btn small gray" data-arc="stop">🛑 Stop arcade game</button></div>' : ''}
       <h3>🎮 Party Games (multiplayer)</h3>
       ${G.net.mode === 'solo' ? '<p class="small">Host a room and invite friends to play Hide &amp; Seek or Cops &amp; Robbers!</p>' : `<div class="tabs">
         <button class="btn small ${G.mode.m === 'hide' ? 'green' : 'blue'}" data-mode="hide">🙈 Hide &amp; Seek</button>
@@ -345,6 +350,7 @@ function phonePanel() {
       <p>🎁 Presents found: <b>${s.presents.length} / ${PRESENT_SPOTS.length}</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'} · 💰 Sunken treasure: ${(s.treasure || []).length} / ${G.ocean ? G.ocean.chests.length : 7}</p>
       <div class="tabs">
         <button class="btn small blue" id="phRespawn">🔄 Respawn (unstuck)</button>
+        <button class="btn small blue" id="phRebuild">🏗️ Rebuild the city</button>
         ${s.house ? '<button class="btn small green" id="phHome">🏠 Go Home</button>' : ''}
         <button class="btn small gray" id="phWp">❌ Clear waypoint</button>
         <button class="btn small gray" id="phHelp">❓ Help</button>
@@ -375,6 +381,8 @@ function phonePanel() {
       setWeather(w); toast(`Weather: ${b.textContent}`); rerender();
     });
     $('phRespawn').onclick = () => { closePanel(); G.player.respawn(); };
+    $('phRebuild').onclick = () => { closePanel(); const n = G.rebuildCity(); toast(n ? `🏗️ The builders fixed ${n} building${n === 1 ? '' : 's'}!` : '🏗️ Nothing is broken right now.'); };
+    el.querySelectorAll('[data-arc]').forEach(b => b.onclick = () => { closePanel(); const id = b.dataset.arc; if (id === 'stop') stopArcade(); else if (id === 'surprise') surprise(); else startArcade(id); });
     if ($('phHome')) $('phHome').onclick = () => { closePanel(); G.player.respawn(true); };
     $('phWp').onclick = () => { G.waypoint = null; closePanel(); };
     $('phHelp').onclick = () => { closePanel(); showHelp(true); };

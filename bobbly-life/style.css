@@ -183,3 +183,5 @@ body.touch #hint { display: none; }
 #kickedScreen { position: fixed; inset: 0; z-index: 99; background: rgba(10,10,20,.92); display: flex; align-items: center; justify-content: center; color: #fff; text-align: center; }
 #kickedScreen h1 { font-family: 'Barlow Condensed', sans-serif; font-size: 44px; }
 .btn.red { background: #e8463a; color: #fff; border-color: #e8463a; }
+#arcadeBar { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: none; padding: 7px 16px; border-radius: 10px; background: rgba(20,24,34,.85); color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: .4px; white-space: nowrap; pointer-events: none; border: 1px solid rgba(120,255,170,.7); }
+.item.surprise { background: linear-gradient(135deg, rgba(255,90,180,.35), rgba(90,170,255,.35)); border-color: #ffd23a; }

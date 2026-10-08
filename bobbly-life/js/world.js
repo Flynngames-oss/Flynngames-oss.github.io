@@ -258,6 +258,7 @@ function updateChunks(dt) {
 // ---------------------------------------------------------------- destructible buildings
 let curB = null, noDamage = false;
 const collapsing = [], scars = [];
+const allB = [];
 function beginB(color) { curB = { parts: [], colliders: [], color, hp: 0, dead: false }; }
 function endB() {
   const b = curB; curB = null;
@@ -271,6 +272,7 @@ function endB() {
   }
   b.base = Math.max(b.minY, heightAt((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) - 0.5);
   b.hp = b.maxHp = vol / 20;
+  allB.push(b);
 }
 let scarTex = null;
 function scarMaterial() {
@@ -334,7 +336,8 @@ export function collapseBuilding(b, lx = 0, lz = 0) {
   sfx.boom();
   for (const s of scars) if (s.b === b) G.scene.remove(s.m);
   for (const sp of b.extras || []) sp.visible = false;
-  for (let i = G.interacts.length - 1; i >= 0; i--) if (G.interacts[i].b === b) G.interacts.splice(i, 1);
+  b.lostInteracts = [];
+  for (let i = G.interacts.length - 1; i >= 0; i--) if (G.interacts[i].b === b) b.lostInteracts.push(...G.interacts.splice(i, 1));
   // knock over anyone standing right next to it
   for (const ch of G.characters) {
     if (ch.vehicle || ch.isRemote || ch.ragdoll) continue;
@@ -368,10 +371,31 @@ function updateCollapses(dt) {
     if (b.dustT <= 0) { b.dustT = 0.12; dust(_hp.set(rand(b.x0 - 3, b.x1 + 3), b.base + rand(0, 3), rand(b.z0 - 3, b.z1 + 3)), 2, 1.5 + H / 40); }
     if (e >= 1) {
       collapsing.splice(i, 1);
-      addCollider(b.x0 + 1, b.base - 1, b.z0 + 1, b.x1 - 1, b.base + Math.max(0.6, H * 0.07) * 0.6, b.z1 - 1, 'rubble');
+      b.rubble = addCollider(b.x0 + 1, b.base - 1, b.z0 + 1, b.x1 - 1, b.base + Math.max(0.6, H * 0.07) * 0.6, b.z1 - 1, 'rubble');
     }
   }
 }
+// Put every fallen building back up (after Kaiju Smash, or from the phone).
+export function rebuildCity() {
+  let n = 0;
+  for (const b of allB) {
+    if (!b.dead || collapsing.includes(b)) continue;
+    for (const r of b.parts) {
+      if (!r.orig) continue;
+      const a = r.mesh.geometry.attributes.position;
+      a.array.set(r.orig, r.start * 3);
+      a.addUpdateRange(r.start * 3, r.count * 3); a.needsUpdate = true;
+    }
+    for (const c of b.colliders) c.off = false;
+    if (b.rubble) { b.rubble.off = true; b.rubble = null; }
+    for (const sp of b.extras || []) sp.visible = true;
+    if (b.lostInteracts) { G.interacts.push(...b.lostInteracts); b.lostInteracts = null; }
+    b.dead = false; b.hp = b.maxHp; n++;
+  }
+  for (let i = scars.length - 1; i >= 0; i--) { G.scene.remove(scars[i].m); scars.splice(i, 1); }
+  return n;
+}
+G.rebuildCity = rebuildCity;
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const CYL = new THREE.CylinderGeometry(1, 1, 1, 16);
