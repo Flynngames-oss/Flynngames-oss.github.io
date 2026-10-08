@@ -41,10 +41,13 @@ import { updateGadgets, grappleKey } from './gadgets.js';
 import { updateBattle, cutsceneCamera, skipCutscene } from './boss.js';
 import { initCreatures, updateCreatures } from './creatures.js';
 import { loadPhotos } from './photos.js';
+import { touch, initTouch, updateTouch } from './touch.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
-const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+// phones and tablets start with touch controls; laptops and Chromebooks with touchscreens switch over when you touch the screen
+let isTouch = matchMedia('(pointer: coarse)').matches;
+const isChromebook = /CrOS/.test(navigator.userAgent);
 
 // ---------------------------------------------------------------- setup
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: 'high-performance' });
@@ -265,7 +268,6 @@ G.spawnMyVehicle = (id) => {
 
 // ---------------------------------------------------------------- input
 const K = G.keys;
-const touch = { mx: 0, my: 0, look: null };
 addEventListener('keydown', (e) => {
   if (G.ui.chatOpen) return;
   if (e.code === 'Tab') e.preventDefault();
@@ -339,44 +341,24 @@ addEventListener('mousemove', (e) => {
 });
 addEventListener('wheel', (e) => { if (G.started && !G.ui.panel) G.cam.dist = clamp(G.cam.dist + Math.sign(e.deltaY) * 0.8, 3, 18); }, { passive: true });
 
-// Touch controls
-if (isTouch) {
-  document.body.classList.add('touch');
-  const stick = $('stick'), knob = $('stickKnob');
-  let sid = null;
-  const setStick = (e) => {
-    const r = stick.getBoundingClientRect();
-    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
-    const d = Math.hypot(dx, dy), m = r.width / 2;
-    if (d > m) { dx *= m / d; dy *= m / d; }
-    touch.mx = dx / m; touch.my = -dy / m;
-    knob.style.left = (45 + dx) + 'px'; knob.style.top = (45 + dy) + 'px';
-  };
-  stick.addEventListener('pointerdown', (e) => { sid = e.pointerId; stick.setPointerCapture(sid); setStick(e); initAudio(); });
-  stick.addEventListener('pointermove', (e) => { if (e.pointerId === sid) setStick(e); });
-  const endStick = () => { sid = null; touch.mx = touch.my = 0; knob.style.left = knob.style.top = '45px'; };
-  stick.addEventListener('pointerup', endStick); stick.addEventListener('pointercancel', endStick);
-  document.querySelectorAll('#tbtns button').forEach(b => {
-    const k = b.dataset.k;
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); initAudio();
-      if (k === 'Grab') { if (player.weapon && !player.vehicle) { G.mouse.fire = true; return; } G.mouse.grabLock = false; G.mouse.grab = true; return; }
-      if (G.ui.fishing && k === 'Space') { touch.reel = true; return; }
-      K[k] = true; onKey(k);
-    });
-    const up = () => { if (k === 'Grab') { G.mouse.grab = false; G.mouse.fire = false; } else { K[k] = false; if (k === 'KeyR') player.holdRag = false; } touch.reel = false; };
-    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
-  });
-  canvas.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') touch.look = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!touch.look || e.pointerId !== touch.look.id) return;
-    G.cam.yaw -= (e.clientX - touch.look.x) * 0.006;
-    G.cam.pitch = clamp(G.cam.pitch + (e.clientY - touch.look.y) * 0.004, G.cam.fp ? -1.45 : -0.35, G.cam.fp ? 1.45 : 1.35);
-    touch.look.x = e.clientX; touch.look.y = e.clientY; G.cam.lastMouse = G.time;
-  });
-  const endLook = () => { touch.look = null; };
-  canvas.addEventListener('pointerup', endLook); canvas.addEventListener('pointercancel', endLook);
+// Touch controls (phones and tablets): see touch.js. Touch the screen to switch to them, press a key to switch back.
+let touchReady = false;
+function setTouchMode(on) {
+  isTouch = on;
+  if (on && !touchReady) {
+    touchReady = true;
+    initTouch({ K, player, onKey, canvas, initAudio });
+    // no accidental page zooming on iPhones
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('dblclick', (e) => { if (isTouch) e.preventDefault(); }, { passive: false });
+  }
+  document.body.classList.toggle('touch', on);
+  $('touch').classList.toggle('hidden', !on || !G.started);
+  if (on && document.pointerLockElement) document.exitPointerLock();
 }
+if (isTouch) setTouchMode(true);
+addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' && !isTouch) setTouchMode(true); }, true);
+addEventListener('keydown', (e) => { if (isTouch && touchReady && !G.ui.chatOpen && !matchMedia('(pointer: coarse)').matches && /^(Key[WASDEFRG]|Arrow|Space|Tab)/.test(e.code)) setTouchMode(false); }, true);
 
 // ---------------------------------------------------------------- interactions
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _u = new THREE.Vector3();
@@ -752,6 +734,8 @@ function buildTitle() {
     return G.save.name;
   };
   const btns = ['btnSolo', 'btnHost', 'btnJoin'];
+  // phones and tablets: go full screen and sideways when you start (Android and iPad; on iPhone use "Add to Home Screen")
+  if (isTouch) for (const id of btns) $(id).addEventListener('click', goFullscreen, true);
   const busy = (b) => btns.forEach(id => $(id).disabled = b);
   $('btnSolo').onclick = () => { readName(); startGame(); };
   $('btnHost').onclick = () => {
@@ -807,11 +791,17 @@ function applyGraphics() {
   G.fogBaseFar = high ? 1500 : 1050;
   G.landFog.far = G.fogBaseFar;
 }
-if (!G.save.gfx) G.save.gfx = isTouch ? 'low' : 'high';
+if (!G.save.gfx) G.save.gfx = isTouch || isChromebook ? 'low' : 'high';
 applyGraphics();
 
+function goFullscreen() {
+  const d = document.documentElement, req = d.requestFullscreen || d.webkitRequestFullscreen;
+  if (!req || document.fullscreenElement || document.webkitFullscreenElement) return;
+  try { const r = req.call(d, { navigationUI: 'hide' }); if (r && r.then) r.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {}); } catch (e) { /* not allowed here */ }
+}
 function startGame() {
   initAudio();
+  document.body.classList.add('ingame');
   if (G.save.music !== false) setMusic(true);
   G.started = true;
   $('title').classList.add('hidden');
@@ -847,10 +837,9 @@ function controlPlayer(dt) {
       if (v.type.plane && !blocked) {
         // planes: arrow keys fly (↑ nose up, ↓ nose down, ←/→ bank), W/S throttle
         const ax = (K.ArrowRight ? 1 : 0) - (K.ArrowLeft ? 1 : 0) + (K.KeyD ? 1 : 0) - (K.KeyA ? 1 : 0) + touch.mx;
-        inp = { throttle: clamp((K.KeyW ? 1 : 0) - (K.KeyS ? 1 : 0) + touch.my, -1, 1), steer: -clamp(ax, -1, 1), up: !!K.ArrowUp || !!space, down: !!K.ArrowDown || shift };
+        inp = { throttle: clamp((K.KeyW ? 1 : 0) - (K.KeyS ? 1 : 0) + (isTouch ? 0 : touch.my), -1, 1), steer: -clamp(ax, -1, 1), up: !!K.ArrowUp || !!space || (isTouch && touch.my > 0.3), down: !!K.ArrowDown || shift || (isTouch && touch.my < -0.3) };
       }
       p.prevSpace = space;
-      if (isTouch && v.type.heli) { inp.up = touch.my > 0.6; }
       v.drive(dt, inp);
       if (v.type.fighter && !blocked && (K.KeyF || G.mouse.fire)) fireCannon(v);
       v.hitThings((ch, imp) => NET.send({ t: 'hit', to: ch.netId, imp: [imp.x, imp.y, imp.z] }));
@@ -1020,16 +1009,17 @@ function updateNPCs(dt) {
 }
 
 function updatePrompt() {
-  if (!G.started || G.ui.panel || G.ui.help) { UI.setPrompt(null); return; }
+  const setPrompt = (t) => { G.promptRaw = t; UI.setPrompt(t); };
+  if (!G.started || G.ui.panel || G.ui.help) { setPrompt(null); return; }
   const p = player;
-  if (p.vehicle) { UI.setPrompt(`<b>E</b> Get out`); return; }
-  if (p.ragdoll) { UI.setPrompt(p.holdRag ? 'Wheee! Release <b>R</b> to get up' : null); return; }
+  if (p.vehicle) { setPrompt(`<b>E</b> Get out`); return; }
+  if (p.ragdoll) { setPrompt(p.holdRag ? 'Wheee! Release <b>R</b> to get up' : null); return; }
   const it = nearestInteract();
-  if (it) { UI.setPrompt(`<b>E</b> ${it.label()}`); return; }
+  if (it) { setPrompt(`<b>E</b> ${it.label()}`); return; }
   const v = nearestVehicle();
-  if (v) { UI.setPrompt(`<b>E</b> ${v.type.prompt ? v.type.prompt : (!v.remoteDriver && !v.occupants[0]) ? 'Drive' : 'Ride in'} ${v.type.prompt ? '' : v.type.emo + ' ' + v.type.name}`); return; }
-  if (p.held) { UI.setPrompt(G.mouse.grabLock ? 'Holding — <b>Click</b> to throw' : 'Release to throw'); return; }
-  UI.setPrompt(null);
+  if (v) { setPrompt(`<b>E</b> ${v.type.prompt ? v.type.prompt : (!v.remoteDriver && !v.occupants[0]) ? 'Drive' : 'Ride in'} ${v.type.prompt ? '' : v.type.emo + ' ' + v.type.name}`); return; }
+  if (p.held) { setPrompt(G.mouse.grabLock ? 'Holding — <b>Click</b> to throw' : 'Release to throw'); return; }
+  setPrompt(null);
 }
 
 function updateRemoteExtras() {
@@ -1122,6 +1112,7 @@ function update(dt) {
     }
     U.rays.value += (rv - U.rays.value) * Math.min(1, dt * 3);
   }
+  if (isTouch) updateTouch(dt, G.started ? G.promptRaw : null);
   if (G.started) {
     UI.updateHUD();
     if (frame % 2 === 0) UI.drawMinimap();
