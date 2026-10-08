@@ -9,7 +9,7 @@
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "./js/net.js": "./js/net.js?v=1"
+    "./js/net.js": "./js/net.js?v=2"
 } }
 </script>
 <style>
@@ -53,23 +53,29 @@ label { display: block; font-size: 12px; font-weight: 800; color: #5d6780; text-
 #feed { position: absolute; top: 64px; left: 12px; display: flex; flex-direction: column; gap: 4px; }
 #feed div { background: rgba(15, 25, 50, .45); border-radius: 8px; padding: 4px 10px; animation: fade 4s forwards; }
 @keyframes fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
-#help { bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 13px; white-space: nowrap; }
+#help { bottom: 84px; left: 50%; transform: translateX(-50%); font-size: 13px; white-space: nowrap; }
+#hotbar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; pointer-events: auto; background: rgba(15, 25, 50, .45); padding: 6px; border-radius: 12px; }
+.slot { position: relative; width: 48px; height: 48px; border-radius: 8px; border: 3px solid transparent; background: rgba(255, 255, 255, .15); padding: 5px; }
+.slot span { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; border-radius: 4px; font-size: 20px; }
+.slot small { position: absolute; top: 1px; left: 4px; font-size: 10px; color: #fff; text-shadow: 0 1px 2px #000; }
+.slot.on { border-color: #fff; background: rgba(255, 255, 255, .35); }
+#resetBtn { position: absolute; top: 12px; right: 200px; pointer-events: auto; border: 0; border-radius: 8px; background: rgba(15, 25, 50, .45); color: #fff; padding: 8px 12px; font-weight: 800; font-size: 13px; }
 #banner { position: absolute; top: 40%; left: 0; right: 0; text-align: center; font-size: 34px; font-weight: 900; }
 
 #touch { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
 #stick { position: absolute; left: 24px; bottom: 24px; width: 130px; height: 130px; border-radius: 50%; background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .5); pointer-events: auto; }
 #knob { position: absolute; left: 40px; top: 40px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, .7); }
 .tbtn { position: absolute; width: 74px; height: 74px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .25); color: #fff; font-weight: 900; pointer-events: auto; }
-#tjump { right: 24px; bottom: 30px; }
-#tshove { right: 110px; bottom: 60px; }
-@media (max-width: 600px) { #help { display: none; } #board { min-width: 130px; font-size: 13px; } }
+#stick { bottom: 90px; }
+#tjump { right: 24px; bottom: 100px; }
+@media (max-width: 700px) { #help { display: none; } #board { min-width: 120px; font-size: 13px; } #resetBtn { top: auto; bottom: 200px; right: 12px; } .slot { width: 30px; height: 36px; padding: 3px; } .slot small { display: none; } .slot span { font-size: 14px; } }
 </style>
 </head>
 <body>
 <div id="menu">
   <div class="card">
     <h1>Sky Room</h1>
-    <p class="sub">Hang out on a floating island with friends. Shove them off the edge!</p>
+    <p class="sub">A floating island in the sky. Build anything you like, together with friends.</p>
     <label for="name">Your name</label>
     <input id="name" class="field" maxlength="14" autocomplete="off" placeholder="Player">
     <label>Colour</label>
@@ -92,16 +98,17 @@ label { display: block; font-size: 12px; font-weight: 800; color: #5d6780; text-
   <div id="room" class="box"><span>Room <b id="roomCode"></b></span><button id="copyBtn">Copy invite link</button></div>
   <div id="board" class="box"></div>
   <div id="feed"></div>
-  <div id="help" class="box">WASD move · Space jump · F or click shove · drag or arrow keys to look</div>
+  <div id="help" class="box">WASD move · Space jump · click build · right-click break · 1-0 pick block · Q break mode · drag to look</div>
+  <div id="hotbar"></div>
+  <button id="resetBtn">New island</button>
   <div id="banner"></div>
 </div>
 
 <div id="touch" class="hidden">
   <div id="stick"><div id="knob"></div></div>
-  <button class="tbtn" id="tshove">SHOVE</button>
   <button class="tbtn" id="tjump">JUMP</button>
 </div>
 
-<script type="module" src="js/main.js?v=1"></script>
+<script type="module" src="js/main.js?v=2"></script>
 </body>
 </html>

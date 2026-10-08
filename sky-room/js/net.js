@@ -54,8 +54,9 @@ function connectBroker(url, ms = 10000) {
   });
 }
 
-export function createNet({ app, onMessage = () => {}, onLeave = () => {}, onDisconnected = () => {} }) {
-  const net = { id: '', code: '', mode: 'solo', transport: null };
+export function createNet({ app, onMessage = () => {}, onLeave = () => {}, onDisconnected = () => {}, hostOnly = [] }) {
+  // hostOnly: message types the host handles itself and does NOT pass on (e.g. requests it validates first)
+  const net = { id: '', code: '', mode: 'solo', transport: null, hostId: '' };
   const conns = new Map();   // host: player id -> { relay, send(msg), seen }
   let mq = null, key = null, base = '', peer = null, hostConn = null, lastHeard = 0;
 
@@ -99,7 +100,7 @@ export function createNet({ app, onMessage = () => {}, onLeave = () => {}, onDis
     if (msg.t === 'ping') return;
     if (msg.to && msg.to !== net.id) { const d = conns.get(msg.to); if (d) d.send(msg); return; }
     deliver(msg);
-    if (!msg.to) hostBroadcast(msg, from);
+    if (!msg.to && !hostOnly.includes(msg.t)) hostBroadcast(msg, from);
   }
   function drop(id) {
     if (!conns.has(id)) return;
@@ -111,7 +112,7 @@ export function createNet({ app, onMessage = () => {}, onLeave = () => {}, onDis
   net.host = (status) => new Promise(async (resolve, reject) => {
     if (typeof window.mqtt === 'undefined' && typeof window.Peer !== 'function') { reject(new Error('Multiplayer failed to load. Check your internet connection.')); return; }
     const code = randomCode();
-    net.code = code; net.id = 'h_' + rid();
+    net.code = code; net.id = net.hostId = 'h_' + rid();
     let ready = false;
     const done = (how) => { if (ready) return; ready = true; net.mode = 'host'; net.transport = how; resolve(code); };
     await roomCrypto(code);
@@ -191,7 +192,7 @@ export function createNet({ app, onMessage = () => {}, onLeave = () => {}, onDis
         ask(); setTimeout(ask, 1500); setTimeout(ask, 4000); setTimeout(ask, 7000);
       });
       if (ok) {
-        net.mode = 'client'; net.code = code; net.transport = 'relay';
+        net.mode = 'client'; net.code = code; net.transport = 'relay'; net.hostId = hostId;
         const watch = setInterval(() => {
           if (performance.now() - lastHeard > DROP_MS) { clearInterval(watch); onDisconnected(); return; }
           publish(base + '/h', { t: 'ping', from: net.id });
@@ -220,7 +221,7 @@ export function createNet({ app, onMessage = () => {}, onLeave = () => {}, onDis
         hostConn.on('open', () => {
           if (done) return;
           done = true; clearTimeout(timer);
-          net.mode = 'client'; net.code = code; net.transport = 'direct';
+          net.mode = 'client'; net.code = code; net.transport = 'direct'; net.hostId = hostConn.peer;
           resolve();
         });
         hostConn.on('data', (m) => {
