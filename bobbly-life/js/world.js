@@ -1,6 +1,6 @@
 // Builds Bobbly Town: ground, roads, buildings, colliders, trees, day/night.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, mat, textSprite, noEmoji, rand, pick, clamp, lerp, LAND, WATER_Y, addMoney, writeSave } from './state.js';
 import { rockTexture, sandTexture, woodTexture, interiorWallTexture } from './textures.js';
 const dayMats = [];
@@ -932,28 +932,34 @@ function shadeGeo(g, lo, hi, y0, y1, seed) {
   g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   return g;
 }
+// round, smooth shading for a sphere-ish shape: every normal points out from its centre (no visible facets)
+function roundNormals(g, cx = 0, cy = 0, cz = 0) {
+  const p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.set(p.getX(i) - cx, p.getY(i) - cy, p.getZ(i) - cz).normalize(); n.setXYZ(i, v.x, v.y, v.z); }
+  return g;
+}
 function blobCrown() {
   const parts = [];
-  const blobs = [[0, 0.08, 0, 0.78], [0.5, -0.14, 0.2, 0.52], [-0.46, -0.1, 0.24, 0.52], [0.04, -0.06, -0.52, 0.54]];
+  const blobs = [[0, 0.08, 0, 0.78], [0.5, -0.14, 0.2, 0.52], [-0.46, -0.1, 0.24, 0.52], [0.04, -0.06, -0.52, 0.54], [0.28, 0.42, -0.12, 0.42], [-0.3, 0.36, -0.2, 0.4], [0.1, -0.2, 0.55, 0.42]];
   for (const [x, y, z, r] of blobs) {
-    const g = new THREE.IcosahedronGeometry(r, 1);
+    const g = new THREE.IcosahedronGeometry(r, 2);
     const pp = g.attributes.position;
     for (let i = 0; i < pp.count; i++) { const k = 1 + (hash3(pp.getX(i) * 5 + x, pp.getY(i) * 5, pp.getZ(i) * 5) - 0.5) * 0.12; pp.setXYZ(i, pp.getX(i) * k, pp.getY(i) * k, pp.getZ(i) * k); }
+    roundNormals(g);                  // each puff is a smooth ball...
     g.translate(x, y, z);
     parts.push(g);
   }
   const g = mergeGeometries(parts.map(q => q.index ? q.toNonIndexed() : q));
-  g.computeVertexNormals();
-  // smooth, rounded shading: point the normals away from the crown's centre
-  const p = g.attributes.position, n = g.attributes.normal;
-  for (let i = 0; i < p.count; i++) { const v = new THREE.Vector3(p.getX(i), p.getY(i) + 0.15, p.getZ(i)).normalize(); const o = new THREE.Vector3(n.getX(i), n.getY(i), n.getZ(i)).lerp(v, 0.6).normalize(); n.setXYZ(i, o.x, o.y, o.z); }
+  // ...blended with the whole crown's roundness so it's lit like one fluffy shape
+  const p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), o = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.set(p.getX(i), p.getY(i) + 0.15, p.getZ(i)).normalize(); o.set(n.getX(i), n.getY(i), n.getZ(i)).lerp(v, 0.45).normalize(); n.setXYZ(i, o.x, o.y, o.z); }
   return shadeGeo(g, 0.62, 1.0, -0.7, 0.9, 1);
 }
 function conePine(snow) {
   const parts = [];
   const tiers = [[-0.5, 0.42, 1.0], [-0.18, 0.4, 0.78], [0.12, 0.38, 0.56]];
   for (const [y, h, r] of tiers) {
-    const g = new THREE.ConeGeometry(r, h * 1.25, 9, 1);
+    const g = new THREE.ConeGeometry(r, h * 1.25, 16, 1);
     g.translate(0, y + h * 0.62, 0);
     const p = g.attributes.position, c = new Float32Array(p.count * 3);
     for (let i = 0; i < p.count; i++) {
@@ -989,10 +995,10 @@ function treeMat() {
 const FUNKY_COLS = ['#ff6fb8', '#b97aff', '#3fd8c8', '#ffa03a', '#c8f04a', '#ff5a7a', '#7ab8ff'];
 const TREE_CHUNK = 140;
 function buildTrees() {
-  const trunkG = new THREE.CylinderGeometry(0.2, 0.34, 1, 8, 1);
+  const trunkG = new THREE.CylinderGeometry(0.2, 0.34, 1, 12, 1);
   const pg = conePine(false), sg = conePine(true), cg = blobCrown();
   const geo = { round: cg, funky: cg, pine: pg, snow: sg };
-  const lowCrown = shadeGeo(new THREE.IcosahedronGeometry(0.85, 1).translate(0, 0.05, 0), 0.62, 1.0, -0.7, 0.9, 1);
+  const lowCrown = shadeGeo(roundNormals(new THREE.IcosahedronGeometry(0.85, 2)).translate(0, 0.05, 0), 0.62, 1.0, -0.7, 0.9, 1);
   const lowPine = (snow) => { const g = new THREE.ConeGeometry(1.0, 1.0, 7, 1).translate(0, 0, 0).toNonIndexed(); const p = g.attributes.position, c2 = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const v = 0.7 + 0.3 * (p.getY(i) + 0.5); if (snow) c2.set(p.getY(i) > 0.1 ? [0.95, 0.97, 1] : [0.17 * v, 0.38 * v, 0.22 * v], i * 3); else c2.set([v, v, v], i * 3); } g.setAttribute('color', new THREE.BufferAttribute(c2, 3)); g.computeVertexNormals(); return g; };
   const lo = { round: lowCrown, funky: lowCrown, pine: lowPine(false), snow: lowPine(true) };
   const crown = treeMat();
@@ -1066,11 +1072,17 @@ function chunkedInstances(items, parts, layer = 3, size = 160) {
     chunkList.push({ mesh: im, x: bs.center.x, y: bs.center.y, z: bs.center.z, r: bs.radius, layer, lod: P.lo ? { hi: P.geo, lo: P.lo } : null });
   }
 }
+// a smooth lumpy boulder (no sharp facets)
+function smoothRock(seed) {
+  const g = new THREE.IcosahedronGeometry(1, 2), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = 1 + Math.sin(x * 2.3 + seed) * Math.cos(z * 2.1) * 0.12 + Math.sin(y * 3.1 + seed * 2) * 0.06; p.setXYZ(i, x * k, y * k * 0.85, z * k); }
+  const m = mergeVertices(g); m.computeVertexNormals(); return m;
+}
 // Cacti and rocks: simple instanced decorations with small colliders.
 function buildInstanced(list, parts) {
   if (!list.length) return;
   for (const [geo, color, tf] of parts) {
-    const im = new THREE.InstancedMesh(geo, mat(color, { flatShading: true }), list.length);
+    const im = new THREE.InstancedMesh(geo, mat(color), list.length);
     list.forEach((d, i) => { tf(d, _m); im.setMatrixAt(i, _m); });
     im.castShadow = true; im.receiveShadow = true;
     im.computeBoundingSphere();
@@ -1104,12 +1116,12 @@ function buildWilderness() {
   }
   const up = new THREE.Vector3(0, 1, 0);
   buildInstanced(cacti, [
-    [new THREE.CylinderGeometry(0.45, 0.5, 1, 8), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x, d.y + 2 * d.s, d.z), _qq, _s.set(d.s, 4 * d.s, d.s)); }],
-    [new THREE.CylinderGeometry(0.3, 0.3, 1, 8), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x + Math.cos(d.a) * 0.8 * d.s, d.y + 2.6 * d.s, d.z - Math.sin(d.a) * 0.8 * d.s), _qq, _s.set(d.s, 1.6 * d.s, d.s)); }],
-    [new THREE.CylinderGeometry(0.3, 0.3, 1, 8), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x - Math.cos(d.a) * 0.8 * d.s, d.y + 2.1 * d.s, d.z + Math.sin(d.a) * 0.8 * d.s), _qq, _s.set(d.s, 1.3 * d.s, d.s)); }],
+    [new THREE.CylinderGeometry(0.45, 0.5, 1, 14), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x, d.y + 2 * d.s, d.z), _qq, _s.set(d.s, 4 * d.s, d.s)); }],
+    [new THREE.CylinderGeometry(0.3, 0.3, 1, 12), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x + Math.cos(d.a) * 0.8 * d.s, d.y + 2.6 * d.s, d.z - Math.sin(d.a) * 0.8 * d.s), _qq, _s.set(d.s, 1.6 * d.s, d.s)); }],
+    [new THREE.CylinderGeometry(0.3, 0.3, 1, 12), '#3f9e52', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x - Math.cos(d.a) * 0.8 * d.s, d.y + 2.1 * d.s, d.z + Math.sin(d.a) * 0.8 * d.s), _qq, _s.set(d.s, 1.3 * d.s, d.s)); }],
   ]);
   for (const d of cacti) addCollider(d.x - 0.5 * d.s, d.y - 1, d.z - 0.5 * d.s, d.x + 0.5 * d.s, d.y + 4 * d.s, d.z + 0.5 * d.s);
-  buildInstanced(rocks, [[new THREE.DodecahedronGeometry(1, 0), '#9b9186', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x, d.y + d.s * 0.3, d.z), _qq, _s.set(d.s * 1.3, d.s, d.s)); }]]);
+  buildInstanced(rocks, [[smoothRock(1), '#9b9186', (d, m) => { _qq.setFromAxisAngle(up, d.a); m.compose(_p.set(d.x, d.y + d.s * 0.3, d.z), _qq, _s.set(d.s * 1.3, d.s, d.s)); }]]);
   for (const d of rocks) addCollider(d.x - d.s, d.y - 2, d.z - d.s, d.x + d.s, d.y + d.s * 1.1, d.z + d.s);
 }
 
@@ -1132,7 +1144,7 @@ function flowerBed(x, z, w, d, n) { for (let i = 0; i < n; i++) flowerAt(x + (Ma
 function buildDecor() {
   const col = new THREE.Color();
   const stem = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 4), mat('#3f9e52'), flowerPos.length);
-  const head = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.17, 1), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), flowerPos.length);
+  const head = new THREE.InstancedMesh(roundNormals(new THREE.IcosahedronGeometry(0.17, 2)), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), flowerPos.length);
   flowerPos.forEach(([x, z], i) => {
     const y = heightAt(x, z);
     _m.makeTranslation(x, y + 0.25, z); stem.setMatrixAt(i, _m);
@@ -1140,7 +1152,7 @@ function buildDecor() {
     head.setColorAt(i, col.set(FLOWER_COLS[i % FLOWER_COLS.length]));
   });
   for (const im of [stem, head]) { im.receiveShadow = true; im.computeBoundingSphere(); G.scene.add(im); }
-  const bg = blobCrown(), blo = shadeGeo(new THREE.IcosahedronGeometry(0.85, 1), 0.62, 1.0, -0.7, 0.9, 1);
+  const bg = blobCrown(), blo = shadeGeo(roundNormals(new THREE.IcosahedronGeometry(0.85, 2)), 0.62, 1.0, -0.7, 0.9, 1);
   chunkedInstances(bushPos, [{ geo: bg, lo: blo, mat: treeMat(), cast: false,
     matrix: ([x, z, sc], m, i) => { _qq.setFromAxisAngle(UPV, i * 1.7); _p.set(x, heightAt(x, z) + 0.4 * sc, z); _s.set(0.95 * sc, 0.75 * sc, 0.95 * sc); m.compose(_p, _qq, _s); },
     color: (it, i) => col.setHSL(0.26 + (i % 5) * 0.012, 0.6, 0.33 + (i % 3) * 0.04) }]);
@@ -1504,14 +1516,14 @@ function buildPalms() {
   // one frond geometry: 8 drooping leaves merged
   const leaves = [];
   for (let k = 0; k < 8; k++) {
-    const g = new THREE.ConeGeometry(0.55, 4.2, 4);
+    const g = new THREE.ConeGeometry(0.55, 4.2, 8, 3);
     g.rotateX(Math.PI / 2); g.translate(0, 0, 2.1); g.rotateX(0.35); g.scale(1, 0.25, 1); g.rotateY(k * Math.PI / 4);
     leaves.push(g.index ? g.toNonIndexed() : g);
   }
   const crownG = mergeGeometries(leaves);
   crownG.computeVertexNormals();
-  const crownM = new THREE.MeshStandardMaterial({ color: '#4fb83a', roughness: 0.8, flatShading: true, side: THREE.DoubleSide });
-  const trunkM = new THREE.MeshStandardMaterial({ color: '#a8845a', roughness: 0.9 }), trunkG = new THREE.CylinderGeometry(0.22, 0.34, 1, 7);
+  const crownM = new THREE.MeshStandardMaterial({ color: '#4fb83a', roughness: 0.8, side: THREE.DoubleSide });
+  const trunkM = new THREE.MeshStandardMaterial({ color: '#a8845a', roughness: 0.9 }), trunkG = new THREE.CylinderGeometry(0.22, 0.34, 1, 12);
   for (const [x, z, sc] of palmPos) { const y = heightAt(x, z), h = 11 * sc; addCollider(x - 0.35, y - 1, z - 0.35, x + 0.35, y + h, z + 0.35, 'tree'); }
   chunkedInstances(palmPos, [
     { geo: trunkG, mat: trunkM, cast: true, matrix: ([x, z, sc, a], m) => { const y = heightAt(x, z), h = 11 * sc; _qq.setFromEuler(_e.set(0, a, 0.04)); m.compose(_p.set(x, y + h / 2, z), _qq, _s.set(1, h, 1)); } },

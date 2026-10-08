@@ -374,7 +374,7 @@ function nearestVehicle() {
   for (const v of G.vehicles) {
     if (v.display) continue;
     const d = Math.hypot(player.root.x - v.pos.x, player.root.z - v.pos.z);
-    const reach = v.type.len / 2 + 2;
+    const reach = v.type.len / 2 + 2.8; // a freshly spawned vehicle (len / 2 + 2.5 away) is in reach
     if (d < reach && Math.abs(player.root.y - v.pos.y) < 3 && d < bd) {
       if (v.canBoard && !v.canBoard()) continue;
       const free = v.occupants.some((o, i) => !o && (i > 0 || !v.remoteDriver));
@@ -546,6 +546,8 @@ function removeRemote(id) {
   const r = G.remotes.get(id);
   if (!r) return;
   for (const v of G.vehicles) if (v.remoteDriver === id) v.remoteDriver = null;
+  // their own spawned vehicles leave with them (unless someone is still sitting in one)
+  for (const v of G.vehicles.filter(v => v.owner === id && !v.occupants.some(o => o))) v.destroy();
   if (r.heldMesh) G.scene.remove(r.heldMesh);
   r.destroy();
   G.remotes.delete(id);
@@ -566,8 +568,9 @@ function updateRoomInfo() {
 NET.on('hello', (m) => {
   if (G.net.mode === 'host' && ADMIN.isBanned(m.did)) { NET.kick(m.from, 'banned'); return; }
   const r = addRemote(m.from, m.name, m.outfit, m.did);
-  UI.toast(`👋 ${m.name} joined the game!`);
-  UI.chatLine('🌐', `${m.name} joined`, '#9be05a');
+  const who = r ? r.name : cleanName(m.name);
+  UI.toast(`👋 ${who} joined the game!`);
+  UI.chatLine('🌐', `${who} joined`, '#9be05a');
   if (G.net.mode === 'host') {
     const players = [{ id: G.net.myId, name: G.save.name, outfit: G.save.outfit, did: G.save.deviceId }];
     for (const [id, rr] of G.remotes) if (id !== m.from) players.push({ id, name: rr.name, outfit: rr.outfit, did: rr.did });

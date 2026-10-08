@@ -97,6 +97,12 @@ function talkFlynn() {
 }
 
 // ---------------------------------------------------------------- George + the runaway drone
+// a smooth leafy ball (normals point straight out, so no facets show)
+function roundBall(r) {
+  const g = new THREE.IcosahedronGeometry(r, 3), p = g.attributes.position, n = g.attributes.normal;
+  for (let i = 0; i < p.count; i++) { const l = Math.hypot(p.getX(i), p.getY(i), p.getZ(i)); n.setXYZ(i, p.getX(i) / l, p.getY(i) / l, p.getZ(i) / l); }
+  return g;
+}
 function buildTreehouse(x, z) {
   const y = heightAt(x, z);
   const bark = new THREE.MeshLambertMaterial({ color: '#5a4030' }), wood = new THREE.MeshLambertMaterial({ color: '#a0703a' }), plank = new THREE.MeshLambertMaterial({ color: '#8a5a2b' });
@@ -105,7 +111,7 @@ function buildTreehouse(x, z) {
   const add = (geo, m, px, py, pz, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(px, py, pz); o.rotation.set(rx, ry, rz); o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
   add(new THREE.CylinderGeometry(1.1, 1.8, 16, 12), bark, 0, 8, 0);
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; add(new THREE.CylinderGeometry(0.25, 0.45, 5, 6), bark, Math.cos(a) * 2, 12 + (i % 2), Math.sin(a) * 2, Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9); }
-  for (let i = 0; i < 9; i++) add(new THREE.IcosahedronGeometry(rand(3, 4.5), 1), leaf, rand(-4, 4), 16 + rand(-1, 3), rand(-4, 4));
+  for (let i = 0; i < 9; i++) add(roundBall(rand(3, 4.5)), leaf, rand(-4, 4), 16 + rand(-1, 3), rand(-4, 4));
   const PY = 9;   // platform height
   add(new THREE.BoxGeometry(8, 0.4, 8), plank, 0, PY, 0);
   for (const [px, pz, sx, sz] of [[0, 4, 8, 0.15], [0, -4, 8, 0.15], [4, 0, 0.15, 8], [-4, 0, 0.15, 8]]) add(new THREE.BoxGeometry(sx, 1, sz), wood, px, PY + 0.7, pz);
