@@ -12,17 +12,19 @@ import { LOC } from './world.js';
 
 const PUB = {"kty": "EC", "crv": "P-256", "x": "uLuCSYs7P2Si6FsK_ZOlUE9VZqTku3DphYhhPdumCh4", "y": "9PsbqWWrjn1TrvDkXaRTjjrxPD5a4FgM8TVYjvqvnpE"};
 const VAULT = {"salt": "ycHcMqHRku3EicOrJExzsw==", "iv": "vTiHcB3hchiruxXq", "data": "Rr8wVWmEcY59cERjDN+bfgNKlcbsB5DwGI7ihzUtMAKVGyCYBIU3oGsxrvGtgqiJSMDy85/VSB5AaY70Urqs5OcQruYmNgu2Qr6GZhaiYTAsZkek/KbJ9MzDLIKvxA+Z78xk0hvhNBGbEyAExqD2qQAeqs8XaM6OAnkXbMqDUZQpcr371+nBev6XcXfdBUjOTjRmc/NEGbm4WA==", "iter": 400000};
-const S = crypto.subtle, te = new TextEncoder();
+// crypto.subtle is missing outside secure contexts (plain http), so the game must still run without it
+const S = (globalThis.crypto && crypto.subtle) || null, te = new TextEncoder();
 const b64 = (u) => btoa(String.fromCharCode(...new Uint8Array(u)));
 const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const REMEMBER = 'bobblylife-admin-key';
 let priv = null;
-const pubKey = S.importKey('jwk', { ...PUB, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+const pubKey = S && S.importKey('jwk', { ...PUB, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
 export const isAdmin = () => !!priv;
 
 // ---------------------------------------------------------------- unlocking
 async function importPriv(pk8) { return S.importKey('pkcs8', pk8, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']); }
 export async function unlock(pw, remember) {
+  if (!S) return false;
   try {
     const base = await S.importKey('raw', te.encode(pw.trim()), 'PBKDF2', false, ['deriveKey']);
     const aes = await S.deriveKey({ name: 'PBKDF2', salt: unb64(VAULT.salt), iterations: VAULT.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
@@ -34,6 +36,7 @@ export async function unlock(pw, remember) {
   } catch (e) { return false; }
 }
 export async function restore() {
+  if (!S) return false;
   try { const s = localStorage.getItem(REMEMBER); if (s) { priv = await importPriv(unb64(s)); return true; } } catch (e) { /* ignore */ }
   return false;
 }
@@ -49,7 +52,7 @@ async function signed(cmd, args = {}) {
 }
 async function verify(m) {
   try {
-    if (!m || !m.c || typeof m.sig !== 'string' || seen.has(m.c.n)) return false;
+    if (!pubKey || !m || !m.c || typeof m.sig !== 'string' || seen.has(m.c.n)) return false;
     const ok = await S.verify({ name: 'ECDSA', hash: 'SHA-256' }, await pubKey, unb64(m.sig), te.encode(canon(m.c)));
     if (ok) seen.add(m.c.n);
     return ok;

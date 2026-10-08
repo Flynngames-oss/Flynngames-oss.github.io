@@ -53,8 +53,8 @@ const CAPS = new THREE.CapsuleGeometry(0.43, 0.6, 6, 16);
 const HEADG = new THREE.SphereGeometry(0.45, 28, 20);
 const HEAD_SCALE = [1, 1.1, 0.97];
 const HIPS = new THREE.CylinderGeometry(0.43, 0.4, 0.42, 16);
-const LIMB = new THREE.CylinderGeometry(1, 1, 1, 8);
-const BALL = new THREE.SphereGeometry(1, 10, 8);
+const LIMB = new THREE.CylinderGeometry(1, 1, 1, 16);
+const BALL = new THREE.SphereGeometry(1, 18, 14);
 const HALFBALL = new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3();
 const _right = new THREE.Vector3(), _up = new THREE.Vector3(), _fwd = new THREE.Vector3();
@@ -331,8 +331,10 @@ function printTexture() {
 }
 // Cartoon face painted onto a cap that wraps the front of the head: big shiny oval eyes and a wide open smile.
 const FACE_TEX = {};
-function faceTexture(eyes) {
-  if (FACE_TEX[eyes]) return FACE_TEX[eyes];
+// look: '' normal, 'blink' eyes shut for a moment, 'shock' wide eyes and an O mouth (flying, falling, ragdolling)
+function faceTexture(eyes, look = '') {
+  const key = eyes + look;
+  if (FACE_TEX[key]) return FACE_TEX[key];
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const x = c.getContext('2d');
   const ex = [82, 174], ey = 122;
@@ -340,7 +342,21 @@ function faceTexture(eyes) {
   // rosy cheeks
   for (const cx of [58, 198]) { const g = x.createRadialGradient(cx, 168, 2, cx, 168, 26); g.addColorStop(0, 'rgba(255,120,110,0.42)'); g.addColorStop(1, 'rgba(255,120,110,0)'); x.fillStyle = g; x.fillRect(cx - 30, 138, 60, 60); }
   const big = eyes === 'big' ? 1.18 : 1;
+  if (look === 'shock') {
+    for (const cx of ex) { oval(cx, ey - 4, 23, 27, '#ffffff'); x.strokeStyle = '#17110f'; x.lineWidth = 5; x.beginPath(); x.ellipse(cx, ey - 4, 23, 27, 0, 0, Math.PI * 2); x.stroke(); oval(cx, ey - 2, 9, 11, '#17110f'); oval(cx + 3, ey - 6, 3, 3.5, '#ffffff'); }
+    x.strokeStyle = '#17110f'; x.lineWidth = 6; x.lineCap = 'round';
+    for (const cx of ex) { x.beginPath(); x.arc(cx, ey - 30, 18, Math.PI * 1.2, Math.PI * 1.8); x.stroke(); }
+    oval(128, 196, 20, 24, '#4a1018'); oval(128, 206, 12, 10, '#ff6b7a');
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return (FACE_TEX[key] = t);
+  }
   for (const cx of ex) {
+    if (look === 'blink' && eyes !== 'happy') {
+      x.strokeStyle = '#17110f'; x.lineWidth = 9; x.lineCap = 'round';
+      x.beginPath(); x.arc(cx, ey - 2, 16, Math.PI * 0.15, Math.PI * 0.85); x.stroke();
+      if (eyes === 'angry') { x.lineWidth = 8; x.beginPath(); const s2 = cx < 128 ? 1 : -1; x.moveTo(cx - 20 * s2, ey - 38); x.lineTo(cx + 16 * s2, ey - 26); x.stroke(); }
+      continue;
+    }
     if (eyes === 'happy') {
       x.strokeStyle = '#17110f'; x.lineWidth = 11; x.lineCap = 'round';
       x.beginPath(); x.arc(cx, ey + 12, 17, Math.PI * 1.1, Math.PI * 1.9); x.stroke();
@@ -366,7 +382,7 @@ function faceTexture(eyes) {
     x.restore();
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-  return (FACE_TEX[eyes] = t);
+  return (FACE_TEX[key] = t);
 }
 const FACE_GEO = new THREE.SphereGeometry(0.452, 24, 18, Math.PI / 2 - 0.8, 1.6, 0.55, 1.6);
 function makeFace(eyes) {
@@ -374,7 +390,17 @@ function makeFace(eyes) {
   const m = new THREE.Mesh(FACE_GEO, new THREE.MeshStandardMaterial({ map: faceTexture(eyes || 'round'), transparent: true, alphaTest: 0.3, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -2 }));
   m.scale.set(...HEAD_SCALE);
   g.add(m);
+  g.userData.mesh = m; g.userData.eyes = eyes || 'round'; g.userData.look = '';
   return g;
+}
+// blink every few seconds, and look shocked while flopping or falling fast
+function updateFace(ch, dt) {
+  const f = ch.faceObj; if (!f || !f.userData.mesh) return;
+  ch.blinkT = (ch.blinkT ?? Math.random() * 4) - dt;
+  if (ch.blinkT < -0.13) ch.blinkT = 2 + Math.random() * 3.5;
+  const shock = ch.ragdoll || (ch.isRemote && ch.netRag) || (!ch.grounded && !ch.vehicle && !ch.swimming && ch.vel.y < -9);
+  const look = shock ? 'shock' : ch.blinkT < 0 ? 'blink' : '';
+  if (look !== f.userData.look) { f.userData.look = look; f.userData.mesh.material.map = faceTexture(f.userData.eyes, look); }
 }
 
 export const HAIRS = [
@@ -664,7 +690,7 @@ export class Character {
       if (this.isPlayer) sfx.jump();
     }
     c.jump = false;
-    this.vel.y -= 24 * dt;
+    this.vel.y -= 24 * dt * (G.fun ? G.fun.grav : 1);
     if (this.chute && this.vel.y < -3.5) this.vel.y += (-3.5 - this.vel.y) * Math.min(1, dt * 5);
     const wasGrounded = this.grounded;
     const prevVy = this.vel.y;
@@ -926,6 +952,7 @@ export class Character {
 
   render() {
     const P = this.p;
+    const now = performance.now(); updateFace(this, Math.min(0.1, (now - (this._faceT || now)) / 1000)); this._faceT = now;
     // basis
     _up.subVectors(P[HEAD], P[PEL]);
     if (_up.lengthSq() < 1e-6) _up.set(0, 1, 0);

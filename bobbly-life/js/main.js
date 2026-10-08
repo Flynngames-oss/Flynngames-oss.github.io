@@ -15,7 +15,7 @@ import { initJobs, updateJobs, quitJob, updateFishing, stopFishing } from './job
 import * as UI from './ui.js';
 import * as NET from './net.js';
 import * as ADMIN from './admin.js';
-G.adminSpeedMult = ADMIN.speedMult; G.adminJumpMult = ADMIN.jumpMult;
+G.adminSpeedMult = () => ADMIN.speedMult() * (G.fun ? G.fun.speed : 1); G.adminJumpMult = () => ADMIN.jumpMult() * (G.fun ? G.fun.jump : 1);
 ADMIN.restore();
 import { initAudio, sfx, setEngine, setMusic, musicPlaying, ambience } from './audio.js';
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic } from './traffic.js';
@@ -36,6 +36,7 @@ import { initWeather, updateWeather, weatherNet, applyWeatherNet } from './weath
 import { initTrain, updateTrain, onTrainNet } from './train.js';
 import { initPark, updatePark, onRidesNet } from './park.js';
 import { initModes, updateModes, onModeMsg, startMode, stopMode } from './modes.js';
+import { updateArcade, arcadeKey } from './arcade.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -278,6 +279,7 @@ function onKey(code) {
     if (player.ragdoll) { player.holdRag = false; player.ragMin = Math.min(player.ragMin, player.ragT); }
     else { stopFishing(); player.flop(null, 0.8); player.holdRag = true; }
   }
+  if (arcadeKey(code)) return;
   if (code === 'KeyJ') quitJob();
   if (code === 'KeyN' && G.openMap) { G.openMap(); return; }
   if (code === 'Backquote' && ADMIN.isAdmin()) { if (G.ui.panel) UI.closePanel(); else G.openAdmin(); return; }
@@ -374,7 +376,7 @@ function nearestVehicle() {
   for (const v of G.vehicles) {
     if (v.display) continue;
     const d = Math.hypot(player.root.x - v.pos.x, player.root.z - v.pos.z);
-    const reach = v.type.len / 2 + 2;
+    const reach = v.type.len / 2 + 2.8; // a freshly spawned vehicle (len / 2 + 2.5 away) is in reach
     if (d < reach && Math.abs(player.root.y - v.pos.y) < 3 && d < bd) {
       if (v.canBoard && !v.canBoard()) continue;
       const free = v.occupants.some((o, i) => !o && (i > 0 || !v.remoteDriver));
@@ -546,6 +548,8 @@ function removeRemote(id) {
   const r = G.remotes.get(id);
   if (!r) return;
   for (const v of G.vehicles) if (v.remoteDriver === id) v.remoteDriver = null;
+  // their own spawned vehicles leave with them (unless someone is still sitting in one)
+  for (const v of G.vehicles.filter(v => v.owner === id && !v.occupants.some(o => o))) v.destroy();
   if (r.heldMesh) G.scene.remove(r.heldMesh);
   r.destroy();
   G.remotes.delete(id);
@@ -566,8 +570,9 @@ function updateRoomInfo() {
 NET.on('hello', (m) => {
   if (G.net.mode === 'host' && ADMIN.isBanned(m.did)) { NET.kick(m.from, 'banned'); return; }
   const r = addRemote(m.from, m.name, m.outfit, m.did);
-  UI.toast(`👋 ${m.name} joined the game!`);
-  UI.chatLine('🌐', `${m.name} joined`, '#9be05a');
+  const who = r ? r.name : cleanName(m.name);
+  UI.toast(`👋 ${who} joined the game!`);
+  UI.chatLine('🌐', `${who} joined`, '#9be05a');
   if (G.net.mode === 'host') {
     const players = [{ id: G.net.myId, name: G.save.name, outfit: G.save.outfit, did: G.save.deviceId }];
     for (const [id, rr] of G.remotes) if (id !== m.from) players.push({ id, name: rr.name, outfit: rr.outfit, did: rr.did });
@@ -1060,6 +1065,7 @@ function update(dt) {
     });
     updateJobs(dt);
     updateModes(dt);
+    updateArcade(dt);
   }
   updateRemoteExtras();
   updateWorld(dt, player.vehicle ? player.vehicle.pos : player.pos);
