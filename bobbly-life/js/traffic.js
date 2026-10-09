@@ -75,6 +75,7 @@ export function updateTraffic(dt, onRemoteHit) {
 // Airliners cruising over the island (scenery only)
 const sky = [];
 export function initSkyTraffic() {
+  G.skyTraffic = sky;   // (BobTok films them)
   const am = airlinerModel();
   for (let i = 0; i < 3; i++) {
     const m = meshesFrom(am.parts, airlinerMaterials(i), false);

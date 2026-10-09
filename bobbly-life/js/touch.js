@@ -166,7 +166,9 @@ export function initTouch(api) {
   }
   $('jobQuit') && $('jobQuit').addEventListener('pointerdown', (e) => { e.preventDefault(); A.onKey('KeyJ'); });
   // portrait tip (once per visit)
+  // the tip shows once: gone when you tap OK or when it fades out by itself
   $('rotateOk').addEventListener('click', () => { $('rotateTip').classList.add('gone'); });
+  $('rotateTip').addEventListener('animationend', () => { $('rotateTip').classList.add('gone'); });
 }
 function safe(side) { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sa-' + side)) || 0; }
 

@@ -7,7 +7,8 @@ import { JOBS, startJob } from './jobs.js';
 import { LOC, ROADS, colliders, groundHeight } from './world.js';
 import { PRESENT_SPOTS } from './props.js';
 import { WORLD, heightAt, biome, HIGHWAYS, groundColor, ZONES } from './terrain.js';
-import { sfx } from './audio.js';
+import { sfx, setMusic, musicPlaying } from './audio.js';
+import { renderBobTok, fmt } from './bobtok.js';
 import { WEAPONS } from './weapons.js';
 import { setWeather, forceTornado } from './weather.js';
 import * as ADMIN from './admin.js';
@@ -52,6 +53,8 @@ function onMoney(n, why) {
 // ---------------------------------------------------------------- panels
 export function openPanel(title, render) {
   G.ui.panel = title;
+  const P = $('panel'); P.classList.remove('phone'); for (const c of [...P.classList]) if (c.startsWith('app-')) P.classList.remove(c);
+  G.ui.phoneApp = null;
   $('panelTitle').textContent = title;
   $('panel').classList.remove('hidden');
   G.ui.render = render;
@@ -59,7 +62,7 @@ export function openPanel(title, render) {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 export function closePanel() {
-  G.ui.panel = null;
+  G.ui.panel = null; G.ui.phoneApp = null;
   $('panel').classList.add('hidden');
 }
 function rerender() { if (G.ui.panel && G.ui.render) G.ui.render($('panelBody')); }
@@ -312,16 +315,22 @@ function diveShopPanel() {
 }
 export const openDiveShop = diveShopPanel;
 
-function phonePanel() {
-  openPanel('📱 Bobbly Phone', (el) => {
-    const s = G.save;
-    el.innerHTML = `
+// ---------------------------------------------------------------- the Bobbly Phone: a home screen of apps
+// [id, name, icon, icon colours]
+const APPS = [
+  ['bobtok', 'BobTok', '🎵', '#ff2f6d,#ffb020'], ['garage', 'Garage', '🚗', '#2f6fd8,#38c8ff'], ['map', 'Map', '🗺️', '#2e9e5b,#a8e063'], ['travel', 'Travel', '🚀', '#6a3fc8,#7f9cff'],
+  ['jobs', 'Jobs', '💼', '#e8861a,#ffd200'], ['missions', 'Missions', '💥', '#d8262f,#ff8a65'], ['gadgets', 'Gadgets', '🎒', '#0f8f84,#38ef7d'], ['arcade', 'Arcade', '🕹️', '#8e2de2,#f05aff'],
+  ['weather', 'Weather', '🌦️', '#1f86b0,#6dd5ed'], ['stats', 'Stats', '📊', '#3f4b5a,#8fa3b8'], ['settings', 'Settings', '⚙️', '#33363c,#8a8f98'], ['admin', 'Admin', '👑', '#ffd23f,#ff8a2a'],
+];
+const APP_HTML = {
+  garage: () => { const s = G.save; return `
       <h3>🚗 My Vehicles</h3>
       <div class="grid">${s.ownedCars.map(id => `<div class="item owned" data-car="${id}"><span class="emo">${VTYPES[id].emo}</span>${VTYPES[id].name}<div class="price">Spawn</div></div>`).join('')}</div>
-      ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}
-      <div class="tabs"><button class="btn small green" id="phMap">🗺️ Island Map</button>${ADMIN.isAdmin() ? '<button class="btn small admin-btn" id="phAdmin">👑 Admin Panel</button>' : ''}</div>
+      ${s.ownedWeapons.length ? `<h3>🔫 My Blasters (G to switch)</h3><div class="grid">${s.ownedWeapons.map(id => `<div class="item owned ${G.player.weapon === id ? 'equipped' : ''}" data-wpn="${id}"><span class="emo">${WEAPONS[id].emo}</span>${WEAPONS[id].name}<div class="price">${G.player.weapon === id ? 'Equipped' : 'Equip'}</div></div>`).join('')}</div>` : ''}`; },
+  gadgets: () => { const s = G.save; return `
       <h3>🎒 Gadgets</h3>
-      <div class="grid">${Object.entries(GADGETS).map(([id, g]) => `<div class="item ${(s.gadgets || []).includes(id) ? 'owned' : ''} ${s.gadget === id ? 'equipped' : ''}" data-gad="${id}"><span class="emo">${g.emo}</span>${g.name}<div class="small">${g.desc}</div><div class="price">${s.gadget === id ? 'Equipped' : (s.gadgets || []).includes(id) ? 'Equip' : '$' + g.price}</div></div>`).join('')}</div>
+      <div class="grid">${Object.entries(GADGETS).map(([id, g]) => `<div class="item ${(s.gadgets || []).includes(id) ? 'owned' : ''} ${s.gadget === id ? 'equipped' : ''}" data-gad="${id}"><span class="emo">${g.emo}</span>${g.name}<div class="small">${g.desc}</div><div class="price">${s.gadget === id ? 'Equipped' : (s.gadgets || []).includes(id) ? 'Equip' : '$' + g.price}</div></div>`).join('')}</div>`; },
+  missions: () => { const s = G.save; return `
       <h3>💥 Boss Battles &amp; Stunts</h3>
       <div class="grid">
         <div class="item" data-boss="robot"><span class="emo">🤖</span>Robot Attack!<div class="small">A 46 m robot wades out of the sea and smashes Mega City. Shoot its glowing chest core! Win $5000 + a secret costume.</div><div class="price">${G.battle && G.battle.kind ? 'Battle on!' : 'Start'}</div></div>
@@ -329,9 +338,11 @@ function phonePanel() {
         <div class="item" data-wp="stunt2"><span class="emo">🔥</span>MEGA Jump<div class="small">Drive up the lift, floor it down the 46 m ramp and clear the 64 m gap. +$500</div><div class="price">Set waypoint</div></div>
         <div class="item" data-wp="cannon"><span class="emo">🎯</span>Human Cannonball<div class="small">Get fired out of the cannon and land on the bullseye. Up to +$500</div><div class="price">Set waypoint</div></div>
         ${G.battle && G.battle.kind && G.net.mode !== 'client' ? '<div class="item" data-boss="end"><span class="emo">🏳️</span>End the battle<div class="price">Stop</div></div>' : ''}
-      </div>
+      </div>`; },
+  travel: () => { const s = G.save; return `
       <h3>🚀 Fast Travel</h3>
-      <div class="grid">${TRAVEL.map((t, i) => `<div class="item" data-go="${i}"><span class="emo">${t[0]}</span>${t[1]}<div class="price">Go!</div></div>`).join('')}</div>
+      <div class="grid">${TRAVEL.map((t, i) => `<div class="item" data-go="${i}"><span class="emo">${t[0]}</span>${t[1]}<div class="price">Go!</div></div>`).join('')}</div>`; },
+  jobs: () => { const s = G.save; return `
       <h3>💼 Jobs &amp; Activities</h3>
       <div class="grid">${Object.entries(JOBS).map(([id, j]) => `<div class="item" data-job="${id}"><span class="emo">${j.emo}</span>${j.name}<div class="small">${j.desc}</div><div class="price">${G.job && G.job.id === id ? 'Active' : 'Set waypoint'}</div></div>`).join('')}
         <div class="item" data-wp="clothing"><span class="emo">👕</span>Clothing Store<div class="price">Set waypoint</div></div>
@@ -339,7 +350,8 @@ function phonePanel() {
         <div class="item" data-wp="airport"><span class="emo">✈️</span>Airport<div class="price">Set waypoint</div></div>
         <div class="item" data-wp="blasters"><span class="emo">🔫</span>Blaster Shop<div class="price">Set waypoint</div></div>
         <div class="item" data-wp="mansion"><span class="emo">🏠</span>Dream House<div class="price">${s.house ? 'Your home' : '$2000'}</div></div>
-      </div>
+      </div>`; },
+  arcade: () => { const s = G.save; return `
       <h3>🕹️ Arcade (solo or with friends)</h3>
       <div class="grid"><div class="item surprise" data-arc="surprise"><span class="emo">🎲</span>Surprise Me!<div class="small">A random mode or chaos event: meteors, moon gravity, beach ball storm...</div><div class="price">Go!</div></div>
         ${Object.entries(ARCADE).map(([id, a]) => `<div class="item" data-arc="${id}"><span class="emo">${a.emo}</span>${a.name}<div class="small">${a.desc}</div><div class="price">${G.arcade.mode === id ? 'Playing (J to quit)' : 'Play'}</div></div>`).join('')}</div>
@@ -349,25 +361,74 @@ function phonePanel() {
         <button class="btn small ${G.mode.m === 'hide' ? 'green' : 'blue'}" data-mode="hide">🙈 Hide &amp; Seek</button>
         <button class="btn small ${G.mode.m === 'cops' ? 'green' : 'blue'}" data-mode="cops">🚓 Cops &amp; Robbers</button>
         ${G.mode.m ? '<button class="btn small gray" data-mode="stop">🛑 Stop game</button>' : ''}</div>
-        <p class="small">Hide &amp; Seek: one seeker counts to 40, everyone hides in Bobbly Town. Cops &amp; Robbers: robbers grab cash bags, cops bust them.</p>`}
+        <p class="small">Hide &amp; Seek: one seeker counts to 40, everyone hides in Bobbly Town. Cops &amp; Robbers: robbers grab cash bags, cops bust them.</p>`}`; },
+  weather: () => { const s = G.save; return `
       <h3>🌦️ Weather Machine</h3>
       ${G.net.mode === 'client' ? '<p class="small">Only the host can change the weather.</p>' : `<div class="tabs">
         <button class="btn small ${G.weather.state === 'clear' ? 'green' : 'gray'}" data-wx="clear">☀️ Sunny</button>
         <button class="btn small ${G.weather.state === 'cloudy' ? 'green' : 'gray'}" data-wx="cloudy">☁️ Cloudy</button>
         <button class="btn small ${G.weather.state === 'rain' ? 'green' : 'gray'}" data-wx="rain">🌧️ Rain</button>
         <button class="btn small ${G.weather.state === 'storm' ? 'green' : 'gray'}" data-wx="storm">⛈️ Storm</button>
-        <button class="btn small ${G.weather.tornado ? 'green' : 'gray'}" data-wx="tornado">🌪️ Tornado!</button></div>`}
+        <button class="btn small ${G.weather.tornado ? 'green' : 'gray'}" data-wx="tornado">🌪️ Tornado!</button></div>`}`; },
+  stats: () => { const s = G.save; return `
       <h3>📊 Stats</h3>
       <p>🎁 Presents found: <b>${s.presents.length} / ${PRESENT_SPOTS.length}</b> · 🍕 Deliveries: ${s.stats.deliveries} · 🚕 Fares: ${s.stats.fares} · 🔥 Fires: ${s.stats.fires} · 🎣 Fish: ${s.stats.fish} · 🪵 Logs: ${s.stats.logs} · 🗑️ Bags: ${s.stats.bags} · 🏁 Best race: ${s.raceBest ? s.raceBest.toFixed(1) + 's' : '—'} · 💰 Sunken treasure: ${(s.treasure || []).length} / ${G.ocean ? G.ocean.chests.length : 7}</p>
+      <h3>🎵 BobTok</h3>
+      <p>${fmt(Math.floor((s.bt || {}).followers || 0))} followers · ${fmt(Math.floor((s.bt || {}).likes || 0))} likes · ${fmt(Math.floor((s.bt || {}).views || 0))} views · ${(s.bt || {}).posts || 0} videos</p>`; },
+  settings: () => { const s = G.save; return `
+      <h3>⚙️ Settings</h3>
+      <div class="tabs">
+        <button class="btn small ${musicPlaying() ? 'green' : 'gray'}" id="phMusic">${musicPlaying() ? '🎵 Music: on' : '🔇 Music: off'}</button>
+        <button class="btn small blue" id="phGfx">🖥️ Graphics: ${({ low: 'Low', high: 'High', ultra: 'Ultra' })[s.gfx] || 'High'}</button>
+      </div>
+      <h3>🛟 Help</h3>
       <div class="tabs">
         <button class="btn small blue" id="phRespawn">🔄 Respawn (unstuck)</button>
         <button class="btn small blue" id="phRebuild">🏗️ Rebuild the city</button>
         ${s.house ? '<button class="btn small green" id="phHome">🏠 Go Home</button>' : ''}
         <button class="btn small gray" id="phWp">❌ Clear waypoint</button>
         <button class="btn small gray" id="phHelp">❓ Help</button>
-      </div>`;
-    const mb = el.querySelector('#phMap'); if (mb) mb.onclick = () => { closePanel(); islandMapPanel(); };
-    const ab = el.querySelector('#phAdmin'); if (ab) ab.onclick = () => G.openAdmin();
+      </div>`; },
+};
+let phoneApp = null;
+function phonePanel(app = null, opts = {}) {
+  phoneApp = app;
+  let once = opts;
+  openPanel('📱 Bobbly Phone', (el) => { renderPhone(el, once); once = {}; });
+}
+G.openPhoneApp = (app, opts) => phonePanel(app, opts || {});
+function openApp(id) {
+  if (id === 'map') { closePanel(); islandMapPanel(); return; }
+  if (id === 'admin') { G.openAdmin(); return; }
+  phoneApp = id; sfx.pop && sfx.pop();
+  rerender();
+}
+function statusBar() {
+  const h = Math.floor(((G.dayTime || 0) * 24 + 24) % 24), m = Math.floor(((G.dayTime || 0) * 24 * 60) % 60);
+  return `<div class="ph-status"><b>${h}:${String(m).padStart(2, '0')}</b><span class="ph-island"></span><span class="ph-icons">▂▄▆ 🔋<button class="ph-x" id="phX" aria-label="Close">✕</button></span></div>`;
+}
+function renderPhone(el, opts = {}) {
+  const P = $('panel');
+  P.classList.add('phone');
+  for (const c of [...P.classList]) if (c.startsWith('app-')) P.classList.remove(c);
+  if (phoneApp) P.classList.add('app-' + phoneApp);
+  G.ui.phoneApp = phoneApp;
+  if (phoneApp === 'bobtok') { renderBobTok(el, { back: () => openApp(null), close: closePanel }, opts); return; }
+  if (!phoneApp) {
+    const apps = APPS.filter(a => a[0] !== 'admin' || ADMIN.isAdmin());
+    el.innerHTML = statusBar() + `<div class="ph-home"><div class="ph-greet"><b>Hi ${noEmoji(G.save.name || 'Bobbler')}!</b><span>$${G.save.money}</span></div>
+      <div class="ph-apps">${apps.map(([id, name, emo, c]) => `<button class="ph-app" data-app="${id}"><span class="ph-icon" style="background:linear-gradient(135deg,${c})">${emo}</span><span class="ph-name">${name}</span></button>`).join('')}</div></div><div class="ph-homebar"></div>`;
+    el.querySelectorAll('[data-app]').forEach(b => b.onclick = () => openApp(b.dataset.app));
+  } else {
+    const a = APPS.find(x => x[0] === phoneApp) || ['', '', '', ''];
+    el.innerHTML = statusBar() + `<div class="ph-appbar"><button id="phBack" aria-label="Back">‹</button><span>${a[2]} ${a[1]}</span></div><div class="ph-content">${APP_HTML[phoneApp] ? APP_HTML[phoneApp]() : ''}</div><div class="ph-homebar"></div>`;
+    el.querySelector('#phBack').onclick = () => openApp(null);
+    bindPhone(el);
+  }
+  el.querySelector('#phX').onclick = closePanel;
+}
+function bindPhone(el) {
+  const q = (id) => el.querySelector('#' + id);
     el.querySelectorAll('[data-boss]').forEach(b => b.onclick = () => {
       const k = b.dataset.boss;
       if (k === 'end') { G.endBattle(); closePanel(); return; }
@@ -398,13 +459,14 @@ function phonePanel() {
       if (w === 'tornado') { forceTornado(); closePanel(); return; }
       setWeather(w); toast(`Weather: ${b.textContent}`); rerender();
     });
-    $('phRespawn').onclick = () => { closePanel(); G.player.respawn(); };
-    $('phRebuild').onclick = () => { closePanel(); const n = G.rebuildCity(); toast(n ? `🏗️ The builders fixed ${n} building${n === 1 ? '' : 's'}!` : '🏗️ Nothing is broken right now.'); };
     el.querySelectorAll('[data-arc]').forEach(b => b.onclick = () => { closePanel(); const id = b.dataset.arc; if (id === 'stop') stopArcade(); else if (id === 'surprise') surprise(); else startArcade(id); });
-    if ($('phHome')) $('phHome').onclick = () => { closePanel(); G.player.respawn(true); };
-    $('phWp').onclick = () => { G.waypoint = null; closePanel(); };
-    $('phHelp').onclick = () => { closePanel(); showHelp(true); };
-  });
+    if (q('phRespawn')) q('phRespawn').onclick = () => { closePanel(); G.player.respawn(); };
+    if (q('phRebuild')) q('phRebuild').onclick = () => { closePanel(); const n = G.rebuildCity(); toast(n ? `🏗️ The builders fixed ${n} building${n === 1 ? '' : 's'}!` : '🏗️ Nothing is broken right now.'); };
+    if (q('phHome')) q('phHome').onclick = () => { closePanel(); G.player.respawn(true); };
+    if (q('phWp')) q('phWp').onclick = () => { G.waypoint = null; closePanel(); };
+    if (q('phHelp')) q('phHelp').onclick = () => { closePanel(); showHelp(true); };
+    if (q('phMusic')) q('phMusic').onclick = () => { G.save.music = !musicPlaying(); setMusic(G.save.music); writeSave(); rerender(); };
+    if (q('phGfx')) q('phGfx').onclick = () => { G.save.gfx = { low: 'high', high: 'ultra', ultra: 'low' }[G.save.gfx] || 'high'; writeSave(); G.applyGraphics && G.applyGraphics(); rerender(); };
 }
 
 export function showHelp(on) {

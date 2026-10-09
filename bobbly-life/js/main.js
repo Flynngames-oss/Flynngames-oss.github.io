@@ -42,6 +42,7 @@ import { updateBattle, cutsceneCamera, skipCutscene } from './boss.js';
 import { initCreatures, updateCreatures } from './creatures.js';
 import { loadPhotos } from './photos.js';
 import { touch, initTouch, updateTouch } from './touch.js';
+import { updateBobTok } from './bobtok.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -1041,6 +1042,7 @@ function loop(now) {
   update(dt);
   if (G.noRender) return;
   if (useGrade) composer.render(); else renderer.render(scene, camera);
+  if (G.afterRender) G.afterRender(canvas);   // (BobTok grabs a cover picture here, while the frame is still there)
 }
 G.noRender = new URLSearchParams(location.search).has('norender');   // automated tests only
 // run the game forward without drawing (used by automated tests)
@@ -1064,6 +1066,7 @@ function update(dt) {
   for (const c of G.characters) c.update(dt);
   ADMIN.updateAdmin(dt);
   updateGadgets(dt);
+  updateBobTok(dt);
   updateBattle(dt);
   updateCreatures(dt);
   updateRocket(dt);
@@ -1089,7 +1092,7 @@ function update(dt) {
     updateArcade(dt);
   }
   updateRemoteExtras();
-  updateWorld(dt, player.vehicle ? player.vehicle.pos : player.pos);
+  updateWorld(dt, G.bobtok && G.bobtok.clip ? camera.position : player.vehicle ? player.vehicle.pos : player.pos);   // (shadows follow the BobTok camera)
   updateWeather(dt);
   updateSky(dt);
   updateCamera(dt);

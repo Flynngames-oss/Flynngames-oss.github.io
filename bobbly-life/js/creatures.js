@@ -11,6 +11,7 @@ import { loadModel, spawnModel } from './gltf.js';
 import { sfx } from './audio.js';
 
 const buddies = [], foxes = [];
+export const CREATURES = { buddies, foxes };   // (BobTok films them)
 const SPOTS = [[0, -26], [22, -22], [-22, 22], [24, 24], [-26, -20], [0, 28], [30, 0], [-30, 2]];
 const BUDDY_COLS = ['#ffd23f', '#5ab8ff', '#ff6fb8', '#7ae86a'];
 
