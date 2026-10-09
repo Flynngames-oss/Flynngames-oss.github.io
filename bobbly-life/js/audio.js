@@ -2,6 +2,13 @@
 let ctx = null, master = null, muffle = null;
 let engine = null;
 
+// the game's sound as a stream, so BobTok videos can record it
+let tap = null;
+export function audioStream() {
+  if (!ctx) return null;
+  try { if (!tap) { tap = ctx.createMediaStreamDestination(); muffle.connect(tap); } return tap.stream; } catch (e) { return null; }
+}
+
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try {
