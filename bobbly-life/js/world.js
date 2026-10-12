@@ -1969,6 +1969,7 @@ function buildTwinTowers(A, B, C, D) {
 }
 
 function buildBobblyTower(tx, tz) {
+  LOC.stockTower = { x: tx, z: tz, w: 44, y: 19 };   // the stock ticker wraps round the podium (stocks.js)
   beginB('#e8eef5');
   // Podium
   S(windowBoxGeo(44, 24, 44), bmat('#e8eef5'), tx, 12, tz);

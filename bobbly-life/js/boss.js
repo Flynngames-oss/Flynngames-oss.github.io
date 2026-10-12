@@ -343,6 +343,7 @@ export async function startBattle(kind, fromNet = false) {
   if (B.kind) return;
   if (G.net.mode === 'client' && !fromNet) { NET.send({ t: 'bossReq', k: kind }); return; }
   B.kind = kind; B.t = 0; B.won = false; B.abductions = 0;
+  G.marketNews && G.marketNews(kind === 'ufo' ? 'ufo' : 'boss');
   const P = G.player, n = G.net.mode === 'solo' ? 1 : G.remotes.size + 1;
   if (!G.save.ownedWeapons.includes('mega')) { G.save.ownedWeapons.push('mega'); writeSave(); G.toast && G.toast('☄️ You got a free MEGA Rocket Launcher for this fight! Press G to switch to it.', 'money', 6000); }
   if (kind === 'robot') {

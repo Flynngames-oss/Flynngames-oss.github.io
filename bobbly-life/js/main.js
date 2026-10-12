@@ -43,6 +43,8 @@ import { initCreatures, updateCreatures } from './creatures.js';
 import { loadPhotos } from './photos.js';
 import { touch, initTouch, updateTouch } from './touch.js';
 import { updateBobTok } from './bobtok.js';
+import { initMarket, updateMarket } from './market.js';
+import { updateStocks } from './stocks.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -233,6 +235,7 @@ spawnPresents();
 initJobs();
 UI.initUI();
 initModes((m) => NET.send(m));
+initMarket(NET);
 
 // ---------------------------------------------------------------- personal vehicles
 let myVehicle = null;
@@ -1040,6 +1043,8 @@ function loop(now) {
   if (G.slowmo > 0) G.slowmo -= real;
   const dt = G.slowmo > 0 ? real * 0.28 : real;
   update(dt);
+  updateMarket();              // the stock market runs on the clock, even in slow motion
+  updateStocks();
   if (G.noRender) return;
   if (useGrade) composer.render(); else renderer.render(scene, camera);
   if (G.afterRender) G.afterRender(canvas);   // (BobTok grabs a cover picture here, while the frame is still there)
