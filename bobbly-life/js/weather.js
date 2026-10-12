@@ -145,6 +145,7 @@ function spawnTornado() {
   const ang = Math.atan2(P.x - x, P.z - z) + rand(-0.5, 0.5);
   W.tornado = makeTornado(x, z, ang, rand(75, 110));
   G.toast && G.toast('🌪️ TORNADO WARNING! A tornado is touching down — get somewhere safe!', 'bad', 8000);
+  G.marketNews && G.marketNews('tornado');
   sfx.bad();
 }
 function endTornado() {

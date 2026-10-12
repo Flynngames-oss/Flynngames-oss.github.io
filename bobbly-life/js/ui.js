@@ -9,6 +9,7 @@ import { PRESENT_SPOTS } from './props.js';
 import { WORLD, heightAt, biome, HIGHWAYS, groundColor, ZONES } from './terrain.js';
 import { sfx, setMusic, musicPlaying } from './audio.js';
 import { renderBobTok, fmt } from './bobtok.js';
+import { renderStocks } from './stocks.js';
 import { WEAPONS } from './weapons.js';
 import { setWeather, forceTornado } from './weather.js';
 import * as ADMIN from './admin.js';
@@ -318,7 +319,7 @@ export const openDiveShop = diveShopPanel;
 // ---------------------------------------------------------------- the Bobbly Phone: a home screen of apps
 // [id, name, icon, icon colours]
 const APPS = [
-  ['bobtok', 'BobTok', '🎵', '#ff2f6d,#ffb020'], ['garage', 'Garage', '🚗', '#2f6fd8,#38c8ff'], ['map', 'Map', '🗺️', '#2e9e5b,#a8e063'], ['travel', 'Travel', '🚀', '#6a3fc8,#7f9cff'],
+  ['bobtok', 'BobTok', '🎵', '#ff2f6d,#ffb020'], ['stocks', 'Stocks', '📈', '#06210f,#2fd866'], ['garage', 'Garage', '🚗', '#2f6fd8,#38c8ff'], ['map', 'Map', '🗺️', '#2e9e5b,#a8e063'], ['travel', 'Travel', '🚀', '#6a3fc8,#7f9cff'],
   ['jobs', 'Jobs', '💼', '#e8861a,#ffd200'], ['missions', 'Missions', '💥', '#d8262f,#ff8a65'], ['gadgets', 'Gadgets', '🎒', '#0f8f84,#38ef7d'], ['arcade', 'Arcade', '🕹️', '#8e2de2,#f05aff'],
   ['weather', 'Weather', '🌦️', '#1f86b0,#6dd5ed'], ['stats', 'Stats', '📊', '#3f4b5a,#8fa3b8'], ['settings', 'Settings', '⚙️', '#33363c,#8a8f98'], ['admin', 'Admin', '👑', '#ffd23f,#ff8a2a'],
 ];
@@ -414,6 +415,7 @@ function renderPhone(el, opts = {}) {
   if (phoneApp) P.classList.add('app-' + phoneApp);
   G.ui.phoneApp = phoneApp;
   if (phoneApp === 'bobtok') { renderBobTok(el, { back: () => openApp(null), close: closePanel }, opts); return; }
+  if (phoneApp === 'stocks') { renderStocks(el, { status: statusBar(), back: () => openApp(null) }); el.querySelector('#phX').onclick = closePanel; return; }
   if (!phoneApp) {
     const apps = APPS.filter(a => a[0] !== 'admin' || ADMIN.isAdmin());
     el.innerHTML = statusBar() + `<div class="ph-home"><div class="ph-greet"><b>Hi ${noEmoji(G.save.name || 'Bobbler')}!</b><span>$${G.save.money}</span></div>
