@@ -171,8 +171,13 @@ async function boot() {
   await nextFrame();
   renderer.compile(W.scene, camera);
   setBoot(1, 'Surf’s up!');
-  setTimeout(() => { $('boot').classList.add('hidden'); showScreen('title'); }, 350);
   game.state = 'title';
+  const want = new URLSearchParams(location.search).get('spot');
+  const sp = SPOTS.find((s) => s.id === want);
+  setTimeout(() => {
+    $('boot').classList.add('hidden');
+    if (sp) startSession(sp, 'free'); else showScreen('title');
+  }, 350);
 }
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 function setBoot(p, txt) { $('bootFill').style.width = Math.round(p * 100) + '%'; $('bootText').textContent = txt; }
@@ -1204,6 +1209,10 @@ $('btnAgain').onclick = () => startSession(W.spot, game.mode);
 $('btnNextSpot').onclick = () => { const i = SPOTS.indexOf(W.spot); startSession(SPOTS[i + 1], 'contest'); };
 $('btnResMenu').onclick = () => { game.state = 'title'; showScreen('title'); $('hud').classList.add('hidden'); };
 $('btnPause').onclick = () => togglePause();
+// the open-world island game (Lanzarote Life) lives in life/: leave the water at this spot's surf shack
+const toIsland = () => { audio.click(); $('fader').style.opacity = 1; location.href = 'life/' + (W && game.state !== 'title' ? '?at=' + W.spot.id : ''); };
+$('btnIsland').onclick = toIsland;
+$('btnIsland2').onclick = toIsland;
 
 // customise preview: the surfer sits in the line-up right in front of the camera
 function previewSurfer(on) {
