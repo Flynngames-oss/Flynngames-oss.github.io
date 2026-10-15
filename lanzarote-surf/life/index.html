@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- "Add to Home Screen" plays full screen like an app -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0e13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lanzarote Life">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<title>Lanzarote Life</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "./js/admin.js": "./js/admin.js?v=1",
+    "./js/arcade.js": "./js/arcade.js?v=1",
+    "./js/audio.js": "./js/audio.js?v=1",
+    "./js/bobtok.js": "./js/bobtok.js?v=1",
+    "./js/boss.js": "./js/boss.js?v=1",
+    "./js/character.js": "./js/character.js?v=1",
+    "./js/cockpit.js": "./js/cockpit.js?v=1",
+    "./js/creatures.js": "./js/creatures.js?v=1",
+    "./js/debris.js": "./js/debris.js?v=1",
+    "./js/gadgets.js": "./js/gadgets.js?v=1",
+    "./js/gltf.js": "./js/gltf.js?v=1",
+    "./js/grass.js": "./js/grass.js?v=1",
+    "./js/jobs.js": "./js/jobs.js?v=1",
+    "./js/main.js": "./js/main.js?v=1",
+    "./js/market.js": "./js/market.js?v=1",
+    "./js/models.js": "./js/models.js?v=1",
+    "./js/modes.js": "./js/modes.js?v=1",
+    "./js/net.js": "./js/net.js?v=1",
+    "./js/ocean.js": "./js/ocean.js?v=1",
+    "./js/park.js": "./js/park.js?v=1",
+    "./js/photos.js": "./js/photos.js?v=1",
+    "./js/police.js": "./js/police.js?v=1",
+    "./js/props.js": "./js/props.js?v=1",
+    "./js/quests.js": "./js/quests.js?v=1",
+    "./js/rocket.js": "./js/rocket.js?v=1",
+    "./js/sky.js": "./js/sky.js?v=1",
+    "./js/state.js": "./js/state.js?v=1",
+    "./js/stocks.js": "./js/stocks.js?v=1",
+    "./js/terrain.js": "./js/terrain.js?v=1",
+    "./js/textures.js": "./js/textures.js?v=1",
+    "./js/touch.js": "./js/touch.js?v=1",
+    "./js/traffic.js": "./js/traffic.js?v=1",
+    "./js/train.js": "./js/train.js?v=1",
+    "./js/ui.js": "./js/ui.js?v=1",
+    "./js/vehicles.js": "./js/vehicles.js?v=1",
+    "./js/water.js": "./js/water.js?v=1",
+    "./js/weapons.js": "./js/weapons.js?v=1",
+    "./js/weather.js": "./js/weather.js?v=1",
+    "./js/world.js": "./js/world.js?v=1",
+    "./js/surfsea.js": "./js/surfsea.js?v=1"
+} }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ============ LOADING SCREEN ============ -->
+<div id="loading">
+  <div class="load-inner">
+    <div class="load-logo">LANZAROTE<span>LIFE</span></div>
+    <div class="load-bar"><div id="loadFill"></div></div>
+    <div class="load-row"><span id="loadText">Starting up…</span><span id="loadPct">0%</span></div>
+    <div class="load-tip" id="loadTip"></div>
+  </div>
+</div>
+
+<!-- ============ TITLE SCREEN ============ -->
+<div id="title">
+  <div class="title-side">
+    <div class="logo" id="logo">LANZAROTE<span>LIFE</span></div>
+    <div class="subtitle">Open world. Physics. Friends. Chaos.</div>
+    <div class="menu">
+      <button id="btnSolo" class="mbtn primary"><b>Play</b><small>Single player</small></button>
+      <button id="btnHost" class="mbtn"><b>Host Online</b><small>Create a room for friends</small></button>
+      <div class="joinrow">
+        <input id="codeInput" placeholder="ROOM CODE" maxlength="5">
+        <button id="btnJoin" class="mbtn small">Join</button>
+      </div>
+      <button id="btnCustom" class="mbtn"><b>Character</b><small>Name, skin tone, clothes</small></button>
+      <button id="btnGfx" class="mbtn"><b>Graphics: High</b><small>Switch for performance</small></button>
+    </div>
+    <div id="titleMsg"></div>
+    <div class="title-controls touch-only">Tip: turn your phone sideways. On iPhone, tap Share → Add to Home Screen to play full screen.</div>
+    <div class="title-controls no-touch">WASD move · Mouse look · Space jump · Shift sprint · LMB grab · F slap · G blaster · V first person · R ragdoll · E interact · Tab phone · H help</div>
+  </div>
+  <div id="customCard" class="card hidden">
+    <label class="lbl">Your name</label>
+    <input id="nameInput" maxlength="14" placeholder="Bobbler">
+    <div class="row"><span>Skin</span><div class="swatches" id="swSkin"></div></div>
+    <div class="row"><span>Shirt</span><div class="swatches" id="swShirt"></div></div>
+    <div class="row"><span>Pants</span><div class="swatches" id="swPants"></div></div>
+    <div class="row"><span>Hair</span><div class="swatches" id="swHair"></div></div>
+    <p class="small">More outfits, hats and costumes at the clothing store in town.</p>
+    <button id="btnCustomDone" class="mbtn primary small">Done</button>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="money">$<span id="moneyVal">0</span></div>
+  <div id="roomInfo" class="hidden"></div>
+  <div id="jobPanel" class="hidden">
+    <div id="jobTitle"></div>
+    <div id="jobObj"></div>
+    <div id="jobTimer"></div>
+    <div class="small no-touch">Press J to quit job</div>
+    <button id="jobQuit" class="btn small touch-only">✖ Quit job</button>
+  </div>
+  <div id="prompt" class="hidden"></div>
+  <div id="toasts"></div>
+  <div id="objDist" class="hidden"></div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="chat">
+    <div id="chatLog"></div>
+    <input id="chatInput" class="hidden" maxlength="100" placeholder="Say something... (Enter)">
+  </div>
+  <div id="players" class="hidden"></div>
+  <div id="crosshair" class="hidden"></div>
+  <div id="clickToPlay" class="hidden">Click to play!</div>
+  <div id="hint">H = Help · Tab = Phone (Fast Travel!) · T = Chat · G = Blaster · V = First person · M = Music</div>
+  <div id="speedo" class="hidden"></div>
+</div>
+
+<!-- ============ PANELS ============ -->
+<div id="panel" class="hidden">
+  <div class="panel-head"><h2 id="panelTitle"></h2><button id="panelClose" class="btn small">✕</button></div>
+  <div id="panelBody"></div>
+</div>
+
+<div id="fishUI" class="hidden">
+  <div id="fishMsg">Waiting for a bite...</div>
+  <div id="fishBar"><div id="fishZone"></div><div id="fishIcon">🐟</div></div>
+  <div id="fishProgress"><div id="fishProgressFill"></div></div>
+  <div class="small">Hold SPACE (or tap) to raise the green zone and keep the fish inside! Esc to stop.</div>
+</div>
+
+<div id="help" class="hidden">
+  <h2>How to play Lanzarote Life</h2>
+  <div class="helpgrid touch-only" id="helpTouch">
+    <div><b>Left thumb</b> Touch anywhere on the left and slide to walk (push all the way to run)</div>
+    <div><b>Right thumb</b> Drag to look around · pinch with two fingers to zoom</div>
+    <div><b>Big buttons</b> They change with what you're doing: Jump, Grab, Slap, Flop on foot · Brake, Horn, Exit in cars · Faster, Slower in planes (stick up/down to climb and dive) · Up, Down in the helicopter</div>
+    <div><b>Yellow button</b> Shows up when you can use something: drive a car, open a shop, talk to someone</div>
+    <div><b>📱 Phone</b> Spawn cars, fast travel, jobs, gadgets, boss battles · <b>🗺️</b> Island map (or tap the minimap)</div>
+    <div><b>🔫</b> Switch blaster · <b>🎥</b> First / third person · <b>😀</b> Emotes · <b>💬</b> Chat (online)</div>
+    <div><b>Falling?</b> Tap Parachute · <b>Swimming</b> Swim up / Dive buttons · <b>Fishing</b> Hold Reel in</div>
+    <div><b>Best on phones</b> Turn sideways · On iPhone: Share → Add to Home Screen for full screen</div>
+  </div>
+  <div class="helpgrid no-touch">
+    <div><b>WASD / Arrows</b> Walk</div>
+    <div><b>Shift</b> Run</div>
+    <div><b>Space</b> Jump</div>
+    <div><b>Mouse</b> Look around (click the game first)</div>
+    <div><b>Scroll</b> Zoom camera</div>
+    <div><b>Hold Left Click</b> Grab things &amp; people · release to throw</div>
+    <div><b>F</b> Slap / chop trees</div>
+    <div><b>R</b> Ragdoll (flop over!)</div>
+    <div><b>E</b> Interact / get in &amp; out of cars</div>
+    <div><b>Tab / P</b> Phone: spawn cars, jobs, map</div>
+    <div><b>J</b> Quit current job</div>
+    <div><b>T</b> Chat · <b>1-4</b> Emotes</div>
+    <div><b>Driving</b> W/S gas &amp; brake · A/D steer · Space handbrake</div>
+    <div><b>Helicopter</b> Space up · Shift down</div>
+    <div><b>V</b> First-person / third-person camera · <b>M</b> Music on/off</div>
+    <div><b>Space while falling</b> Open your parachute 🪂</div>
+    <div><b>Surfing 🏄</b> Walk up to a surf shack at Famara, San Juan or El Quemao (La Santa) and press E to paddle out in Wobble Surf. Phone → Fast Travel takes you there</div>
+    <div><b>Rocket</b> Go to the Space Center (above Soo, in the north), press E at the rocket. E in space to come home.</div>
+    <div><b>Driving</b> Steering is gentler at speed — use Space (handbrake) to slide round corners</div>
+    <div><b>E-bikes</b> A/D lean · Shift lean back + W to wheelie · feather W, C (lean forward) and S (rear brake) to hold the balance point · Space hop</div>
+    <div><b>Police</b> Riding e-bikes on the street, speeding in town, hitting people, stealing cars or smashing buildings gets you WANTED. Escape far away or get handcuffed and sent to jail!</div>
+    <div><b>Secret characters</b> King Flynn (his castle), George (a hidden treehouse in the palm grove of Haría) and Jacob (top of the Gran Hotel) — do their missions to unlock them</div>
+    <div><b>Fighter jet</b> Left Click or F fires the cannon</div>
+    <div><b>G</b> Switch blaster · <b>Left Click</b> shoot (Right Click still grabs)</div>
+    <div><b>Planes</b> W/S throttle · ↑ nose up · ↓ nose down · ← → bank &amp; turn · Airliners at Lanzarote Airport</div>
+    <div><b>Diving 🤿</b> Swim out from Playa Chica in Puerto del Carmen · C dive · Space swim up · Shift swim fast · watch your air! Scuba gear at the Dive Shop on the beach</div>
+    <div><b>Submarine 🟡</b> W/S thrust · A/D turn · Space rise · Shift/C dive · V for the sonar cockpit (treasure = gold dots)</div>
+    <div><b>Treasure 💰</b> 7 sunken chests: in the shipwreck, the underwater cave, the kelp forest and the reef. E to open</div>
+    <div><b>Wingsuit 🦅</b> Jump off something tall, Space while falling · W dive · S flatten out · A/D turn · Space again for the parachute</div>
+    <div><b>Bobbly Land 🎢</b> Theme park on the east side of Arrecife: rollercoaster with a loop, Ferris wheel and bumper cars</div>
+    <div><b>Weather 🌦️</b> Rain makes roads slippery, storms bring lightning and sometimes a TORNADO. Phone → Weather Machine to change it</div>
+    <div><b>Arcade 🕹️</b> Phone → Arcade: 🗼 Doom Tower, 🪂 Sky Riot, 🦖 Kaiju Smash, or 🎲 Surprise Me for meteors, moon gravity and more. J quits</div>
+    <div><b>Party games 🎮</b> In multiplayer: Phone → Hide &amp; Seek or Cops &amp; Robbers</div>
+    <div><b>Boss battles 💥</b> Phone → Boss Battles: 🤖 a 46 m robot attacks Arrecife (shoot its glowing chest core!) or 👽 a UFO invasion. Enter skips the intro</div>
+    <div><b>Gadgets 🎒</b> Phone → Gadgets: 🧑‍🚀 Jetpack (jump, then hold Space) · 🪝 Grappling hook (Q to fire where you look, Q to let go)</div>
+    <div><b>Stunt Valley 🔥</b> In the sand desert of El Jable, north of San Bartolomé: drive onto the lift, then fly off the MEGA RAMP over the 64 m gap. Or ride the 💥 Human Cannonball!</div>
+    <div><b>☄️ MEGA Rocket Launcher</b> Huge explosions that knock down buildings ($2500 at the Blaster Shop)</div>
+  </div>
+  <p>Do jobs to earn money 💰: <b>Pizza delivery</b>, <b>Taxi driver</b>, <b>Firefighter</b>, <b>Garbage collector</b>, <b>Lumberjack</b>, <b>Fishing</b> and <b>Races</b>.
+  Spend money on clothes, hats, cars, planes, a helicopter, toy blasters and your very own house! Planes are at the ✈️ airport on the north side, blasters at the 🔫 Blaster Shop in the stunt park. Find all the hidden 🎁 presents around the island — some are far out in the mountains, desert and forest! Buy costumes in the 🦸 Skins tab at the clothing store.</p>
+  <p>Multiplayer: click <b>Host Multiplayer</b> and send your friends the link or room code.</p>
+  <p class="small" style="opacity:.7">3D model credits: "RobotExpressive" by Tomás Laulhé (Quaternius), CC0. Fox model by PixelMannen (CC0), rigging &amp; animation by tomkranis (CC-BY 4.0), glTF conversion by @AsoboStudio and @scurest (CC-BY 4.0). Photo textures (grass, cobblestones, gravel, dirt, sand, bark, leaves) from Babylon.js Assets (CC BY 4.0); rock and brick textures from the Godot demo projects (MIT).</p>
+  <button class="btn" id="helpClose">Got it!</button>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="tStickZone"></div>
+  <div id="tStick"><div id="tKnob"></div></div>
+  <div id="tActions"></div>
+  <button id="tUse" class="hidden"></button>
+  <div id="tTop">
+    <button id="tPhone" aria-label="Phone">📱</button><button id="tMap" aria-label="Map">🗺️</button><button id="tGun" class="hidden" aria-label="Blaster">🔫</button><button id="tView" aria-label="Camera">🎥</button><button id="tEmote" aria-label="Emotes">😀</button><button id="tChat" class="hidden" aria-label="Chat">💬</button>
+  </div>
+  <div id="tEmotes" class="hidden"></div>
+  <div id="tMinimapHit"></div>
+</div>
+<div id="rotateTip"><span>🔄 Turn your phone sideways for the best view</span><button id="rotateOk" class="btn small">OK</button></div>
+
+<script type="module" src="js/main.js?v=1"></script>
+</body>
+</html>

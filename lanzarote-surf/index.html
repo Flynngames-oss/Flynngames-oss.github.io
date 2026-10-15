@@ -51,6 +51,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .mbtn:hover, .mbtn:focus-visible { transform: translateX(8px) rotate(-1deg); background: var(--sea2); border-color: var(--sand); outline: none; }
 .mbtn.primary { background: var(--coral); border-color: rgba(255,255,255,.3); }
 .mbtn.primary:hover { background: #ff7276; }
+.mbtn.island { background: linear-gradient(135deg, rgba(46,160,90,.85), rgba(30,120,170,.85)); border-color: rgba(255,255,255,.3); }
 .settings { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 3vh; font-size: 13px; font-weight: 800; }
 .settings .grp { display: flex; align-items: center; gap: 6px; }
 .settings .grp > span { opacity: .7; text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
@@ -200,6 +201,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   <div class="logo"><span class="w1"><span>W</span><span>O</span><span>B</span><span>B</span><span>L</span><span>E</span> SURF</span><span class="w2">LANZAROTE</span><span class="w3">Real island · real waves · very wobbly surfer</span></div>
   <div class="menu">
     <button class="mbtn primary" id="btnFree"><b>Free surf</b><small>Pick a spot and shred</small></button>
+    <button class="mbtn island" id="btnIsland"><b>🏝️ Explore the island</b><small>Lanzarote Life: walk, drive, fly, jobs, theme park…</small></button>
     <button class="mbtn" id="btnContest"><b>Surf contest</b><small>Beat the locals in 5-minute heats</small></button>
     <button class="mbtn" id="btnCustom"><b>Customise</b><small>Board, wetsuit, hair</small></button>
     <button class="mbtn" id="btnHow"><b>How to surf</b><small>Controls &amp; tricks</small></button>
@@ -266,6 +268,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
       <button class="mbtn primary" id="btnResume"><b>Resume</b></button>
       <button class="mbtn" id="btnSpots"><b>Change spot</b></button>
       <button class="mbtn" id="btnQuit"><b>Main menu</b></button>
+      <button class="mbtn island" id="btnIsland2"><b>🏝️ Walk up the beach</b><small>back to the island</small></button>
     </div>
   </div>
 </div>
