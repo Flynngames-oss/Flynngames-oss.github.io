@@ -215,7 +215,7 @@ function torsoTex(top) {
   if (top === 'jacket') { x.fillStyle = 'rgba(40,40,45,0.5)'; x.fillRect(W / 2 - 2, 0, 4, H); x.fillStyle = 'rgba(210,210,210,0.9)'; for (let y = 4; y < H * 0.85; y += 4) x.fillRect(W / 2 - 3, y, 6, 1.5); x.fillStyle = 'rgba(0,0,0,0.14)'; for (const sx of [-1, 1]) x.fillRect(W / 2 + sx * 34 - 14, H * 0.55, 28, 3); }
   if (top === 'tshirt') {
     // small print on the chest
-    x.save(); x.translate(W / 2 + 22, 56); x.fillStyle = 'rgba(255,255,255,0.75)'; x.font = '700 15px Arial'; x.textAlign = 'center'; x.fillText('BOBBLY', 0, 0); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(-22, 4, 44, 2); x.restore();
+    x.save(); x.translate(W / 2 + 22, 56); x.fillStyle = 'rgba(255,255,255,0.75)'; x.font = '700 15px Arial'; x.textAlign = 'center'; x.fillText('', 0, 0); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(-22, 4, 44, 2); x.restore();
   }
   const t = fabTex(c, true, 1, 1); t.offset.x = 0.5;              // the capsule's front is at u = 0
   const hc = weaveHeight(kind, W);
@@ -284,7 +284,7 @@ export const SKINS = [
   { id: 'firefighter', name: 'Firefighter', emo: '🧑‍🚒', price: 250, o: { skin: '#f2c9a0', shirt: '#e84a3f', pants: '#4a4f5a', hat: 'hardhat', glasses: 'none', eyes: 'round', extras: ['backpack:#ffd54a'] } },
   { id: 'cowboy', name: 'Cowboy', emo: '🤠', price: 250, o: { skin: '#f2c9a0', shirt: '#b8322a', pants: '#3f5f8b', hat: 'cowboy', glasses: 'none', eyes: 'round', extras: [] } },
   { id: 'viking', name: 'Viking', emo: '⚔️', price: 350, o: { skin: '#f2c9a0', shirt: '#8b5a2b', pants: '#4a2b1a', hat: 'viking', glasses: 'none', eyes: 'angry', extras: ['cape:#6b4a2b'] } },
-  { id: 'gold', name: 'Golden Bobbler', emo: '🏆', price: 2000, o: { skin: '#ffcc22', shirt: '#ffcc22', pants: '#e6b400', hat: 'crown', glasses: 'diamond', eyes: 'happy', extras: [] } },
+  { id: 'gold', name: 'Golden Surfer', emo: '🏆', price: 2000, o: { skin: '#ffcc22', shirt: '#ffcc22', pants: '#e6b400', hat: 'crown', glasses: 'diamond', eyes: 'happy', extras: [] } },
   // special characters you unlock by finding them and doing their missions
   { id: 'flynn', name: 'King Flynn', emo: '🤴', price: 0, quest: 'Collect every present, then visit King Flynn at his castle', o: { skin: '#f2c9a0', shirt: '#7a1020', pants: '#2a1a40', hat: 'crown', glasses: 'none', eyes: 'round', hair: 'short', hairColor: '#8a5a2b', extras: ['cape:#b0122a', 'belly:#f4e6c0'] } },
   { id: 'george', name: 'George', emo: '🤪', price: 0, quest: 'Find George in his secret treehouse and do his mission', o: { skin: '#f2c9a0', shirt: '#ffcf4a', pants: '#3fa7ff', hat: 'propeller', glasses: 'nerd', eyes: 'happy', hair: 'curly', hairColor: '#c9a060', extras: ['nose:#ff5b6e'] } },
@@ -431,16 +431,19 @@ function makeHair(id, color) {
 export const SKIN_TONES = ['#ffd23f', '#f6d7c3', '#eec4a5', '#e0ac86', '#c68b62', '#a86f4a', '#8a5536', '#5e3a24'];
 const SHIRTS = ['#2f6fd8', '#e84a3f', '#46c25a', '#ffcf3a', '#b46cff', '#ff8a2a', '#3fc8d8', '#f0f0f0', '#ff6fa8', '#2f3e5c', '#8a3a3a'];
 const PANTS = ['#ff7a1a', '#2c4e8c', '#3a3f4a', '#c8a060', '#46a85a', '#8a5ad8', '#e84a3f', '#3b4a66'];
+// people on Lanzarote: real skin tones and everyday island clothes (lots of shorts, light shirts, the odd cap)
+const REAL_SKIN = ['#f3d2bd', '#eec4a5', '#e5b48f', '#d9a27a', '#c68b62', '#a86f4a', '#8a5536', '#5e3a24'];
+const REAL_SHIRTS = ['#f2f2ee', '#f2f2ee', '#e8e2d4', '#2b3a55', '#3d4a5c', '#8a9aa8', '#c9b48a', '#6b8f9e', '#a8423a', '#3f6f4f', '#1d1f22', '#d8c8a8', '#7a8a9a', '#c86a4a'];
+const REAL_PANTS = ['#2c3e5c', '#3a4a66', '#1d1f22', '#4a4f58', '#c8b48a', '#a89a7a', '#e8e2d4', '#5a6a7a'];
 export function randomOutfit() {
-  if (Math.random() < 0.1) { const sk = pick(SKINS.slice(1).filter(s => !s.quest)); return { ...sk.o, extras: [...sk.o.extras] }; }
   return {
-    skin: Math.random() < 0.6 ? '#ffd23f' : pick(SKIN_TONES), shirt: pick(SHIRTS), pants: pick(PANTS),
-    hair: Math.random() < 0.6 ? 'none' : pick(['short', 'buzz', 'swept', 'curly', 'ponytail', 'bun']), hairColor: pick(HAIR_COLORS),
-    hat: Math.random() < 0.3 ? pick(['cap', 'beanie', 'propeller', 'cowboy', 'party']) : 'none',
-    glasses: Math.random() < 0.15 ? pick(['sun', 'nerd']) : 'none',
-    eyes: pick(['round', 'round', 'big', 'happy', 'happy', 'sleepy']),
-    top: pick(['tshirt', 'tshirt', 'hoodie', 'hoodie', 'polo', 'long', 'jacket', 'vest']), bottom: pick(['cargo', 'cargo', 'jeans', 'joggers', 'shorts', 'chinos']),
-    shoes: Math.random() < 0.6 ? 'bare' : pick(['#f2f2ee', '#3a3f4a', '#b8322a', '#2f5fa8']),
+    skin: pick(REAL_SKIN), shirt: pick(REAL_SHIRTS), pants: pick(REAL_PANTS),
+    hair: Math.random() < 0.15 ? 'buzz' : pick(['short', 'short', 'buzz', 'swept', 'curly', 'ponytail', 'bun']), hairColor: pick(['#1d1612', '#2b1d14', '#3b2a20', '#5a3f2a', '#8a6a4a', '#b8a080', '#d8d4cc']),
+    hat: Math.random() < 0.15 ? 'cap' : 'none',
+    glasses: Math.random() < 0.25 ? 'sun' : 'none',
+    eyes: 'round',
+    top: pick(['tshirt', 'tshirt', 'tshirt', 'polo', 'polo', 'long', 'vest']), bottom: pick(['shorts', 'shorts', 'jeans', 'chinos', 'chinos', 'joggers']),
+    shoes: pick(['#f2f2ee', '#3a3f4a', '#8a6a4a', '#1d1f22', '#c8b8a0']),
   };
 }
 

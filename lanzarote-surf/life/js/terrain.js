@@ -464,27 +464,32 @@ export function makeTerrainMaterial(PH) {
         float dist = length(vTW - cameraPosition);
         vec2 lp = mod(vTW.xz, 1000.0);                     // keep texture coordinates small (every scale repeats a whole number of times)
         float lum = dot(alb, vec3(0.3, 0.59, 0.11));
-        vec3 sandT = mix(texture2D(uSand, lp * 0.22).rgb, texture2D(uSand, lp * 0.037 + 0.3).rgb, 0.45) / vec3(0.52, 0.34, 0.14);
-        vec3 dirtT = mix(texture2D(uDirt, lp * 0.18).rgb, texture2D(uDirt, lp * 0.031 + 0.6).rgb, 0.45) / vec3(0.30, 0.18, 0.065);
+        // photo detail as brightness only, so the island keeps the colours of the real map
+        float sandL = dot(mix(texture2D(uSand, lp * 0.22).rgb, texture2D(uSand, lp * 0.037 + 0.3).rgb, 0.45), vec3(0.3, 0.59, 0.11)) / 0.37;
+        float dirtL = dot(mix(texture2D(uDirt, lp * 0.18).rgb, texture2D(uDirt, lp * 0.031 + 0.6).rgb, 0.45), vec3(0.3, 0.59, 0.11)) / 0.2;
         vec3 bw = pow(abs(vTN), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
-        vec3 rockT = (texture2D(uRock, mod(vTW.zy, 1000.0) * 0.09).rgb * bw.x + texture2D(uRock, lp * 0.09).rgb * bw.y + texture2D(uRock, mod(vTW.xy, 1000.0) * 0.09).rgb * bw.z) / vec3(0.26, 0.22, 0.2);
+        vec3 rockC = texture2D(uRock, mod(vTW.zy, 1000.0) * 0.09).rgb * bw.x + texture2D(uRock, lp * 0.09).rgb * bw.y + texture2D(uRock, mod(vTW.xy, 1000.0) * 0.09).rgb * bw.z;
+        float rockL = dot(rockC, vec3(0.3, 0.59, 0.11)) / 0.23;
         float sandy = smoothstep(0.42, 0.62, lum) * smoothstep(-0.02, 0.06, alb.r - alb.b);
-        float dark = smoothstep(0.22, 0.1, lum);
-        vec3 det = mix(dirtT, sandT, sandy);
-        det = mix(det, mix(dirtT, rockT, 0.5) * 0.9, dark);
+        float det = mix(dirtL, sandL, sandy);
         float steep = smoothstep(0.78, 0.55, vTN.y);
-        det = mix(det, rockT, steep * 0.85);
-        det = clamp(det, 0.0, 2.2);
+        det = mix(det, rockL, max(steep * 0.85, smoothstep(0.2, 0.1, lum) * 0.5));
+        det = clamp(det, 0.35, 1.8);
         float near = 1.0 - smoothstep(150.0, 1600.0, dist);
-        vec3 col = alb * mix(vec3(1.0), det, 0.85 * near + 0.25 * (1.0 - near));
+        // cliffs show the layered brown-grey rock of the island
+        vec3 base = mix(alb, alb * 0.6 + rockC * 0.5, steep * 0.6);
+        vec3 col = base * mix(1.0, det, 0.75 * near + 0.2 * (1.0 - near));
         // big soft patches so the ground never looks uniform
         float macro = tn(vTW.xz * 0.013) * 0.6 + tn(vTW.xz * 0.06) * 0.4;
         col *= 0.86 + 0.28 * macro;
         // damp dark sand at the waterline
         col *= 1.0 - 0.35 * smoothstep(1.5, 0.3, vTW.y);
-        diffuseColor.rgb = col * 1.12;
+        // the map colours are bright: under this strong Canarian sun real earth reflects about half as much
+        float cl = dot(col, vec3(0.3, 0.59, 0.11));
+        col = mix(vec3(cl), col, 1.55) * vec3(1.06, 1.0, 0.9);      // the warm ochre of volcanic soil
+        diffuseColor.rgb = max(col, 0.0) * 0.58;
       `);
   };
-  m.customProgramCacheKey = () => 'lanzground1';
+  m.customProgramCacheKey = () => 'lanzground3';
   return m;
 }

@@ -10,7 +10,7 @@ import { sfx } from './audio.js';
 // p0: starting price, vol: how jumpy it is, nv: how big its news is, depth: how many dollars of buying it takes to
 // push the price up a lot (spending depth / 100 dollars pushes it up about 1%)
 export const STOCKS = [
-  { sym: 'BOB', name: 'Bobbly Corp', emo: '🫘', p0: 118, vol: 0.00055, nv: 0.035, depth: 200000 },
+  { sym: 'BOB', name: 'Canarias Corp', emo: '🫘', p0: 118, vol: 0.00055, nv: 0.035, depth: 200000 },
   { sym: 'BEAN', name: 'Bean Burger Co', emo: '🍔', p0: 22, vol: 0.0009, nv: 0.06, depth: 60000 },
   { sym: 'ROKT', name: 'Rocket Rides', emo: '🚀', p0: 35, vol: 0.0019, nv: 0.12, depth: 50000 },
   { sym: 'FISH', name: 'Fishy Business', emo: '🐟', p0: 12, vol: 0.0011, nv: 0.08, depth: 40000 },
@@ -29,7 +29,7 @@ export const PERKS = [
   ['streak', '🔥', 'Hot Streak', 'Sell for a profit 3 times in a row'],
 ];
 // [total profit needed, rank]
-export const RANKS = [[0, 'INTERN'], [100, 'JUNIOR TRADER'], [500, 'TRADER'], [2000, 'SENIOR TRADER'], [10000, 'SHARK'], [50000, 'WOLF OF BOBBLY ST'], [250000, 'MARKET LEGEND']];
+export const RANKS = [[0, 'INTERN'], [100, 'JUNIOR TRADER'], [500, 'TRADER'], [2000, 'SENIOR TRADER'], [10000, 'SHARK'], [50000, 'WOLF OF CALLE REAL'], [250000, 'MARKET LEGEND']];
 
 export const CANDLE = 5, PER_MIN = 12;      // a live candle every 5 seconds, a minute candle every 12 of them
 const TICK = 0.5, KEEP = 120, FEE = 0.0025, XMAX = 1.2;
@@ -37,15 +37,15 @@ const KV = 0.02, KM = 0.35, TAU = 6, DRIFT = 0.000015, KA = 1 / 2400;
 const SAVE_KEY = 'lanzarote-market-v1';
 const BOTS = ['WobblyWendy', 'DiamondDan', 'BeanBaron', 'MoonMolly', 'PaperPete', 'StonkSteve', 'QuackQueen', 'RocketRay', 'FishyPhil', 'BrickBob', 'HodlHank', 'CandleCarl', 'BullBetty', 'BearBernie', 'LuckyLou', 'ChartChad'];
 const NEWS = {
-  BOB: [['Bobbly Corp reports record profits!', 1], ['Bobbly Corp launches the BobPhone 2', 1], ['Bobbly Corp boss slips on a banana live on TV', -1], ['Bobbly Corp recalls a million wobbly chairs', -1]],
+  BOB: [['Canarias Corp reports record profits!', 1], ['Canarias Corp opens a new hotel', 1], ['Canarias Corp boss slips on a banana live on TV', -1], ['Canarias Corp recalls a million beach chairs', -1]],
   BEAN: [['Bean Burger invents the TRIPLE bean burger', 1], ['Everyone on the island is hungry today', 1], ['Bean Burger runs out of beans', -1], ['Inspector finds a sock in a bean burger', -1]],
   ROKT: [['Rocket Rides lands on the Moon!', 1], ['Rocket Rides sells out every space ticket', 1], ['Rocket Rides rocket flies sideways', -1], ['Rocket launch delayed by angry seagulls', -1]],
-  FISH: [['Huge fishing season at the docks', 1], ['Golden fish spotted in Bobbly Bay', 1], ['The fish have gone on holiday', -1], ['Fishy Business boat springs a leak', -1]],
-  BRIK: [['Building boom in Bobbly City', 1], ['Brick & Co wins a giant new contract', 1], ['Brick & Co builds a house upside down', -1], ['Brick shortage hits the island', -1]],
-  DUCK: [['Rubber Duck goes VIRAL on BobTok!', 1], ['A famous Bobbler buys a million ducks', 1], ['DUCK TO THE MOON!!', 1], ['Expert says the duck craze is over', -1], ['Scientists confirm rubber ducks are... just ducks', -1]],
+  FISH: [['Huge fishing season at the docks', 1], ['Golden fish spotted off Arrecife', 1], ['The fish have gone on holiday', -1], ['Fishy Business boat springs a leak', -1]],
+  BRIK: [['Building boom in Arrecife', 1], ['Brick & Co wins a giant new contract', 1], ['Brick & Co builds a house upside down', -1], ['Brick shortage hits the island', -1]],
+  DUCK: [['Rubber Duck goes VIRAL on BobTok!', 1], ['A famous surfer buys a million ducks', 1], ['DUCK TO THE MOON!!', 1], ['Expert says the duck craze is over', -1], ['Scientists confirm rubber ducks are... just ducks', -1]],
   BCOIN: [['Bean Burger now takes BobCoin', 1], ['BobCoin miners strike digital gold', 1], ['Someone dropped a BobCoin wallet in the sea', -1], ['Is the BobCoin bubble about to pop?', -1]],
 };
-const MARKET_NEWS = [['BULL RUN! Bobblers are buying everything', 1], ['MARKET CRASH! Panic on Bobbly Street', -1], ['Bobbly Bank cuts interest rates', 1], ['Bobbly Bank raises interest rates', -1]];
+const MARKET_NEWS = [['BULL RUN! Everyone is buying everything', 1], ['MARKET CRASH! Panic on Calle Real', -1], ['Banco Canario cuts interest rates', 1], ['Banco Canario raises interest rates', -1]];
 
 export const M = { t: 0, ci: 0, acc: 0, ver: 0, feedVer: 0, feed: [], news: [], marks: [], newsT: rand(25, 50), away: null, mode: 'solo', synced: false, asked: 0, netAcc: 0, saveAcc: 0, perkAcc: 0, ready: false };
 let send = () => {};
@@ -141,8 +141,8 @@ function feedAdd(e) {
 G.marketNews = (kind) => {
   if (!M.ready || G.net.mode === 'client') return;
   const at = (sym) => STOCKS.findIndex(s => s.sym === sym);
-  if (kind === 'tornado') applyNews('Tornado hits Bobbly! Builders are going to be busy', [[at('BRIK'), 0.14], [at('BOB'), -0.04], [at('FISH'), -0.06]]);
-  else if (kind === 'ufo') applyNews('UFOs over Bobbly City! Space stocks blast off', [[at('ROKT'), 0.2], [at('BOB'), -0.05], [at('BEAN'), -0.04]]);
+  if (kind === 'tornado') applyNews('Tornado hits Lanzarote! Builders are going to be busy', [[at('BRIK'), 0.14], [at('BOB'), -0.04], [at('FISH'), -0.06]]);
+  else if (kind === 'ufo') applyNews('UFOs over Arrecife! Space stocks blast off', [[at('ROKT'), 0.2], [at('BOB'), -0.05], [at('BEAN'), -0.04]]);
   else applyNews('GIANT ATTACK on Bobbly City! Investors panic', STOCKS.map((s, i) => [i, s.sym === 'BRIK' ? 0.12 : -rand(0.6, 1.2) * s.nv]));
 };
 

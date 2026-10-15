@@ -146,7 +146,7 @@ function carCockpit(v, g) {
     const d = new Date(), gt = (G.dayTime || 0) * 24;
     x.fillStyle = '#e8eef5'; x.font = '700 30px Arial'; x.textAlign = 'left';
     x.fillText(`${String(Math.floor(gt)).padStart(2, '0')}:${String(Math.floor((gt % 1) * 60)).padStart(2, '0')}`, 16, 40);
-    x.font = '600 18px Arial'; x.fillStyle = '#8fb0d0'; x.fillText('BOBBLY FM 101.7', 16, 80);
+    x.font = '600 18px Arial'; x.fillStyle = '#8fb0d0'; x.fillText('RADIO LANZAROTE 101.7', 16, 80);
     x.fillStyle = '#e8eef5'; x.fillText('Now playing: Lo-fi Drive', 16, 106);
     x.fillStyle = '#1f3a5a'; x.fillRect(16, 130, 288, 8); x.fillStyle = '#3fa7ff'; x.fillRect(16, 130, 288 * ((d.getSeconds() % 60) / 60), 8);
     x.fillStyle = '#8fa0b0'; x.fillText(`🧭 ${['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((-v.yaw * DEG) % 360 + 360) % 360) / 45) % 8]}`, 16, 170);

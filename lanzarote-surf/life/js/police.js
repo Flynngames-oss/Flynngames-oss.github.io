@@ -106,7 +106,7 @@ function buildJail() {
   // guard tower + sign
   box(concrete, x1 - 3, y, z1 - 3, 3, 10, 3);
   box(new THREE.MeshLambertMaterial({ color: '#7fa0b8' }), x1 - 3, y + 10, z1 - 3, 4, 2.4, 4, false);
-  const sign = textSprite('BOBBLY COUNTY JAIL', { size: 64, color: '#ffffff', bg: 'rgba(16,19,26,0.9)', accent: '#3a6ab0', scale: 3 });
+  const sign = textSprite('COMISARÍA · POLICÍA LOCAL', { size: 64, color: '#ffffff', bg: 'rgba(16,19,26,0.9)', accent: '#3a6ab0', scale: 3 });
   sign.position.set(gx, y + 8, z1 + 1); G.scene.add(sign);
   LOC.jailGate = { x: gx, z: z1 + 6 };
   LOC.jail = LOC.jailGate;
