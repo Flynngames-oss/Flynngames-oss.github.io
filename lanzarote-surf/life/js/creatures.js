@@ -17,8 +17,9 @@ const BUDDY_COLS = ['#ffd23f', '#5ab8ff', '#ff6fb8', '#7ae86a'];
 
 export async function initCreatures() {
   try {
-    const robot = await loadModel('robot');
-    BUDDY_COLS.forEach((col, i) => {
+    // (no robots walking round a real Canarian town)
+    const robot = null;
+    if (robot) BUDDY_COLS.forEach((col, i) => {
       const m = spawnModel(robot, 1.9);
       // give each buddy its own colour
       m.root.traverse(o => { if (o.isMesh && o.material && /Main/i.test(o.material.name)) { o.material = o.material.clone(); o.material.color.set(col); } });

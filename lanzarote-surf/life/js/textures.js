@@ -126,7 +126,7 @@ export function asphaltTexture(lines = true) {
   for (const tx of [0.3, 0.7]) { const g = x.createLinearGradient(n * (tx - 0.1), 0, n * (tx + 0.1), 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.05)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, n, n); }
   // tar repair patches
   for (let i = 0; i < 2; i++) { x.fillStyle = 'rgba(25,27,30,0.18)'; x.fillRect(rnd() * n, rnd() * n, 20 + rnd() * 40, 14 + rnd() * 24); }
-  if (lines) { x.fillStyle = '#e8c547'; x.fillRect(61 * k, 8 * k, 6 * k, 56 * k);
+  if (lines) { x.fillStyle = '#ecebe6'; x.fillRect(61 * k, 8 * k, 6 * k, 56 * k);
     x.fillStyle = '#e6e6e2'; x.fillRect(4 * k, 0, 4 * k, n); x.fillRect(n - 8 * k, 0, 4 * k, n);
     hh.fillStyle = '#909090'; hh.fillRect(61 * k, 8 * k, 6 * k, 56 * k); hh.fillRect(4 * k, 0, 4 * k, n); hh.fillRect(n - 8 * k, 0, 4 * k, n); }
   // cracks (sealed with tar)

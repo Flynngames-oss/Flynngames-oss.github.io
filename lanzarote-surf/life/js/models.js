@@ -104,7 +104,7 @@ function plateTex() {
   const c = document.createElement('canvas'); c.width = 128; c.height = 64;
   const x = c.getContext('2d');
   x.fillStyle = '#f4f4ee'; x.fillRect(0, 0, 128, 64);
-  x.fillStyle = '#b01c1c'; x.font = 'italic 700 13px Georgia, serif'; x.textAlign = 'center'; x.fillText('Bobblyfornia', 64, 16);
+  x.fillStyle = '#b01c1c'; x.font = 'italic 700 13px Georgia, serif'; x.textAlign = 'center'; x.fillText('Canarias', 64, 16);
   x.fillStyle = '#1a2a6a'; x.font = '700 30px Arial, sans-serif'; x.fillText('8BOB123', 64, 50);
   _plate = new THREE.CanvasTexture(c); _plate.colorSpace = THREE.SRGBColorSpace;
   return _plate;
@@ -689,7 +689,7 @@ function liveryTexture(name, stripe, stripe2) {
   return t;
 }
 const LIVERIES = [
-  { name: 'BOBBLY AIR', a: '#1d3f7a', b: '#e0a020', fin: '#1d3f7a' },
+  { name: 'BINTER CANARIAS', a: '#1d3f7a', b: '#e0a020', fin: '#1d3f7a' },
   { name: 'PACIFIC WINGS', a: '#0f6f7a', b: '#f07030', fin: '#0f6f7a' },
   { name: 'SUNSET AIRWAYS', a: '#b8322a', b: '#f0a030', fin: '#b8322a' },
 ];

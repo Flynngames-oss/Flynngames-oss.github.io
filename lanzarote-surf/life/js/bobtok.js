@@ -44,8 +44,8 @@ const CLIPS = [
   { id: 'train', who: 'choochoo_bob', av: '🚆', cap: 'the Bobbly Express NEVER misses 🚆💨 #train #bobblylife', song: 'Chugga Chugga (Remix)', target: () => G.train && G.train.cars[0] && G.train.cars[0].pos, style: 'chase', d: 18, h: 6, side: 9 },
   { id: 'coaster', who: 'coaster_kid', av: '🎢', cap: 'front row on THE BOBBLER 😱 do not look down #rollercoaster #bobblyland', song: 'Screaming Beans', target: () => G.park && G.park.coaster && G.park.coaster.cars[0] && G.park.coaster.cars[0].pos, style: 'pov', d: 14, h: 6, side: 7,
     dyn: () => (G.park.coaster.v > 3 ? 'pov' : 'chase') },   // front seat while it's moving, from behind while it waits in the station
-  { id: 'wheel', who: 'ferris_fran', av: '🎡', cap: 'golden hour at Bobbly Land hits different 🎡✨', song: 'Round & Round', target: () => G.park && G.park.wheel && G.park.wheel.cy ? _t.set(G.park.wheel.cx, G.park.wheel.cy, G.park.wheel.cz) : null, style: 'orbit', r: 52, h: 6, look: 0, spd: 0.12 },
-  { id: 'plane', who: 'sky_spotter', av: '✈️', cap: 'caught the 3:15 to Bobbly International 🛫 #planespotting', song: 'Jet Stream Lofi', target: () => G.skyTraffic && G.skyTraffic[0] && G.skyTraffic[0].m.position, style: 'chase', d: 80, h: 16, side: 30, free: true },
+  { id: 'wheel', who: 'ferris_fran', av: '🎡', cap: 'golden hour at the fair hits different 🎡✨', song: 'Round & Round', target: () => G.park && G.park.wheel && G.park.wheel.cy ? _t.set(G.park.wheel.cx, G.park.wheel.cy, G.park.wheel.cz) : null, style: 'orbit', r: 52, h: 6, look: 0, spd: 0.12 },
+  { id: 'plane', who: 'sky_spotter', av: '✈️', cap: 'caught the 3:15 into Lanzarote airport 🛫 #planespotting', song: 'Jet Stream Lofi', target: () => G.skyTraffic && G.skyTraffic[0] && G.skyTraffic[0].m.position, style: 'chase', d: 80, h: 16, side: 30, free: true },
   { id: 'whale', who: 'whale_watcher', av: '🐋', cap: 'the GIANT whale off Puerto del Carmen 🐋 she said hi', song: 'Ocean Song (whale remix)', target: () => whaleAt(), style: 'orbit', r: 32, h: 3, look: 0, spd: 0.1, free: true },
   { id: 'dolphins', who: 'whale_watcher', av: '🐬', cap: 'dolphin squad 🐬🐬🐬 #nature #coralbay', song: 'Splash Splash', target: () => { const o = G.ocean, d = o && o.dolphins && o.dolphins[0]; if (!d || !o.pod) return null; const w = world(d.m); return w.lengthSq() > 1 ? w : _t.set(o.pod.cx, -2, o.pod.cz); }, style: 'chase', d: 12, h: 2, side: 5, free: true },
   { id: 'dance', who: 'bolt_the_bot', av: '🤖', cap: 'new dance just dropped 🤖💃 #dancechallenge #fyp', song: 'Beep Boop Bounce', target: () => CREATURES.buddies[0] && CREATURES.buddies[0].m.obj.position, style: 'orbit', r: 5.5, h: 2.4, look: 1.2, spd: 0.35,
@@ -66,7 +66,7 @@ const LIVE = { id: 'live', who: 'boss_alerts', av: '🔴', live: true, cap: '�
   style: 'orbit', r: 110, h: 30, look: 0, spd: 0.08, free: true };
 const FANS = ['bean_lover22', 'sprocket', 'zoomzoom', 'pizza_pete', 'lil_bobbler', 'coolcat99', 'gigi.g', 'turbo_tim', 'skater_sam', 'nana_bean', 'kingflynn_fan', 'george_irl', 'mega_max', 'bubbles', 'captain_kev', 'ruby.r', 'frog_fan', 'dj_bean'];
 const SAY = ['this is so bobbly 😂', 'first!!', 'how did u film this', 'W video', 'i watched this 20 times', 'need part 2', 'the music 🔥🔥', 'my favourite creator', 'NO WAY 😱', 'this made my day', 'living in bobbly town is the best', 'teach me', 'goated', '💀💀💀', 'who else is watching at night', 'underrated', 'LOL', 'i was there!!', 'bro is famous now', 'so peaceful 😌', 'pov: me', 'how is this real', 'can u do a tutorial', '10/10', 'the camera work tho'];
-const CAPS = ['watch this 😂', 'did that really just happen 💀', 'just a normal day in Bobbly Life', 'rate this 1-10', 'POV: you have no fear', 'they said i couldn\'t do it', 'wait for it...', 'this is my life now 😎', 'pro gamer move', 'oops 🙃'];
+const CAPS = ['watch this 😂', 'did that really just happen 💀', 'just a normal day in Lanzarote', 'rate this 1-10', 'POV: you have no fear', 'they said i couldn\'t do it', 'wait for it...', 'this is my life now 😎', 'pro gamer move', 'oops 🙃'];
 const TAGS = ['#bobblylife', '#fyp', '#bean', '#funny', '#stunts', '#viral', '#gaming'];
 
 function makeComments(n) { const out = []; for (let i = 0; i < n; i++) out.push({ who: pick(FANS), text: pick(SAY), likes: Math.floor(rand(0, 2400) * Math.random()) }); return out; }
@@ -275,7 +275,7 @@ function share(i) {
   const c = BT.feed[i]; if (!c) return;
   if (c.mine) return moreSheet(c);
   c.shares++; const b = BT.el.querySelector(`[data-share="${i}"] small`); if (b) b.textContent = fmt(c.shares);
-  G.toast && G.toast('↗ Shared with your Bobbly friends!', null, 1800);
+  G.toast && G.toast('↗ Shared with your friends!', null, 1800);
 }
 // your own video: save it to the device, or delete it
 function moreSheet(c) {
@@ -297,7 +297,7 @@ async function saveClip(c) {
   // on phones, the share sheet lets you save it to your photos or send it to a friend
   try {
     const file = new File([c.blob], name, { type: c.blob.type });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'My Bobbly Life video' }); return; }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'My Lanzarote Life video' }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = c.url || c.thumb; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   G.toast && G.toast('💾 Saved to your downloads!', 'money', 2500);

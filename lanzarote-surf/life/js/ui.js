@@ -187,7 +187,7 @@ function dealerPanel() {
 // [emoji, name, x, z, facing]  (x can be a LOC key; 'town:Name' jumps to a town's main street)
 const TRAVEL = [
   ['⛲', 'Arrecife — Town Square', 0, -14, Math.PI], ['🏄', 'Famara Surf Shack', 'surf_famara'], ['🏄', 'San Juan Surf Shack', 'surf_sanjuan'], ['🏄', 'El Quemao Surf Shack (La Santa)', 'surf_quemao'],
-  ['🤿', 'Playa Chica Dive Shop (Puerto del Carmen)', 'diveShop'], ['🎣', 'Puerto de Naos harbour', 'fishing'], ['🎢', 'Bobbly Land Theme Park', 'themePark'],
+  ['🤿', 'Playa Chica Dive Shop (Puerto del Carmen)', 'diveShop'], ['🎣', 'Puerto de Naos harbour', 'fishing'], ['🎢', 'Arrecife Fair (rides)', 'themePark'],
   ['🏨', 'Gran Hotel Arrecife', 'twin'], ['🛗', 'Gran Hotel — rooftop', 'twinTop'], ['🛫', 'Lanzarote Airport (ACE)', 'intl'],
   ['🏰', 'Castillo de Santa Bárbara', 'castle'], ['🌬️', 'Tiagua windmill', 'windmill'], ['🗼', 'Pechiguera lighthouse', 'lighthouse'], ['⛰️', 'Peñas del Chache (summit)', 'peak'],
   ['🕳️', 'Mystery Cave', 'mysteryCave'], ['🏎️', 'Go-Kart Track', 'kart'], ['🚀', 'Space Center', 'space'], ['🌾', 'Farm', 'farm'],
@@ -207,7 +207,7 @@ const travelTarget = (t) => {
 const MAP_LABELS = () => [
   ['🏙️', 'Arrecife', 0, 0], ['🏄', 'Famara', LOC.surf_famara], ['🏄', 'San Juan', LOC.surf_sanjuan], ['🏄', 'El Quemao', LOC.surf_quemao],
   ['🛫', 'Airport', LOC.intl], ['🏰', 'Teguise', LOC.castle], ['⛰️', 'Peñas del Chache', LOC.peak], ['🗼', 'Pechiguera', LOC.lighthouse],
-  ['🎢', 'Bobbly Land', LOC.themePark], ['🤿', 'Puerto del Carmen', LOC.diveShop], ['🏖️', 'Playa Blanca', PLACES['Playa Blanca']], ['🌴', 'Haría', PLACES['Haría']],
+  ['🎢', 'Fairground', LOC.themePark], ['🤿', 'Puerto del Carmen', LOC.diveShop], ['🏖️', 'Playa Blanca', PLACES['Playa Blanca']], ['🌴', 'Haría', PLACES['Haría']],
   ['⚓', 'Órzola', PLACES['Órzola']], ['🌋', 'Timanfaya', { x: -16900, z: 3400 }], ['🏖️', 'Costa Teguise', PLACES['Costa Teguise']], ['🔥', 'Stunt Valley', LOC.stunt2], ['🚀', 'Space Center', LOC.space],
   ['🏝️', 'La Graciosa', PLACES['Caleta del Sebo']],
 ].map(([e, n, a, b]) => (typeof a === 'object' ? (a ? [e, n, a.x, a.z] : null) : [e, n, a, b])).filter(Boolean);
@@ -425,7 +425,7 @@ function renderPhone(el, opts = {}) {
   if (phoneApp === 'stocks') { renderStocks(el, { status: statusBar(), back: () => openApp(null) }); el.querySelector('#phX').onclick = closePanel; return; }
   if (!phoneApp) {
     const apps = APPS.filter(a => a[0] !== 'admin' || ADMIN.isAdmin());
-    el.innerHTML = statusBar() + `<div class="ph-home"><div class="ph-greet"><b>Hi ${noEmoji(G.save.name || 'Bobbler')}!</b><span>$${G.save.money}</span></div>
+    el.innerHTML = statusBar() + `<div class="ph-home"><div class="ph-greet"><b>Hi ${noEmoji(G.save.name || 'Surfer')}!</b><span>$${G.save.money}</span></div>
       <div class="ph-apps">${apps.map(([id, name, emo, c]) => `<button class="ph-app" data-app="${id}"><span class="ph-icon" style="background:linear-gradient(135deg,${c})">${emo}</span><span class="ph-name">${name}</span></button>`).join('')}</div></div><div class="ph-homebar"></div>`;
     el.querySelectorAll('[data-app]').forEach(b => b.onclick = () => openApp(b.dataset.app));
   } else {
@@ -673,7 +673,7 @@ export function initUI() {
   $('panelClose').onclick = closePanel;
   $('helpClose').onclick = () => showHelp(false);
   G.interacts.push(
-    { x: LOC.clothing.x, z: LOC.clothing.z, r: 5, label: () => '👕 Shop for clothes', action: () => clothingPanel('👕 Bobbly Boutique') },
+    { x: LOC.clothing.x, z: LOC.clothing.z, r: 5, label: () => '👕 Shop for clothes', action: () => clothingPanel('👕 Moda Boutique') },
     { x: LOC.dealer.x, z: LOC.dealer.z, r: 5, label: () => '🚗 Browse vehicles', action: dealerPanel },
     { x: LOC.blasters.x, z: LOC.blasters.z, r: 4, label: () => '🔫 Shop for blasters', action: blasterPanel },
     { x: LOC.airport.x + 10, z: LOC.airport.z + 9, r: 4, label: () => '✈️ Buy planes (Car Dealer)', action: dealerPanel },

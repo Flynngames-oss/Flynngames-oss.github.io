@@ -554,10 +554,12 @@ function building(x, z, w, d, h, color, roofColor = '#6b6f78') {
   endB();
   return c;
 }
+const signSprites = [];
 function sign(text, x, y, z, color = '#fff', bg = '#ff6a1a', scale = 3) {
-  const sp = textSprite(noEmoji(text).toUpperCase(), { size: 64, color: '#ffffff', bg: 'rgba(16,19,26,0.88)', accent: bg, scale });
-  sp.position.set(x, y, z);
+  const sp = textSprite(noEmoji(text).trim(), { size: 64, color: '#ffffff', bg: 'rgba(28,32,38,0.82)', accent: bg, scale: scale * 0.5 });
+  sp.position.set(x, y - scale * 0.4, z);
   G.scene.add(sp);
+  signSprites.push(sp);
   if (curB) (curB.extras ||= []).push(sp);
   return sp;
 }
@@ -1462,7 +1464,7 @@ function buildSpaceCenter() {
   // fuel tanks and control centre
   for (const dz of [-18, 18]) { S(new THREE.SphereGeometry(1, 16, 12), mat('#e8e8e8'), Z.x - 40, y + 8, Z.z + dz, 0, 0, 0, 7, 7, 7); addCollider(Z.x - 47, y, Z.z + dz - 7, Z.x - 33, y + 15, Z.z + dz + 7); }
   building(Z.x - 60, Z.z - 70 + 30, 30, 18, 12, '#d8d8d4', '#4a4f58');
-  sign('BOBBLY SPACE CENTER', Z.x - 60, y + 17, Z.z - 30, '#fff', '#3a6ab0', 3.4);
+  sign('SPACE CENTRE', Z.x - 60, y + 17, Z.z - 30, '#fff', '#3a6ab0', 3.4);
   LOC.space = { x: px - 10, z: pz + 21 };
   LOC.rocketPad = { x: px, z: pz, y: y + 0.4, towerX: tx };
 }
@@ -1636,26 +1638,87 @@ export function updateBalloons(t) {
 // ---------------------------------------------------------------- palm trees (instanced)
 const palmPos = [];
 function palmAt(x, z, s = 1) { palmPos.push([x, z, s * (0.85 + Math.random() * 0.35), Math.random() * 6.28]); }
+// Canary Island date palms (Phoenix canariensis): a thick trunk patterned with old leaf bases, a round "pineapple"
+// at the top and a big crown of long arching feathery fronds, the lowest ones drooping and yellowing.
+function frondTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const x = c.getContext('2d');
+  x.clearRect(0, 0, 512, 128);
+  for (let u = 6; u < 506; u += 3) {
+    const t = u / 512, len = 58 * Math.sin(Math.PI * Math.min(1, 0.12 + t * 0.95)) + 6;
+    for (const sd of [-1, 1]) {
+      const g = 95 + Math.random() * 40 | 0;
+      x.strokeStyle = `rgb(${g - 35},${g + 10},${g - 60})`; x.lineWidth = 2.2;
+      x.beginPath(); x.moveTo(u, 64); x.lineTo(u + len * 0.55, 64 + sd * len); x.stroke();
+    }
+  }
+  x.strokeStyle = '#8a8a4a'; x.lineWidth = 5; x.beginPath(); x.moveTo(0, 64); x.lineTo(512, 64); x.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+function trunkTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#5e4e3e'; x.fillRect(0, 0, 128, 128);
+  for (let j = -1; j < 17; j++) for (let i = -1; i < 9; i++) {
+    const cx = i * 16 + (j % 2) * 8, cy = j * 8;
+    const v = 92 + Math.random() * 26 | 0;
+    x.fillStyle = `rgb(${v},${v - 14},${v - 30})`;
+    x.beginPath(); x.moveTo(cx, cy - 4.5); x.lineTo(cx + 7.5, cy); x.lineTo(cx, cy + 4.5); x.lineTo(cx - 7.5, cy); x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(38,30,22,0.5)'; x.lineWidth = 1.2; x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 5);
+  return t;
+}
+function palmCrownGeo(n) {
+  const pos = [], uv = [], col = [], idx = [];
+  const tiers = [[0.3, 0.95, 4.0, 0.2, 1.0], [0.42, 0.4, 4.8, 0.42, 0.95], [0.28, -0.1, 4.6, 0.62, 0.82]];
+  let v = 0;
+  for (const [share, el, L, droop, shade] of tiers) {
+    const m = Math.max(3, Math.round(n * share));
+    for (let k = 0; k < m; k++) {
+      const az = k / m * Math.PI * 2 + Math.random() * 0.4, e = el + (Math.random() - 0.5) * 0.25, len = L * (0.85 + Math.random() * 0.3);
+      const dx = Math.cos(az), dz = Math.sin(az), px = -dz, pz = dx;
+      const yellow = shade < 0.9 ? 0.25 + Math.random() * 0.3 : Math.random() * 0.12;
+      const cr = shade * (0.85 + yellow * 0.5), cg = shade * (0.95 - yellow * 0.1), cb = shade * (0.8 - yellow * 0.4);
+      const SEG = 8;
+      for (let i = 0; i <= SEG; i++) {
+        const t = i / SEG;
+        const r = Math.cos(e) * len * t, y = Math.sin(e) * len * t - droop * len * t * t;
+        const w = 0.75 * Math.sin(Math.PI * Math.min(1, 0.12 + t * 0.95)) + 0.08;
+        const cx = dx * (r + 0.25), cz = dz * (r + 0.25);
+        // a shallow V across the frond (leaflets rise from the midrib)
+        for (const [a, up] of [[-1, 0.25], [0, 0], [1, 0.25]]) {
+          pos.push(cx + px * w * a, y + up * w, cz + pz * w * a);
+          uv.push(t, 0.5 - a * 0.5); col.push(cr, cg, cb);
+        }
+        if (i < SEG) { const b = v + i * 3; idx.push(b, b + 3, b + 1, b + 1, b + 3, b + 4, b + 1, b + 4, b + 2, b + 2, b + 4, b + 5); }
+      }
+      v += (SEG + 1) * 3;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
 function buildPalms() {
   if (!palmPos.length) return;
-  const n = palmPos.length;
-  // one frond geometry: 8 drooping leaves merged
-  const leaves = [];
-  for (let k = 0; k < 8; k++) {
-    const g = new THREE.ConeGeometry(0.55, 4.2, 8, 3);
-    g.rotateX(Math.PI / 2); g.translate(0, 0, 2.1); g.rotateX(0.35); g.scale(1, 0.25, 1); g.rotateY(k * Math.PI / 4);
-    leaves.push(g.index ? g.toNonIndexed() : g);
-  }
-  const crownG = mergeGeometries(leaves);
-  crownG.computeVertexNormals();
-  const crownM = new THREE.MeshStandardMaterial({ color: '#4fb83a', roughness: 0.8, side: THREE.DoubleSide });
-  const trunkM = new THREE.MeshStandardMaterial({ color: '#a8845a', roughness: 0.9 }), trunkG = new THREE.CylinderGeometry(0.22, 0.34, 1, 12);
-  for (const [x, z, sc] of palmPos) { const y = heightAt(x, z), h = 11 * sc; addCollider(x - 0.35, y - 1, z - 0.35, x + 0.35, y + h, z + 0.35, 'tree'); }
+  const crownM = new THREE.MeshStandardMaterial({ map: frondTexture(), alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.75 });
+  const trunkM = new THREE.MeshStandardMaterial({ map: trunkTexture(), roughness: 0.95 });
+  const trunkG = new THREE.CylinderGeometry(0.36, 0.5, 1, 14, 1); trunkG.translate(0, 0.5, 0);
+  const coreG = new THREE.SphereGeometry(0.75, 12, 8); coreG.scale(1, 1.25, 1);
+  const crownHi = palmCrownGeo(34), crownLo = palmCrownGeo(12);
+  const H = (sc) => 9.5 * sc;
+  for (const [x, z, sc] of palmPos) { const y = heightAt(x, z), h = H(sc); addCollider(x - 0.45, y - 1, z - 0.45, x + 0.45, y + h, z + 0.45, 'tree'); }
+  const top = ([x, z, sc, a]) => { const y = heightAt(x, z), h = H(sc), lean = 0.05 + (a % 1) * 0.06; return { y, h, ox: Math.cos(a) * lean * h, oz: Math.sin(a) * lean * h, lean }; };
   chunkedInstances(palmPos, [
-    { geo: trunkG, mat: trunkM, cast: true, matrix: ([x, z, sc, a], m) => { const y = heightAt(x, z), h = 11 * sc; _qq.setFromEuler(_e.set(0, a, 0.04)); m.compose(_p.set(x, y + h / 2, z), _qq, _s.set(1, h, 1)); } },
-    { geo: crownG, mat: crownM, cast: true, matrix: ([x, z, sc, a], m) => { const y = heightAt(x, z), h = 11 * sc; _qq.setFromEuler(_e.set(0, a, 0.04)); m.compose(_p.set(x + 0.2, y + h, z), _qq, _s.set(sc, sc, sc)); } },
+    { geo: trunkG, mat: trunkM, cast: true, matrix: (it, m) => { const [x, z, sc, a] = it, T = top(it), r = 0.8 + 0.4 * sc; _qq.setFromEuler(_e.set(Math.sin(a) * T.lean, 0, -Math.cos(a) * T.lean)); m.compose(_p.set(x, T.y - 0.3, z), _qq, _s.set(r, T.h + 0.3, r)); } },
+    { geo: coreG, mat: trunkM, cast: true, matrix: (it, m) => { const [x, z, sc] = it, T = top(it); _qq.identity(); m.compose(_p.set(x + T.ox, T.y + T.h, z + T.oz), _qq, _s.set(0.8 + 0.4 * sc, 0.8 + 0.4 * sc, 0.8 + 0.4 * sc)); } },
+    { geo: crownHi, lo: crownLo, mat: crownM, cast: true, matrix: (it, m) => { const [x, z, sc, a] = it, T = top(it); _qq.setFromEuler(_e.set(0, a * 3.1, 0)); m.compose(_p.set(x + T.ox, T.y + T.h + 0.3, z + T.oz), _qq, _s.set(0.85 + 0.3 * sc, 0.85 + 0.3 * sc, 0.85 + 0.3 * sc)); } },
   ]);
-  void n;
 }
 
 // ---------------------------------------------------------------- Downtown (LA-style big city)
@@ -2838,143 +2901,314 @@ function buildIslandPlaces() {
 }
 
 // ---------------------------------------------------------------- Bobbly's town centre (built at the origin, moved to Arrecife)
+// ---------------------------------------------------------------- the real look of Arrecife: Canarian town buildings
+// White (and a few cream and ochre) rendered blocks of 1 to 5 floors with flat roofs and parapets, green or brown
+// wooden shutters, Canarian wooden balconies, dark volcanic stone at the base and corners, shopfronts with
+// roller shutters and plain Spanish shop signs. No lawns, no pine woods, no skyscrapers (César Manrique saw to that).
+const WALL_TINTS = ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#fbf4e6', '#f6ead2', '#f2e2c4', '#efe8dc', '#e9dcc4', '#f3e9d6', '#e6d2ae'];
+const WOOD = ['#2f5a34', '#284f78', '#5e3a20', '#2f5a34', '#6b2c1c'];
+const tintMats = new Map();
+function tintMat(c, rough = 0.9) { const k = c + rough; if (!tintMats.has(k)) tintMats.set(k, pbr({ color: c, roughness: rough })); return tintMats.get(k); }
+const urbanWallCache = new Map();
+function urbanWall(tint, alt) {
+  const k = tint + alt;
+  if (!urbanWallCache.has(k)) { const M = canarianMats(); urbanWallCache.set(k, pbr({ map: (alt ? M.wall2 : M.wall).map, color: tint, roughness: 0.92 })); }
+  return urbanWallCache.get(k);
+}
+let shopGlass = null, shutterMat = null;
+function shopMats() {
+  if (!shopGlass) {
+    shopGlass = pbr({ color: '#1c2a33', roughness: 0.12, metalness: 0.6, envMapIntensity: 1.2 });
+    const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d');
+    x.fillStyle = '#9aa0a6'; x.fillRect(0, 0, 64, 128);
+    for (let y = 0; y < 128; y += 6) { x.fillStyle = 'rgba(40,44,50,0.45)'; x.fillRect(0, y, 64, 1.5); x.fillStyle = 'rgba(255,255,255,0.18)'; x.fillRect(0, y + 2, 64, 1); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1);
+    shutterMat = pbr({ map: t, roughness: 0.55, metalness: 0.4 });
+  }
+  return { glass: shopGlass, shutter: shutterMat };
+}
+// a flat sign fixed to a wall (text facing the street)
+function facadeSign(text, x, y, z, ry, w, bg = '#24435f', fg = '#ffffff') {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0, 0, 512, 96);
+  g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, 0, 512, 40);
+  g.fillStyle = fg; g.font = "700 58px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif"; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(noEmoji(text).trim(), 256, 52, 470);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.55 }); m.userData.own = true;
+  S(BOX, m, x, y, z, ry, 0, 0, w, w * 0.1875, 0.08);
+}
+const faceDir = (face) => [face === 0 ? 1 : face === 1 ? -1 : 0, face === 2 ? 1 : face === 3 ? -1 : 0];
+const faceRy = (face) => [Math.PI / 2, -Math.PI / 2, 0, Math.PI][face];
+
+// One town building. face: 0 +x, 1 -x, 2 +z, 3 -z (the street side).
+function urbanBuilding(x, z, w, d, floors, face, o = {}) {
+  const M = canarianMats();
+  const y0 = o.y || 0, h = floors * 3.3 + 0.35;
+  const tint = o.tint || pick(WALL_TINTS), alt = o.alt ?? (Math.random() < 0.5), wood = o.wood || pick(WOOD);
+  const [fx, fz] = faceDir(face), ry = faceRy(face);
+  beginB(tint);
+  S(canarianBoxGeo(w, h, d), urbanWall(tint, alt), x, y0 + h / 2, z);
+  S(BOX, stone('#3a3532'), x, y0 + 0.3, z, 0, 0, 0, w + 0.08, 0.6, d + 0.08);                        // volcanic stone base
+  if (o.quoins ?? Math.random() < 0.3) for (const sx of [-1, 1]) for (const sz of [-1, 1]) S(BOX, stone('#423c37'), x + sx * (w / 2 - 0.22), y0 + h / 2, z + sz * (d / 2 - 0.22), 0, 0, 0, 0.5, h, 0.5);
+  if (floors > 1 && Math.random() < 0.5) S(BOX, tintMat(tint), x, y0 + 3.4, z, 0, 0, 0, w + 0.14, 0.18, d + 0.14);  // a cornice line above the ground floor
+  const yr = y0 + h, wm = tintMat(tint);
+  S(BOX, wm, x, yr + 0.35, z - d / 2 + 0.12, 0, 0, 0, w, 0.7, 0.24); S(BOX, wm, x, yr + 0.35, z + d / 2 - 0.12, 0, 0, 0, w, 0.7, 0.24);
+  S(BOX, wm, x - w / 2 + 0.12, yr + 0.35, z, 0, 0, 0, 0.24, 0.7, d); S(BOX, wm, x + w / 2 - 0.12, yr + 0.35, z, 0, 0, 0, 0.24, 0.7, d);
+  // roof terrace things: a stair hut, black water tanks, white Lanzarote chimney
+  if (w * d > 90 && Math.random() < 0.55) S(BOX, wm, x - w / 4, yr + 1.15, z - d / 4, 0, 0, 0, 2.6, 2.3, 2.6);
+  if (Math.random() < 0.6) S(CYL8, mat(Math.random() < 0.6 ? '#1d1f22' : '#e8e6e0'), x + w / 4, yr + 0.75, z + d / 5, 0, 0, 0, 0.6, 1.3, 0.6);
+  if (o.chimney ?? Math.random() < 0.35) lanzaroteChimney(x + w / 3, yr, z - d / 4);
+  // the street front
+  const L = fx ? d : w;                                     // facade length
+  const fxp = x + fx * (w / 2), fzp = z + fz * (d / 2);     // middle of the facade
+  const along = (t) => [fxp + (fz ? t : 0), fzp + (fx ? t : 0)];
+  if (o.shop) {
+    const { glass, shutter } = shopMats();
+    const sw = Math.min(L - 1.2, o.shopW || L - 1.2);
+    const [sx, sz] = along(0);
+    S(BOX, glass, sx + fx * 0.04, y0 + 1.6, sz + fz * 0.04, ry, 0, 0, sw, 2.5, 0.1);
+    if (Math.random() < 0.4) { const [qx, qz] = along(sw / 4); S(BOX, shutter, qx + fx * 0.09, y0 + 2.1, qz + fz * 0.09, ry, 0, 0, sw / 2 - 0.3, 1.5, 0.06); }
+    if (o.shop.text) facadeSign(o.shop.text, sx + fx * 0.12, y0 + 3.2, sz + fz * 0.12, ry, Math.min(sw, o.shop.w || 6.5), o.shop.bg, o.shop.fg);
+    if (o.shop.awning) S(BOX, mat(o.shop.awning), sx + fx * 0.75, y0 + 2.95, sz + fz * 0.75, ry, -0.32, 0, sw * 0.9, 0.06, 1.6);
+  } else {
+    const [dx, dz] = along((Math.random() - 0.5) * (L - 3));
+    S(BOX, mat(wood), dx + fx * 0.04, y0 + 1.2, dz + fz * 0.04, ry, 0, 0, 1.2, 2.3, 0.08);
+    S(BOX, tintMat('#f4f1ea'), dx + fx * 0.03, y0 + 1.2, dz + fz * 0.03, ry, 0, 0, 1.6, 2.6, 0.04);
+    if (o.home !== false) { const nm = o.name || null; G.locations.houses.push({ x, z, door: { x: dx + fx * 2.6, z: dz + fz * 2.6 }, name: nm || 'Calle ' + pick(['Real', 'León y Castillo', 'Canalejas', 'Hermanos Zerolo', 'Fajardo', 'José Antonio', 'Triana', 'Coronel Bens']) + ' ' + (G.locations.houses.length + 1) }); }
+  }
+  // Canarian wooden balconies on the upper floors
+  const bays = Math.max(1, Math.round(L / 4.2));
+  for (let f = 1; f < floors; f++) for (let b = 0; b < bays; b++) {
+    if (Math.random() > (o.balconies ?? 0.35)) continue;
+    const t = (b + 0.5) / bays * L - L / 2, [bx, bz] = along(t), by = y0 + f * 3.3 + 0.15;
+    S(BOX, mat(wood), bx + fx * 0.45, by, bz + fz * 0.45, ry, 0, 0, 2.2, 0.14, 0.9);
+    S(BOX, mat(wood), bx + fx * 0.88, by + 0.55, bz + fz * 0.88, ry, 0, 0, 2.2, 1.0, 0.07);
+    for (const s of [-1, 1]) S(BOX, mat(wood), bx + fx * 0.45 + (fz ? s * 1.08 : 0), by + 0.55, bz + fz * 0.45 + (fx ? s * 1.08 : 0), ry, 0, 0, 0.07, 1.0, 0.9);
+  }
+  const c = addCollider(x - w / 2, y0 - 1, z - d / 2, x + w / 2, yr + 0.7, z + d / 2);
+  endB();
+  if (o.fire) LOC.fireBuildings.push({ x, z, w, d, h, c });
+  return { c, h };
+}
+// the white Lanzarote chimney: a little tower with a stepped cap and four small openings
+function lanzaroteChimney(x, y, z) {
+  const W = tintMat('#f6f4ee');
+  S(BOX, W, x, y + 0.9, z, 0, 0, 0, 0.75, 1.8, 0.75);
+  S(BOX, W, x, y + 1.9, z, 0, 0, 0, 0.95, 0.12, 0.95);
+  S(BOX, mat('#2a2622'), x, y + 2.1, z, 0, 0, 0, 0.5, 0.26, 0.5);
+  S(BOX, W, x, y + 2.3, z, 0, 0, 0, 0.8, 0.12, 0.8);
+  S(new THREE.ConeGeometry(1, 1, 4), W, x, y + 2.55, z, Math.PI / 4, 0, 0, 0.42, 0.42, 0.42);
+}
+// fill a 45 x 45 m town block with buildings round the edge (facing the streets), keeping clear of reserved spots
+function blockFill(cx, cz, floorsMin, floorsMax, reserved = [], opts = {}) {
+  const H = 22.5, D = 11;
+  const free = (x0, x1, z0, z1) => !reserved.some(([a0, a1, b0, b1]) => x0 < a1 + 0.8 && x1 > a0 - 0.8 && z0 < b1 + 0.8 && z1 > b0 - 0.8);
+  const row = (face) => {
+    const horiz = face >= 2;
+    const len = horiz ? 2 * H : 2 * H - 2 * D;           // N/S rows run the full width, E/W rows fit between them
+    let t = -len / 2;
+    while (t < len / 2 - 4) {
+      const wv = Math.min(len / 2 - t, 7 + Math.random() * 7);
+      const mid = t + wv / 2;
+      const x = horiz ? cx + mid : cx + (face === 0 ? H - D / 2 : -H + D / 2);
+      const z = horiz ? cz + (face === 2 ? H - D / 2 : -H + D / 2) : cz + mid;
+      const w = horiz ? wv - 0.05 : D, d = horiz ? D : wv - 0.05;
+      if (free(x - w / 2, x + w / 2, z - d / 2, z + d / 2)) {
+        const fl = floorsMin + Math.floor(Math.random() * (floorsMax - floorsMin + 1));
+        urbanBuilding(x, z, w, d, fl, face, { shop: Math.random() < (opts.shops ?? 0.35) ? { text: Math.random() < 0.5 ? pick(SHOP_NAMES) : null, bg: pick(SHOP_COLS), awning: Math.random() < 0.3 ? pick(['#2f6b3a', '#b8322a', '#24435f', '#c89a3a']) : null } : null, fire: opts.fire && Math.random() < 0.25 });
+      }
+      t += wv;
+    }
+  };
+  row(2); row(3); row(0); row(1);
+  // the patio in the middle: black picón and a palm or two
+  flat(cx, 0.03, cz, 2 * H - 2 * D, 2 * H - 2 * D, '#3a332f');
+  if (free(cx - 3, cx + 3, cz - 3, cz + 3)) palmAt(cx + rand(-4, 4), cz + rand(-4, 4), rand(0.6, 0.9));
+}
+const SHOP_NAMES = ['FARMACIA', 'PANADERÍA', 'CAFETERÍA', 'BAR', 'FERRETERÍA', 'ZAPATERÍA', 'ÓPTICA', 'PELUQUERÍA', 'ESTANCO', 'LIBRERÍA', 'FRUTERÍA', 'BAZAR', 'BANCO', 'TELEFONÍA', 'SUPERMERCADO', 'HELADERÍA', 'PAPELERÍA', 'BODEGA', 'RESTAURANTE', 'CORREOS'];
+const SHOP_COLS = ['#24435f', '#2f5a34', '#7a2a22', '#3a3f46', '#5a3a6a', '#1f6a6a', '#8a5a1a'];
+
+// Iglesia de San Ginés: white walls, dark basalt corners and doorway, a bell tower with a little dome
+function sanGines(x, z) {
+  const W = tintMat('#f6f3ec'), B = stone('#34302d');
+  beginB('#f6f3ec');
+  S(BOX, W, x, 4.5, z, 0, 0, 0, 12, 9, 20);
+  S(BOX, W, x, 9.6, z, 0, 0, 0, 12.4, 0.5, 20.4);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) S(BOX, B, x + sx * 5.8, 4.5, z + sz * 9.8, 0, 0, 0, 0.6, 9, 0.6);
+  // gable over the front (facing the plaza, -z)
+  S(new THREE.ConeGeometry(1, 1, 4), W, x, 11.2, z - 9.8, Math.PI / 4, 0, 0, 8.5, 3, 0.6);
+  S(BOX, B, x, 2.4, z - 10.05, 0, 0, 0, 3.4, 4.8, 0.3);
+  S(BOX, mat('#4a2c18'), x, 1.8, z - 10.2, 0, 0, 0, 2.2, 3.6, 0.1);
+  S(BOX, W, x, 13, z - 6.5, 0, 0, 0, 4.2, 26, 4.2);                         // bell tower
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) S(BOX, B, x + sx * 2.05, 13, z - 6.5 + sz * 2.05, 0, 0, 0, 0.35, 26, 0.35);
+  S(BOX, mat('#141414'), x, 22.5, z - 8.65, 0, 0, 0, 1.6, 2.4, 0.1); S(BOX, mat('#141414'), x - 2.15, 22.5, z - 6.5, 0, 0, 0, 0.1, 2.4, 1.6);
+  S(new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), W, x, 26, z - 6.5, 0, 0, 0, 2.1, 2.4, 2.1);
+  S(CYL8, B, x, 29, z - 6.5, 0, 0, 0, 0.08, 1.4, 0.08); S(BOX, B, x, 29.3, z - 6.5, 0, 0, 0, 0.7, 0.08, 0.08);
+  addCollider(x - 6, -1, z - 10, x + 6, 9.8, z + 10); addCollider(x - 2.1, -1, z - 8.6, x + 2.1, 26, z - 4.4);
+  endB();
+}
+
 function buildTownCore() {
-  // Roads
+  // Roads (white lines, like Spanish streets)
   const roadMat = pbr({ map: roadTexture(), normalMap: asphaltNormal(false), normalScale: new THREE.Vector2(0.8, 0.8), roughness: 0.92 });
   (G.roadMats ||= []).push(roadMat);
   for (const r of ROADS) {
     S(PLANE, roadMat, r, 0.02, 0, 0, -Math.PI / 2, 0, 10, LAND * 2, 1);
     S(PLANE, roadMat, 0, 0.021, r, 0, -Math.PI / 2, Math.PI / 2, 10, LAND * 2, 1);
   }
-  for (const a of ROADS) for (const b of ROADS) flat(a, 0.025, b, 10, 10, '#555a63');
-
-  // Sidewalk blocks
+  for (const a of ROADS) for (const b of ROADS) flat(a, 0.025, b, 10, 10, '#4a4c50');
+  // pavements: pale stone slabs with a dark basalt kerb
   for (const bx of BLOCKS) for (const bz of BLOCKS) {
-    flat(bx, 0.022, bz, 50, 50, '#d9d4c7');
-    flat(bx, 0.028, bz, 45, 45, '#4f433d');     // black picón gravel instead of lawns, like real Lanzarote gardens
+    flat(bx, 0.022, bz, 50, 50, '#8c8780');
+    flat(bx, 0.024, bz, 49.2, 49.2, '#d8d2c6');
     G.locations.sidewalks.push(
       { x: bx - 23.5, z: bz - 23.5 }, { x: bx + 23.5, z: bz - 23.5 }, { x: bx - 23.5, z: bz + 23.5 }, { x: bx + 23.5, z: bz + 23.5 });
   }
 
-  // --- Plaza (0,0)
-  flat(0, 0.035, 0, 45, 45, '#eadfc6');
-  S(CYL, mat('#b9c3cf'), 0, 0.4, 0, 0, 0, 0, 5, 0.8, 5);
-  S(CYL, mat('#5cc8ff'), 0, 0.72, 0, 0, 0, 0, 4.5, 0.1, 4.5);
-  addCollider(-3.6, 0, -3.6, 3.6, 0.8, 3.6);
-  S(CYL, mat('#b9c3cf'), 0, 2, 0, 0, 0, 0, 0.6, 3.2, 0.6);
-  S(CYL, mat('#b9c3cf'), 0, 3.4, 0, 0, 0, 0, 1.8, 0.4, 1.8);
-  S(new THREE.SphereGeometry(1, 10, 8), mat('#8fe0ff'), 0, 3.9, 0, 0, 0, 0, 1.2, 0.6, 1.2);
-  addCollider(-0.7, 0, -0.7, 0.7, 3.6, 0.7);
+  // --- Plaza de San Ginés (0,0): paving, a stone fountain, Canary palms and benches, the church on the south side
+  flat(0, 0.035, 0, 45, 45, '#e2d9c8');
+  flat(0, 0.036, 0, 30, 30, '#cfc4b0');
+  S(CYL, stone('#8a837a'), 0, 0.35, 0, 0, 0, 0, 4.6, 0.7, 4.6);
+  S(CYL, pbr({ color: '#3d6f7a', roughness: 0.15 }), 0, 0.66, 0, 0, 0, 0, 4.2, 0.06, 4.2);
+  addCollider(-3.6, 0, -3.6, 3.6, 0.7, 3.6);
+  S(CYL, stone('#8a837a'), 0, 1.6, 0, 0, 0, 0, 0.45, 2.4, 0.45);
+  S(CYL, stone('#8a837a'), 0, 2.9, 0, 0, 0, 0, 1.4, 0.25, 1.4);
+  addCollider(-0.6, 0, -0.6, 0.6, 3.1, 0.6);
   for (let i = 0; i < 8; i++) {
     const a = i / 8 * Math.PI * 2 + Math.PI / 8;
-    addTree(Math.cos(a) * 16, Math.sin(a) * 16, 'round', 1);
-    bench(Math.cos(a + 0.4) * 11, Math.sin(a + 0.4) * 11, -a - 0.4 + Math.PI / 2);
+    palmAt(Math.cos(a) * 13, Math.sin(a) * 13 - 4, 0.75 + Math.random() * 0.2);
+    bench(Math.cos(a + 0.4) * 9, Math.sin(a + 0.4) * 9 - 4, -a - 0.4 + Math.PI / 2);
   }
-  sign('Arrecife', 0, 7, -3, '#fff', '#c8a040', 3.2);
-  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; flowerBed(Math.cos(a) * 16, Math.sin(a) * 16, 3, 3, 18); bushAt(Math.cos(a + 0.2) * 20, Math.sin(a + 0.2) * 20, 1.1); }
-  flowerBed(0, 0, 9, 9, 0);
+  sanGines(0, 12);
 
-  // --- Pizza (60,0)
-  building(70, 0, 16, 24, 8, '#fff1dc', '#d23c32');
-  box(61.5, 3, 0, 1.2, 0.4, 20, '#d23c32', false);
-  sign('🍕 PIZZA PLACE', 61, 10.5, 0, '#fff', '#d23c32');
-
-  // --- Taxi depot (-60,0)
-  building(-70, 0, 16, 24, 7, '#e0c060', '#333');
-  sign('🚕 TAXI DEPOT', -61, 9.5, 0, '#222', '#ffd84a');
+  // --- Pizzeria (60,0)
+  urbanBuilding(70, 0, 16, 24, 2, 1, { shop: { text: 'PIZZERÍA NAPOLI', bg: '#7a2a22', awning: '#b8322a', w: 8 }, tint: '#fbf4e6', fire: true });
+  // --- Taxi rank (-60,0)
+  urbanBuilding(-70, 0, 16, 24, 2, 0, { shop: { text: 'TAXI ARRECIFE', bg: '#1d1f22', fg: '#ffd84a', w: 8 }, fire: true });
   for (let i = -1; i <= 1; i++) flat(-46, 0.04, i * 9, 5, 8, '#f5f5f5');
-
-  // --- Clothing (0,60)
-  building(0, 70, 26, 16, 8, '#d8c0b8', '#6b4a44');
-  sign('👕 BOBBLY BOUTIQUE', 0, 10.5, 61, '#fff', '#e05a8a');
-
-  // --- Dealership (0,-60)
-  building(0, -72, 30, 12, 6, '#b8c8d8', '#3f4f6e');
-  sign('🚗 CAR DEALER', 0, 8.5, -65, '#fff', '#3f6f9e');
-  flat(0, 0.04, -52, 40, 16, '#b9bec7');
-
+  // --- Clothes shop (0,60)
+  urbanBuilding(0, 70, 26, 16, 2, 3, { shop: { text: 'MODA · BOUTIQUE', bg: '#3a3f46', w: 9 }, tint: '#ffffff', fire: true });
+  // --- Car dealer (0,-60): one floor of glass showroom
+  urbanBuilding(0, -72, 30, 12, 1, 2, { shop: { text: 'CONCESIONARIO · COCHES', bg: '#24435f', w: 12 }, tint: '#eceae6', fire: true });
+  flat(0, 0.04, -52, 40, 16, '#b9b6ae');
   // --- Fire station (60,60)
-  building(70, 68, 22, 22, 9, '#a8453c', '#5a2a22');
-  sign('🚒 FIRE STATION', 58, 11.5, 60, '#fff', '#b8322a');
-  flat(50, 0.04, 68, 10, 12, '#b9bec7');
-
-  // --- Recycling (60,-60)
-  building(74, -72, 14, 14, 6, '#9cb89c', '#4a6a4a');
-  sign('♻️ RECYCLING', 74, 8.5, -64, '#fff', '#3f8a4a');
+  urbanBuilding(70, 68, 22, 22, 2, 1, { shop: { text: 'BOMBEROS', bg: '#9a2a22', w: 7 }, tint: '#f2e2c4', fire: true });
+  flat(50, 0.04, 68, 10, 12, '#a9a49b');
+  // --- Recycling point (60,-60)
+  urbanBuilding(74, -72, 14, 14, 1, 1, { shop: { text: 'PUNTO LIMPIO', bg: '#2f5a34', w: 6 } });
   const dz = LOC.dumpster;
-  box(dz.x, 0, dz.z, dz.w, 1.8, dz.d, '#2f8a4a', true);
-  S(BOX, mat('#1f5f33'), dz.x, 1.82, dz.z, 0, 0, 0, dz.w - 0.4, 0.05, dz.d - 0.4);
-  sign('Throw trash here!', dz.x, 4, dz.z, '#fff', '#2f8a4a', 1.6);
+  box(dz.x, 0, dz.z, dz.w, 1.8, dz.d, '#2f6b3a', true);
+  S(BOX, mat('#1f4f2b'), dz.x, 1.82, dz.z, 0, 0, 0, dz.w - 0.4, 0.05, dz.d - 0.4);
+  sign('Recycling', dz.x, 3.2, dz.z, '#fff', '#2f8a4a', 1);
 
-  // --- Park (-60,60)
+  // --- Children's park (-60,60): rubber floor, palms, the playground and trampolines
+  flat(-60, 0.03, 60, 45, 45, '#6a5a4c');
+  flat(-62, 0.035, 66, 30, 22, '#b84a32');
   trampoline(-72, 72); trampoline(-62, 74); trampoline(-52, 72);
-  for (let i = 0; i < 8; i++) addTree(-60 + rand(-20, 20), 60 + rand(-20, -2), 'round');
-  // playground tower with stairs and slide
-  box(-74, 0, 48, 4, 5, 4, '#ff8a3d');
-  for (let s = 0; s < 9; s++) box(-74, 0, 50 + 0.8 * (8 - s) + 0.4, 2.5, 0.55 * (s + 1), 0.8, '#ffd54a', true);
-  wedge(-74, 40, 2.5, 12, 5, 0, '#3fd6d0');
-  sign('PARK', -60, 6, 38, '#fff', '#46c25a', 2);
+  for (let i = 0; i < 7; i++) palmAt(-60 + rand(-20, 20), 60 + rand(-20, -4), rand(0.6, 0.9));
+  box(-74, 0, 48, 4, 5, 4, '#c8642e');
+  for (let s = 0; s < 9; s++) box(-74, 0, 50 + 0.8 * (8 - s) + 0.4, 2.5, 0.55 * (s + 1), 0.8, '#d8b04a', true);
+  wedge(-74, 40, 2.5, 12, 5, 0, '#4a8aa0');
 
-  // --- Stunt park (-60,-60)
-  flat(-60, 0.036, -60, 45, 45, '#9aa0aa');
-  wedge(-60, -44, 7, 12, 3, 2, '#9a958c');
-  wedge(-60, -70, 7, 12, 3, 0, '#9a958c');
-  wedge(-78, -60, 8, 18, 6, 1, '#8a857c');
-  box(-44, 0, -74, 10, 3, 8, '#7a7f88');
-  wedge(-44, -63, 10, 14, 3, 2, '#7a7f88');
-  wedge(-40, -50, 4, 6, 1.5, 3, '#a8a090');
-  flat(-76, 0.05, -78, 10, 10, '#4a4f5a');
-  S(CYL, mat('#ffd54a'), -76, 0.06, -78, 0, 0, 0, 3.5, 0.02, 3.5);
-  sign('STUNT PARK', -60, 8, -40, '#fff', '#ff5b6e', 2.2);
+  // --- Skate park (-60,-60), concrete
+  flat(-60, 0.036, -60, 45, 45, '#a8a49c');
+  wedge(-60, -44, 7, 12, 3, 2, '#b4afa6');
+  wedge(-60, -70, 7, 12, 3, 0, '#b4afa6');
+  wedge(-78, -60, 8, 18, 6, 1, '#a39e95');
+  box(-44, 0, -74, 10, 3, 8, '#9a958c');
+  wedge(-44, -63, 10, 14, 3, 2, '#9a958c');
+  wedge(-40, -50, 4, 6, 1.5, 3, '#b8b2a8');
+  flat(-76, 0.05, -78, 10, 10, '#5a5650');
+  // --- the toy blaster shop on its corner
+  urbanBuilding(-78, -44, 10, 8, 1, 0, { shop: { text: 'BLASTERS', bg: '#3a3f46', w: 5 }, tint: '#e9dcc4' });
 
-  // --- Sawmill (-120,0)
+  // --- Timber yard (-120,0)
   box(-130, 0, 0, 14, 0.3, 20, '#8b6b4a', true);
-  for (const [px, pz] of [[-136, -9], [-124, -9], [-136, 9], [-124, 9]]) box(px, 0, pz, 0.6, 6, 0.6, '#6b4a2b');
-  S(BOX, mat('#a0522d'), -130, 6.2, 0, 0, 0, 0, 15, 0.4, 21);
+  for (const [px, pz] of [[-136, -9], [-124, -9], [-136, 9], [-124, 9]]) box(px, 0, pz, 0.6, 6, 0.6, '#5a3f28');
+  S(BOX, mat('#8a8680'), -130, 6.2, 0, 0, 0, 0, 15, 0.3, 21);
   S(CYL, mat('#c0c0c0'), -130, 1.6, 0, 0, Math.PI / 2, 0, 1.3, 0.1, 1.3);
   box(-130, 0.3, 0, 6, 1, 2, '#6b4a2b', true);
   const lz = LOC.logZone;
-  flat(lz.x, 0.05, lz.z, lz.w, lz.d, '#ffd54a');
-  flat(lz.x, 0.06, lz.z, lz.w - 1, lz.d - 1, '#c9a86b');
-  sign('🪵 SAWMILL - bring logs here!', -110, 7, 0, '#fff', '#8b5a2b', 2.4);
+  flat(lz.x, 0.05, lz.z, lz.w, lz.d, '#c9a86b');
+  sign('Aserradero · logs here', -110, 5, 0, '#fff', '#8b5a2b', 1.2);
+  // town parks with laurel trees (they can be chopped for the timber yard)
   forestBlock(-120, -60); forestBlock(-120, -120); forestBlock(-60, -120);
 
-  // --- Residential
-  for (const [cx, cz] of [[120, -120], [120, -60], [120, 0], [120, 60], [120, 120], [-120, 60], [-120, 120], [-60, 120], [0, 120]]) residentialBlock(cx, cz);
-
-  // --- Mansion (60,120)
-  S(windowBoxGeo(18, 7, 12), bmat('#fff6e0'), 62, 3.5, 126);
-  hipRoof(62, 7, 126, 18, 12, 3.4, '#6b4a8b', 0.7);
-  addCollider(53, 0, 120, 71, 7.2, 132);
-  flat(62, 0.05, 108, 12, 7, '#9be0ff');
-  box(62, 0, 104.2, 12.6, 0.3, 0.6, '#ffffff', false);
-  box(62, 0, 111.8, 12.6, 0.3, 0.6, '#ffffff', false);
-  S(BOX, mat('#7a4a2b'), 62, 1.3, 119.95, 0, 0, 0, 2, 2.6, 0.12);
-  sign('🏠 DREAM HOUSE', 62, 13, 120, '#fff', '#6b4a8b', 2.4);
-  S(BOX, mat('#a0683a'), LOC.wardrobe.x, 1.2, LOC.wardrobe.z, 0, 0, 0, 2, 2.4, 1);
-  addCollider(LOC.wardrobe.x - 1, 0, LOC.wardrobe.z - 0.5, LOC.wardrobe.x + 1, 2.4, LOC.wardrobe.z + 0.5);
-
-  // --- Downtown
-  downtownBlock(0, -120); downtownBlock(60, -120);
-  // Taller buildings next to the shop blocks
-  for (const [cx, cz] of [[60, 0], [-60, 0]]) {
-    const h = 14;
-    const c = building(cx + (cx > 0 ? 18 : -18), cz + 18, 10, 10, h, '#d6d0e3');
-    LOC.fireBuildings.push({ x: cx + (cx > 0 ? 18 : -18), z: cz + 18, w: 10, d: 10, h, c });
+  // --- the dream house (60,120): a Canarian villa with a wooden balcony and a pool
+  {
+    const wm = urbanWall('#ffffff', false);
+    S(canarianBoxGeo(18, 7, 12), wm, 62, 3.5, 126);
+    S(BOX, stone('#3a3532'), 62, 0.3, 126, 0, 0, 0, 18.1, 0.6, 12.1);
+    const W = tintMat('#ffffff');
+    for (const [dx, dz2, sx, sz] of [[0, -6, 18, 0.24], [0, 6, 18, 0.24], [-9, 0, 0.24, 12], [9, 0, 0.24, 12]]) S(BOX, W, 62 + dx, 7.35, 126 + dz2, 0, 0, 0, sx, 0.7, sz);
+    for (let i = 0; i < 4; i++) { const bx = 55 + i * 4.6; S(BOX, mat('#5e3a20'), bx, 3.6, 119.5, 0, 0, 0, 3.2, 0.14, 1); S(BOX, mat('#5e3a20'), bx, 4.15, 119.05, 0, 0, 0, 3.2, 1, 0.07); }
+    lanzaroteChimney(68, 7, 129);
+    addCollider(53, 0, 120, 71, 7.2, 132);
+    flat(62, 0.05, 108, 12, 7, '#3fb7d6');
+    box(62, 0, 104.2, 12.6, 0.3, 0.6, '#f4f1ea', false);
+    box(62, 0, 111.8, 12.6, 0.3, 0.6, '#f4f1ea', false);
+    S(BOX, mat('#5e3a20'), 62, 1.3, 119.95, 0, 0, 0, 2, 2.6, 0.12);
+    for (const px of [52, 72]) palmAt(px, 106, 0.9);
+    sign('Your dream house', 62, 10, 120, '#fff', '#6b4a8b', 1.2);
+    S(BOX, mat('#a0683a'), LOC.wardrobe.x, 1.2, LOC.wardrobe.z, 0, 0, 0, 2, 2.4, 1);
+    addCollider(LOC.wardrobe.x - 1, 0, LOC.wardrobe.z - 0.5, LOC.wardrobe.x + 1, 2.4, LOC.wardrobe.z + 0.5);
   }
-  for (const b of [[70, 0, 16, 24, 8], [-70, 0, 16, 24, 7], [0, 70, 26, 16, 8], [70, 68, 22, 22, 9], [0, -72, 30, 12, 6]])
-    LOC.fireBuildings.push({ x: b[0], z: b[1], w: b[2], d: b[3], h: b[4] });
 
-  // --- rows of trees around the edge of town
-  for (let z = -170; z <= 170; z += 18) { addTree(-172 + rand(-4, 4), z, 'pine'); if (Math.abs(z) > 14) addTree(174 + rand(-3, 3), z, 'round'); }
-  for (let x = -170; x <= 170; x += 20) { addTree(x + rand(-3, 3), 182, 'round'); if (Math.abs(x - 30) > 14) addTree(x + rand(-3, 3), -176, 'round'); }
-  // --- Blaster shop (stunt park corner)
-  building(-78, -44, 10, 8, 5, '#5a5f6a', '#2a2d33');
-  sign('🔫 BLASTER SHOP', -72.5, 7.5, -44, '#fff', '#8b3fd6', 2.2);
+  // --- the rest of the centre: Canarian town blocks round courtyards
+  const R = (x0, x1, z0, z1) => [x0, x1, z0, z1];
+  blockFill(60, 0, 2, 4, [R(62, 78, -12, 12), R(52, 58, -2, 2), R(40, 51, -14, 6)], { fire: true });
+  blockFill(-60, 0, 2, 4, [R(-78, -62, -12, 12), R(-50, -40, -14, 14), R(-87, -75, -26, -14)], { fire: true });
+  blockFill(0, 60, 2, 3, [R(-13, 13, 62, 78), R(-3, 3, 52, 58)]);
+  blockFill(0, -60, 2, 3, [R(-15, 15, -78, -66), R(-21, 21, -60, -44)]);
+  blockFill(60, 60, 2, 3, [R(59, 81, 57, 79), R(44, 56, 61, 75), R(50, 58, 46, 54)]);
+  blockFill(60, -60, 1, 3, [R(67, 81, -79, -65), R(44, 57, -70, -58), R(52, 60, -56, -48), R(36, 49, -79, -65)]);
+  for (const [cx, cz] of [[120, -120], [120, -60], [120, 0], [120, 60], [120, 120], [-120, 60], [-120, 120], [-60, 120], [0, 120]]) blockFill(cx, cz, 1, 3, cx === 120 && cz === 60 ? [R(93, 105, 33, 47)] : [], { shops: 0.2, fire: true });
+  // Calle León y Castillo: the busy shopping street, a bit taller
+  for (const [cx, cz] of [[0, -120], [60, -120]]) blockFill(cx, cz, 3, 5, [], { shops: 0.8, fire: true });
 
-  // Scatter roadside trees in free edge strips
-  for (let i = 0; i < 16; i++) addTree(rand(-168, -156), rand(-150, 150));
+  // palms along the avenues at the edge of the centre
+  for (let z = -170; z <= 170; z += 16) { palmAt(-172 + rand(-2, 2), z, rand(0.75, 1)); if (Math.abs(z) > 14) palmAt(174 + rand(-2, 2), z, rand(0.75, 1)); }
+  for (let x = -170; x <= 170; x += 18) { palmAt(x + rand(-2, 2), 182, rand(0.75, 1)); if (Math.abs(x - 30) > 14) palmAt(x + rand(-2, 2), -176, rand(0.75, 1)); }
+}
 
+// The Gran Hotel on Arrecife's seafront: the island's only tall building (17 floors, about 60 m), white
+// concrete bands and blue-green glass. Same features as Bobbly's tower: a lift to the roof and a stock ticker.
+function buildGranHotel(tx, tz) {
+  LOC.stockTower = { x: tx, z: tz, w: 44, y: 6.5 };
+  beginB('#eef2f4');
+  const podH = 9;
+  S(windowBoxGeo(44, podH, 44), bmat('#e8ecee'), tx, podH / 2, tz);
+  addCollider(tx - 22, 0, tz - 22, tx + 22, podH, tz + 22);
+  S(BOX, mat('#d8dcde'), tx, podH + 0.3, tz, 0, 0, 0, 45, 0.6, 45);
+  const W = 36, D = 17, floors = 16, fh = 3.4;
+  let y = podH + 0.6;
+  const glass = bmat('#7fa9b8'), band = tintMat('#f2f4f4', 0.6);
+  S(windowBoxGeo(W, floors * fh, D), glass, tx, y + floors * fh / 2, tz);
+  for (let f = 0; f <= floors; f++) S(BOX, band, tx, y + f * fh, tz, 0, 0, 0, W + 0.5, 0.45, D + 0.5);
+  for (const sx of [-1, 1]) S(BOX, band, tx + sx * (W / 2 + 0.1), y + floors * fh / 2, tz, 0, 0, 0, 1.2, floors * fh, D + 0.6);
+  addCollider(tx - W / 2, y, tz - D / 2, tx + W / 2, y + floors * fh, tz + D / 2);
+  y += floors * fh;
+  S(BOX, band, tx, y + 0.3, tz, 0, 0, 0, W + 1, 0.6, D + 1);
+  y += 0.6;
+  // roof terrace with a glass railing and the restaurant pavilion
+  for (const [dx, dz, sx, sz] of [[0, D / 2, W, 0.12], [0, -D / 2, W, 0.12], [W / 2, 0, 0.12, D], [-W / 2, 0, 0.12, D]]) {
+    S(BOX, mat('#bcd8e0', { transparent: true, opacity: 0.45 }), tx + dx, y + 0.6, tz + dz, 0, 0, 0, sx, 1.2, sz);
+    addCollider(tx + dx - sx / 2 - 0.1, y, tz + dz - sz / 2 - 0.1, tx + dx + sx / 2 + 0.1, y + 1.2, tz + dz + sz / 2 + 0.1);
+  }
+  S(windowBoxGeo(12, 3.4, 9), glass, tx - 10, y + 1.7, tz);
+  addCollider(tx - 16, y, tz - 4.5, tx - 4, y + 3.4, tz + 4.5);
+  S(CYL8, mat('#e0e0e0'), tx + 14, y + 4, tz + 6, 0, 0, 0, 0.08, 8, 0.08);
+  facadeSign('GRAN HOTEL', tx, podH + 2.4, tz + 22.1, 0, 12, '#1f3f5a');
+  const TB = curB;
+  endB();
+  LOC.tower = { x: tx + 4, z: tz + 4, top: y };
+  const top = y;
+  G.interacts.push(
+    { b: TB, x: tx, z: tz + 25, r: 5.5, label: () => '🛗 Take the lift to the roof of the Gran Hotel', action: () => { const p = G.player; if (p.held && G.dropHeld) G.dropHeld(false); p.place(tx + 4, top + 0.2, tz + 4, 0); G.toast && G.toast('🏨 The roof of the Gran Hotel, 62 m above the sea. Jump off and press Space for your parachute 🪂', '', 7000); } },
+    { b: TB, x: tx + 4, z: tz + 4, r: 5, minY: top - 2, label: () => '🛗 Take the lift back down', action: () => { G.player.place(tx, 0, tz + 27, 0); } },
+  );
 }
 
 function buildWindmillLocal() {
@@ -3149,6 +3383,17 @@ function canarianHouse(x, z, w, d, floors, rot, doorFace, register) {
   S(BOX, M.white, x, yr + 0.3, z - D / 2 + 0.12, 0, 0, 0, W, 0.6, 0.24); S(BOX, M.white, x, yr + 0.3, z + D / 2 - 0.12, 0, 0, 0, W, 0.6, 0.24);
   S(BOX, M.white, x - W / 2 + 0.12, yr + 0.3, z, 0, 0, 0, 0.24, 0.6, D); S(BOX, M.white, x + W / 2 - 0.12, yr + 0.3, z, 0, 0, 0, 0.24, 0.6, D);
   if (W * D > 80 && (Math.floor(x + z) % 3 === 0)) S(BOX, M.white, x - W / 4, yr + 1.1, z - D / 4, 0, 0, 0, 2.4, 2.2, 2.4);
+  const hr = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+  if (hr < 0.45) lanzaroteChimney(x + W / 4, yr, z + D / 5);
+  if (hr > 0.6) S(CYL8, mat(hr > 0.8 ? '#1d1f22' : '#e8e6e0'), x - W / 5, yr + 0.7, z + D / 4, 0, 0, 0, 0.55, 1.2, 0.55);
+  // a low white garden wall on one side with a palm or a bougainvillea behind it
+  if (hr > 0.3 && hr < 0.75) {
+    const sd = hr > 0.5 ? 1 : -1, gx = x + sd * (W / 2 + 2.5);
+    S(BOX, M.white, gx, gy + 0.55, z, 0, 0, 0, 5, 1.1, 0.25);
+    S(BOX, M.white, gx, gy + 0.55, z - D / 2, 0, 0, 0, 5, 1.1, 0.25);
+    if (hr < 0.45) palmAt(gx, z - D / 4, 0.55 + hr);
+    else S(BALL_G, mat(hr < 0.6 ? '#b8306a' : '#c85a90'), gx, gy + 1.5, z - D / 4, 0, 0, 0, 1.4, 1.1, 1.2);
+  }
   // the door
   const fx = doorFace === 0 ? 1 : doorFace === 1 ? -1 : 0, fz = doorFace === 2 ? 1 : doorFace === 3 ? -1 : 0;
   const dx = x + fx * (W / 2 + 0.03), dz = z + fz * (D / 2 + 0.03);
@@ -3272,7 +3517,7 @@ function buildTowns() {
             // face the street: the door is on the side toward it
             const faceX = Math.abs(dz) > Math.abs(dx);
             const face = faceX ? (-dz * sd > 0 ? 1 : 0) : (dx * sd > 0 ? 3 : 2);
-            canarianHouse(x, z, w, d, rnd() < 0.25 ? 2 : 1, 0, face, count % 4 === 0 ? `${name} No. ${count + 1}` : null);
+            { const r2 = rnd(); canarianHouse(x, z, w, d, n >= 300 ? (r2 < 0.15 ? 3 : r2 < 0.55 ? 2 : 1) : (r2 < 0.25 ? 2 : 1), 0, face, count % 4 === 0 ? `${name} No. ${count + 1}` : null); }
             placed.push([x, z, Math.max(w, d) / 2 + 1]);
             if (rnd() < 0.08) palmAt(x - dz * sd * (d / 2 + 2), z + dx * sd * (d / 2 + 2), 0.9);
             count++;
@@ -3300,7 +3545,6 @@ function buildTowns() {
         placed.push([px, pz, 14]);
       }
     }
-    if (n >= 25) sign(name, c.x, heightAt(c.x, c.z) + 9, c.z, '#fff', '#2f6b3a', 2.8);
   }
 }
 
@@ -3522,7 +3766,7 @@ export async function buildWorld(progress = () => {}) {
   // the Gran Hotel (Bobbly Tower builder): lift to the top, stock ticker, parachute jumps
   const GH = PLACES.granHotel;
   beginSection();
-  buildBobblyTower(0, 0);
+  buildGranHotel(0, 0);
   endSection(GH.x, GH.h, GH.z, 0, ['stockTower', 'tower']);
   LOC.twinTop = { x: LOC.tower.x, z: LOC.tower.z, top: LOC.tower.top };
   LOC.twin = { x: GH.x, z: GH.z + 30 };
@@ -3688,6 +3932,7 @@ export function buildLights() {
 }
 export const getLights = () => ({ sun, hemi, amb });
 
+let signT = 0;
 export function updateWorld(dt, focus) {
   G.dayTime = (G.dayTime + dt / 720) % 1; // 12 minute day
   const a = (G.dayTime - 0.25) * Math.PI * 2;
@@ -3704,6 +3949,8 @@ export function updateWorld(dt, focus) {
     G.sky.position.copy(G.camera.position);
   }
   updateTerrain(G.camera.position.x, G.camera.position.z, G.started ? 5 : 40);
+  signT -= dt;
+  if (signT <= 0) { signT = 0.3; const cp = G.camera.position; for (const sp of signSprites) sp.visible = Math.hypot(sp.position.x - cp.x, sp.position.z - cp.z) < 140; }
   updateBalloons(G.time);
   updateCollapses(dt);
   updateChunks(dt);

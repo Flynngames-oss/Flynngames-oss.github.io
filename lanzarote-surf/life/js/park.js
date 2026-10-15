@@ -345,7 +345,7 @@ function buildDecor() {
   const red = M('#e8322a'), yel = M('#ffcf1a');
   for (const z of [-67, -53]) { add(g, new THREE.CylinderGeometry(0.6, 0.7, 9, 12), red, 672, H0 + 4.5, z); add(g, new THREE.ConeGeometry(0.9, 1.6, 12), yel, 672, H0 + 9.8, z); addCollider(671.3, H0, z - 0.7, 672.7, H0 + 9, z + 0.7); }
   add(g, new THREE.BoxGeometry(1, 2.2, 15), red, 672, H0 + 8.2, -60);
-  for (const sx of [-1, 1]) { const s = textSprite('✨ BOBBLY LAND ✨', { size: 72, color: '#ffcf1a', bg: 'rgba(160,20,20,0.9)', scale: 3.6 }); s.position.set(672 + sx * 0.9, H0 + 8.3, -60); g.add(s); }
+  for (const sx of [-1, 1]) { const s = textSprite('FERIA', { size: 72, color: '#ffffff', bg: 'rgba(120,30,30,0.85)', scale: 2 }); s.position.set(672 + sx * 0.9, H0 + 8.3, -60); g.add(s); }
   // stalls
   const stall = (x, z, name, col) => {
     add(g, new THREE.BoxGeometry(4, 2.4, 3), M('#f4f1ea'), x, H0 + 1.2, z);

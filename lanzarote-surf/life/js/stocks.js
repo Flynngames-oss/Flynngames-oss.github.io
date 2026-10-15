@@ -398,7 +398,7 @@ function drawTicker() {
       x.fillStyle = up ? '#3dff72' : '#ff4040'; x.fillText(b, px, H / 2 + 2); px += x.measureText(b).width + 26;
       x.fillStyle = '#ffc23a'; x.fillText('★', px, H / 2 + 2); px += 60;
     }
-    if (rep === 0) { x.fillStyle = '#ffc23a'; x.fillText('BOBBLY STOCK EXCHANGE', px, H / 2 + 2); px += x.measureText('BOBBLY STOCK EXCHANGE').width + 60; }
+    if (rep === 0) { x.fillStyle = '#ffc23a'; x.fillText('LANZAROTE STOCK EXCHANGE', px, H / 2 + 2); px += x.measureText('LANZAROTE STOCK EXCHANGE').width + 60; }
   }
   // LED dots
   x.fillStyle = 'rgba(0,0,0,.35)';
