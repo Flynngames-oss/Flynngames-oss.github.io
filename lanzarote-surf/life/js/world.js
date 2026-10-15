@@ -847,8 +847,10 @@ export const LOC = G.LOC = {
 
 // ---------------------------------------------------------------- trees (instanced so they can be chopped)
 const treeDefs = [];
-function addTree(x, z, type = Math.random() < 0.5 ? 'round' : 'pine', s = rand(0.85, 1.25)) {
+function addTree(x, z, type = 'round', s = rand(0.85, 1.25)) {
   if (G.keepOut && G.keepOut(x, z)) return;
+  // Lanzarote has no pine woods: rounded laurel/ficus trees in town, and every other one a palm
+  if (type === 'pine') { if (Math.random() < 0.6) { palmAt(x, z, s); return; } type = 'round'; }
   treeDefs.push({ x, z, type, s, y: heightAt(x, z) });
 }
 // Leafy crown: a cluster of lumpy blobs, darker underneath and in the middle.
@@ -2319,7 +2321,7 @@ function forestBlock(cx, cz, n = 24) {
     if (placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 4.2)) continue;
     placed.push([x, z]); addTree(x, z);
   }
-  flat(cx, 0.03, cz, 48, 48, '#5a8f42');
+  flat(cx, 0.03, cz, 48, 48, '#6b5a48');      // dry earth and picón under the trees
 }
 
 function downtownBlock(cx, cz) {

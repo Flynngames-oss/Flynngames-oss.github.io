@@ -402,7 +402,7 @@ let phoneApp = null;
 function phonePanel(app = null, opts = {}) {
   phoneApp = app;
   let once = opts;
-  openPanel('📱 Bobbly Phone', (el) => { renderPhone(el, once); once = {}; });
+  openPanel('📱 Phone', (el) => { renderPhone(el, once); once = {}; });
 }
 G.openPhoneApp = (app, opts) => phonePanel(app, opts || {});
 function openApp(id) {
@@ -455,7 +455,7 @@ function bindPhone(el) {
       if (p.vehicle) p.vehicle.removeOccupant(p);
       if (p.held && G.dropHeld) G.dropHeld(false);
       const tt = travelTarget(t), tx = tt.x + (t[2] === 'peak' ? 4 : 0), tz = tt.z;
-      const face = typeof t[2] === 'string' ? (t[4] || 0) : (t[4] || 0);
+      const face = tt.yaw !== undefined ? tt.yaw : (t[4] || 0);
       p.place(tx, groundHeight(tx, tz, 999) + 0.1, tz, face);
       G.cam.yaw = face + Math.PI;
       sfx.pop();
@@ -519,8 +519,8 @@ export function chatLine(name, text, color = '#ffd166') {
 // ---------------------------------------------------------------- minimap
 let mapBase = null;
 let worldBase = null;
-// Whole-island overview map: 1 pixel = 16 metres, from the real island colours.
-const WB_PX = 16;
+// Whole-island overview map: 1 pixel = 24 metres, from the real island colours.
+const WB_PX = 24;
 let WB = null;
 function buildWorldBase() {
   const B = ISLAND_BOX;

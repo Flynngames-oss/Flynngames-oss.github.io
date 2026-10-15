@@ -730,7 +730,7 @@ export class Character {
         this.root.y = gh; this.vel.y = 0; this.grounded = true; this.chute = false;
       }
     } else this.grounded = false;
-    if (!(this.isPlayer && G.rocketRide) && (this.root.y < -60 || Math.abs(this.root.x) > 1500 || Math.abs(this.root.z) > 1500)) this.respawn && this.respawn();
+    if (!(this.isPlayer && G.rocketRide) && (this.root.y < -60 || Math.abs(this.root.x) > 40000 || Math.abs(this.root.z) > 40000)) this.respawn && this.respawn();
   }
 
   // Wingsuit: W dives (faster), S flattens out (slower, careful not to stall), A/D bank and turn.
@@ -796,7 +796,7 @@ export class Character {
       this.grounded = true;
       if (this.isPlayer) sfx.water();
     }
-    if (!(this.isPlayer && G.rocketRide) && Math.abs(this.root.x) > 1500) this.respawn && this.respawn();
+    if (!(this.isPlayer && G.rocketRide) && Math.abs(this.root.x) > 40000) this.respawn && this.respawn();
   }
 
   computeTargets(dt) {
