@@ -378,3 +378,96 @@ function stripeTexture(a, b) {
   for (let i = 0; i < 8; i++) { x.fillStyle = '#' + new THREE.Color(i % 2 ? a : b).getHexString(); x.fillRect(i * 8, 0, 8, 8); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+
+// ---------------------------------------------------------------------------
+// Beach life: striped umbrellas, towels, people and palms along the sand near the spot
+// ---------------------------------------------------------------------------
+export function buildBeach(island, origin, spot, quality) {
+  const group = new THREE.Group();
+  const rnd = mulberry(99);
+  const a = spot.a, d = spot.d;
+  const H = (s, u) => island.h(origin.x + a.x * s + d.x * u, origin.z + a.z * s + d.z * u);
+  const spots = { umb: [], towel: [], ppl: [], palm: [] };
+  const mul = quality === 'low' ? 0.5 : 1;
+  for (let s = -650; s <= 650; s += 7) {
+    // find where the sand starts on this line toward the shore
+    let u0 = null;
+    for (let u = -60; u < 400; u += 2) if (H(s, u) > 0.7) { u0 = u; break; }
+    if (u0 === null) continue;
+    for (let k = 0; k < 2; k++) {
+      const u = u0 + 6 + rnd() * 50, ss = s + rnd() * 7;
+      const h = H(ss, u);
+      if (h < 0.7 || h > 9) continue;
+      if (Math.abs(H(ss + 4, u) - H(ss - 4, u)) + Math.abs(H(ss, u + 4) - H(ss, u - 4)) > 2.5) continue;
+      const x = a.x * ss + d.x * u, z = a.z * ss + d.z * u;
+      const r = rnd();
+      if (r < 0.25 * mul) spots.umb.push({ x, z, y: h, rot: rnd() * 6.28, c: Math.floor(rnd() * 5) });
+      else if (r < 0.4 * mul) spots.towel.push({ x, z, y: h, rot: rnd() * 6.28, c: Math.floor(rnd() * 6) });
+      else if (r < 0.75 * mul) spots.ppl.push({ x, z, y: h, rot: rnd() * 6.28 });
+      else if (r < 0.8 * mul && u > u0 + 30) spots.palm.push({ x, z, y: h - 0.3, s: 0.8 + rnd() * 0.5, r: rnd() * 6.28, lean: (rnd() - 0.5) * 0.3 });
+    }
+    // a few people paddling or standing in the shallows
+    if (rnd() < 0.18 * mul) {
+      const u = u0 - 3 - rnd() * 8;
+      spots.ppl.push({ x: a.x * s + d.x * u, z: a.z * s + d.z * u, y: -0.6, rot: rnd() * 6.28, wet: true });
+    }
+  }
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
+  const cols = ['#ff3d6e', '#1ec8ff', '#ffd23d', '#7dff5a', '#ff7a1f', '#b06bff'];
+  // umbrellas: pole + striped canopy (vertex colours alternate per segment)
+  if (spots.umb.length) {
+    const canopy = new THREE.ConeGeometry(1.25, 0.55, 12, 1, true).toNonIndexed();
+    const cc = new Float32Array(canopy.attributes.position.count * 3);
+    for (let i = 0; i < canopy.attributes.position.count; i++) { const f = Math.floor(i / 6) % 2 ? 1 : 0.15; cc[i * 3] = cc[i * 3 + 1] = cc[i * 3 + 2] = f; }
+    canopy.setAttribute('color', new THREE.BufferAttribute(cc, 3));
+    canopy.translate(0, 2.2, 0);
+    const pole = paint(new THREE.CylinderGeometry(0.03, 0.03, 2.3, 5).translate(0, 1.15, 0).toNonIndexed(), 0xeeeeee);
+    const g = mergeGeometries([canopy, pole]);
+    g.computeVertexNormals();
+    const inst = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), spots.umb.length);
+    spots.umb.forEach((o, i) => {
+      q.setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.25, o.rot, (rnd() - 0.5) * 0.25));
+      inst.setMatrixAt(i, m.compose(p.set(o.x, o.y - 0.2, o.z), q, sc.set(1, 1, 1)));
+      inst.setColorAt(i, col.set(cols[o.c]).lerp(new THREE.Color('#ffffff'), 0.05));
+    });
+    group.add(inst);
+  }
+  if (spots.towel.length) {
+    const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.03, 1.8), new THREE.MeshStandardMaterial({ roughness: 0.9 }), spots.towel.length);
+    spots.towel.forEach((o, i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), o.rot);
+      inst.setMatrixAt(i, m.compose(p.set(o.x, o.y + 0.02, o.z), q, sc.set(1, 1, 1)));
+      inst.setColorAt(i, col.set(cols[o.c]));
+    });
+    group.add(inst);
+  }
+  // little rubbery beach people in the same toy style as the surfer
+  if (spots.ppl.length) {
+    const body = new THREE.CapsuleGeometry(0.2, 0.75, 3, 8).translate(0, 0.6, 0);
+    const head = new THREE.SphereGeometry(0.17, 10, 8).scale(0.95, 1.15, 0.95).translate(0, 1.32, 0);
+    const legs = new THREE.CapsuleGeometry(0.09, 0.4, 2, 6).translate(0, 0.25, 0);
+    const shirtCols = ['#1aa7e0', '#ff3d6e', '#ffd23d', '#2ecc71', '#ffffff', '#ff7a1f'];
+    const skinCols = ['#ff6a1c', '#3fb8ff', '#ff5fa2', '#7bd64a', '#ffb02e', '#f1c7a0', '#b07cff'];
+    const iB = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ roughness: 0.6 }), spots.ppl.length);
+    const iH = new THREE.InstancedMesh(mergeGeometries([head, legs]), new THREE.MeshPhysicalMaterial({ roughness: 0.45, clearcoat: 0.4 }), spots.ppl.length);
+    spots.ppl.forEach((o, i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), o.rot);
+      const s2 = 0.85 + rnd() * 0.3;
+      m.compose(p.set(o.x, o.y, o.z), q, sc.set(s2, s2, s2));
+      iB.setMatrixAt(i, m); iH.setMatrixAt(i, m);
+      iB.setColorAt(i, col.set(shirtCols[Math.floor(rnd() * shirtCols.length)]));
+      iH.setColorAt(i, col.set(skinCols[Math.floor(rnd() * skinCols.length)]));
+    });
+    group.add(iB, iH);
+  }
+  if (spots.palm.length) {
+    const inst = new THREE.InstancedMesh(palmGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }), spots.palm.length);
+    spots.palm.forEach((o, i) => {
+      q.setFromEuler(new THREE.Euler(o.lean, o.r, 0));
+      inst.setMatrixAt(i, m.compose(p.set(o.x, o.y, o.z), q, sc.setScalar(o.s)));
+    });
+    group.add(inst);
+  }
+  group.traverse((o) => { o.frustumCulled = false; });
+  return group;
+}

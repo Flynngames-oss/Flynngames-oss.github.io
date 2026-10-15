@@ -248,9 +248,12 @@ vec3 shadeWater(vec3 W, vec3 Ng, float foamIn, float thin, float lip, float tube
   float face=ss(0.12,0.6,length(Ng.xz))*(1.-lip);
   vec3 faceCol=mix(uDeep*1.3+uSSS*0.22,uSSS*(0.62+0.5*dif)+uDeep*0.2,clamp(thin*1.5,0.,1.));
   body=mix(body,faceCol,face*0.75);
+  // streaky foam lines being drawn up the face
+  float streak=fbm(vec2(dot(W.xz,uA)*0.12,dot(W.xz,uD)*1.6-t*0.9));
+  foamIn+=face*ss(0.55,0.8,streak)*0.55*(1.-lip)*(1.-tube);
   vec3 col=mix(body,refl,fres*(1.-0.5*thin)*(1.-0.75*tube)*(1.-0.5*steepN));
   float rs=max(dot(R,uSunDir),0.);
-  col+=uSunCol*(pow(rs,600.)*7.+pow(rs,60.)*0.25)*(1.-ss(0.3,1.,foamIn));
+  col+=uSunCol*(pow(rs,600.)*3.5+pow(rs,60.)*0.15)*(1.-ss(0.3,1.,foamIn));
   // foam
   float fn=fbm(W.xz*0.5+vec2(t*0.12,-t*0.05)+Ng.xz*2.);
   float fn2=fbm(W.xz*2.1-vec2(t*0.3,0.));
@@ -331,9 +334,9 @@ export class Ocean {
       uL0: { value: new THREE.Vector4() }, uL1: { value: new THREE.Vector4() },
       uRip: { value: rippleTex || (rippleTex = makeRippleTexture()) },
     };
-    this.u.uDeep.value.setRGB(0.006, 0.05, 0.09);
-    this.u.uShallow.value.setRGB(0.03, 0.3, 0.31);
-    this.u.uSSS.value.setRGB(0.05, 0.5, 0.36);
+    this.u.uDeep.value.setRGB(0.0, 0.045, 0.14);
+    this.u.uShallow.value.setRGB(0.02, 0.3, 0.42);
+    this.u.uSSS.value.setRGB(0.02, 0.52, 0.56);
 
     // near grid, aligned with the waves, dense near the centre
     const Na = opts.gridA, Nd = opts.gridD;
@@ -517,6 +520,27 @@ export class Ocean {
 // ---------------------------------------------------------------------------
 // Spray / mist particles
 // ---------------------------------------------------------------------------
+// clumpy foam sprite: lots of overlapping soft bubbles with a ragged edge
+function sprayTexture() {
+  const N = 128, c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d');
+  let seed = 3; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 70; i++) {
+    const a = r() * 6.283, d = Math.pow(r(), 0.7) * N * 0.33;
+    const cx = N / 2 + Math.cos(a) * d, cy = N / 2 + Math.sin(a) * d, rad = N * (0.05 + r() * 0.11) * (1 - d / N);
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, rad);
+    g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(0.6, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, rad, 0, 6.283); x.fill();
+  }
+  for (let i = 0; i < 60; i++) { // stray droplets
+    const a = r() * 6.283, d = N * (0.3 + r() * 0.18);
+    x.fillStyle = `rgba(255,255,255,${0.5 + r() * 0.5})`;
+    x.beginPath(); x.arc(N / 2 + Math.cos(a) * d, N / 2 + Math.sin(a) * d, 0.8 + r() * 1.8, 0, 6.283); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  return t;
+}
+
 export class Spray {
   constructor(scene, sky, max) {
     this.max = max;
@@ -532,20 +556,26 @@ export class Spray {
     this.aPos = new THREE.BufferAttribute(this.pos, 3); this.aPos.setUsage(THREE.DynamicDrawUsage);
     this.aSize = new THREE.BufferAttribute(new Float32Array(max), 1); this.aSize.setUsage(THREE.DynamicDrawUsage);
     this.aAlpha = new THREE.BufferAttribute(new Float32Array(max), 1); this.aAlpha.setUsage(THREE.DynamicDrawUsage);
+    const seed = new Float32Array(max); for (let i = 0; i < max; i++) seed[i] = Math.random();
     g.setAttribute('position', this.aPos); g.setAttribute('size', this.aSize); g.setAttribute('alpha', this.aAlpha);
+    g.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uScale: { value: 600 }, uSunCol: sky.u.uSunCol, uSunDir: sky.u.uSunDir, uFogCol: sky.u.uFogCol, uFogDen: sky.u.uFogDen },
+      uniforms: { uScale: { value: 600 }, uTex: { value: sprayTexture() }, uSunCol: sky.u.uSunCol, uSunDir: sky.u.uSunDir, uFogCol: sky.u.uFogCol, uFogDen: sky.u.uFogDen },
       vertexShader: /* glsl */`
-        attribute float size; attribute float alpha; uniform float uScale;
-        varying float vA; varying float vD;
+        attribute float size; attribute float alpha; attribute float seed; uniform float uScale;
+        varying float vA; varying float vD; varying float vS;
         void main(){ vec4 mv=modelViewMatrix*vec4(position,1.); gl_Position=projectionMatrix*mv;
-          gl_PointSize=min(size*uScale/max(-mv.z,0.5),256.); vA=alpha; vD=-mv.z; }`,
+          gl_PointSize=min(size*uScale/max(-mv.z,0.5),320.); vA=alpha; vD=-mv.z; vS=seed; }`,
       fragmentShader: /* glsl */`
-        uniform vec3 uSunCol, uFogCol; uniform float uFogDen;
-        varying float vA; varying float vD;
-        void main(){ vec2 c=gl_PointCoord-0.5; float r=dot(c,c)*4.; if(r>1.) discard;
-          float a=(1.-r)*(1.-r)*vA*smoothstep(1.2,5.,vD);
-          vec3 col=vec3(0.9,0.94,0.97)*0.85+uSunCol*0.12;
+        uniform vec3 uSunCol, uFogCol; uniform float uFogDen; uniform sampler2D uTex;
+        varying float vA; varying float vD; varying float vS;
+        void main(){ vec2 c=gl_PointCoord-0.5;
+          float an=vS*6.283; c=mat2(cos(an),-sin(an),sin(an),cos(an))*c;
+          vec4 tx=texture2D(uTex,c+0.5);
+          float a=tx.a*vA*smoothstep(1.2,5.,vD)*1.5;
+          if(a<0.01) discard;
+          float lit=0.78+0.3*(0.5-gl_PointCoord.y);
+          vec3 col=(vec3(0.93,0.96,1.0)*lit+uSunCol*0.14)*(0.95+0.1*vS);
           float fog=1.-exp(-(uFogDen*vD)*(uFogDen*vD));
           gl_FragColor=vec4(mix(col,uFogCol,fog),a);
           #include <tonemapping_fragment>
@@ -554,6 +584,7 @@ export class Spray {
       transparent: true, depthWrite: false,
     });
     this.points = new THREE.Points(g, this.mat);
+    this.points.renderOrder = 5;
     this.points.frustumCulled = false;
     scene.add(this.points);
   }

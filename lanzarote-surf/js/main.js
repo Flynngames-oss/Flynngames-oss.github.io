@@ -2,8 +2,12 @@
 import * as THREE from 'three';
 import { Sky } from './sky.js';
 import { WaveSystem, Ocean, Spray, Trail } from './ocean.js';
-import { Island, GEO, ll2w, buildTerrain, buildVillages, Ambient } from './world.js';
-import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, LOOKS, J } from './surfer.js';
+import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js';
+import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, LOOKS, J, setEnvMap } from './surfer.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -41,9 +45,9 @@ const SPOTS = [
   },
 ];
 const RIVALS = [
-  { name: 'Rayco', from: 'Caleta de Famara', look: { skin: '#a86b43', vest: '#ffd23d', shorts: '#16181d', hair: '#111111', board: '#ffffff' } },
-  { name: 'Naira', from: 'La Santa', look: { skin: '#d9a273', vest: '#1ec8ff', shorts: '#ff3d6e', hair: '#2a1b12', board: '#ffd23d' } },
-  { name: 'Yeray', from: 'Arrecife', look: { skin: '#f1c7a0', vest: '#7dff5a', shorts: '#1f3cff', hair: '#f2d27a', board: '#ff3d6e' } },
+  { name: 'Rayco', from: 'Caleta de Famara', look: { skin: '#3fb8ff', vest: '#ffd23d', shorts: '#16181d', hair: '#d9c48f', board: '#ffffff' } },
+  { name: 'Naira', from: 'La Santa', look: { skin: '#ff5fa2', vest: '#2ecc71', shorts: '#2b3150', hair: '#ffffff', board: '#1ec8ff' } },
+  { name: 'Yeray', from: 'Arrecife', look: { skin: '#7bd64a', vest: '#ff3d6e', shorts: '#1f3cff', hair: '#2b3150', board: '#ff3d6e' } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -55,7 +59,7 @@ const store = {
 };
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const settings = Object.assign({ time: 'morning', quality: isTouch ? 'low' : 'medium', music: true, sfx: true }, store.get('settings', {}));
-const look = Object.assign({ skin: LOOKS.skins[0], vest: LOOKS.vests[0], shorts: LOOKS.shorts[0], hair: LOOKS.hair[0], board: LOOKS.boards[0] }, store.get('look', {}));
+const look = Object.assign({ skin: LOOKS.skins[0], vest: LOOKS.vests[0], shorts: LOOKS.shorts[0], hair: LOOKS.hair[0], board: LOOKS.boards[0] }, store.get('look2', {}));
 const progress = Object.assign({ unlocked: 1, best: {} }, store.get('progress', {}));
 
 // ---------------------------------------------------------------------------
@@ -73,8 +77,23 @@ function resize() {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 }
-addEventListener('resize', resize);
+// glow on sun sparkles and spray (not on the fastest setting)
+let composer = null, renderPass = null, bloom = null;
+function setupPost() {
+  if (settings.quality === 'low') { composer = null; return; }
+  composer = new EffectComposer(renderer);
+  renderPass = new RenderPass(new THREE.Scene(), camera);
+  bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.2, 0.35, 0.92);
+  composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(new OutputPass());
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(innerWidth, innerHeight);
+}
+function draw() {
+  if (composer) { renderPass.scene = W.scene; composer.render(); } else renderer.render(W.scene, camera);
+}
+addEventListener('resize', () => { resize(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); } });
 resize();
+setupPost();
 
 const audio = new Audio();
 audio.musicOn = settings.music; audio.sfxOn = settings.sfx;
@@ -115,6 +134,7 @@ document.querySelectorAll('[data-key]').forEach((b) => {
 // ---------------------------------------------------------------------------
 let island, albedoTex, depthTex;
 let W = null; // current world
+let W_env = null;
 let camMode = 0;
 const game = {
   state: 'boot', mode: 'free', spot: null, time: 0, heatTime: 0, heatLen: 300, waves: [], best: 0, timeScale: 1, fade: 0,
@@ -172,6 +192,16 @@ function disposeWorld() {
 function setupSpot(spot) {
   disposeWorld();
   const scene = new THREE.Scene();
+  // reflections for the glossy surfer and board, baked from the sky
+  const envScene = new THREE.Scene();
+  const envSky = new Sky(envScene);
+  envSky.set(settings.time, envScene, renderer);
+  envSky.mesh.scale.setScalar(50);
+  const pm = new THREE.PMREMGenerator(renderer);
+  if (W_env) W_env.dispose();
+  W_env = pm.fromScene(envScene, 0.03);
+  pm.dispose();
+  setEnvMap(W_env.texture);
   const sky = new Sky(scene);
   sky.set(settings.time, scene, renderer);
   const b = spot.bearing * Math.PI / 180;
@@ -188,8 +218,9 @@ function setupSpot(spot) {
   const terrain = buildTerrain(island, origin, albedoTex, q);
   scene.add(terrain);
   scene.add(buildVillages(island, origin, q));
+  scene.add(buildBeach(island, origin, spot, q));
   const amb = new Ambient(scene, spot, island, origin);
-  const spray = new Spray(scene, sky, q === 'low' ? 700 : q === 'high' ? 2400 : 1500);
+  const spray = new Spray(scene, sky, q === 'low' ? 1400 : q === 'high' ? 5000 : 3200);
   const trail = new Trail(scene, sky);
   const rag = new Ragdoll(scene, look);
   const floor = (x, z) => island.h(x + origin.x, z + origin.z);
@@ -492,14 +523,22 @@ function stepRide(h, inp) {
   score.wave += S.V * 0.5 * h;
   // spray off the rail in hard turns
   const carve = Math.abs(S.turn) * S.V;
-  if (carve > 12 && Math.random() < (carve - 10) * 0.08) {
-    const side = Math.sign(S.turn) || 1;
+  {
     const back = fwdOf(S.psi);
-    for (let i = 0; i < 2; i++) {
-      const rx = -back.z * side, rz = back.x * side;
-      W.spray.emit(p.x - back.x * 0.8, y + 0.2, p.z - back.z * 0.8, rx * rand(3, 7) - back.x * 2 + vx * 0.3, rand(2.5, 6), rz * rand(3, 7) - back.z * 2 + vz * 0.3, rand(0.2, 0.5), rand(0.5, 0.9), 1, 0.85);
+    // a constant little fan of spray off the rail, a big rooster tail when you carve hard
+    const side = Math.sign(S.turn) || -w.peel * Math.sign(ea || 1);
+    const rx = -back.z * side, rz = back.x * side;
+    const rate = (S.V > 4 ? S.V * 1.6 : 0) + Math.max(0, carve - 8) * 7;
+    S.sprayAcc = (S.sprayAcc || 0) + rate * h;
+    while (S.sprayAcc > 1) {
+      S.sprayAcc--;
+      const big = carve > 12;
+      const k = rand(0.3, 1);
+      W.spray.emit(p.x - back.x * rand(0.5, 1), y + 0.15, p.z - back.z * rand(0.5, 1),
+        rx * rand(1.5, big ? 8 : 3.5) - back.x * 2 + vx * 0.35, rand(1.5, big ? 7 : 3.5), rz * rand(1.5, big ? 8 : 3.5) - back.z * 2 + vz * 0.35,
+        rand(0.18, big ? 0.7 : 0.4) * k, rand(0.4, big ? 1.1 : 0.7), 1, 0.9);
     }
-    if (Math.random() < 0.05) audio.spray(Math.min(1, carve / 25));
+    if (carve > 12 && Math.random() < 0.05) audio.spray(Math.min(1, carve / 25));
   }
   // ---- launch into the air?
   const relU = S.V * ed + w.c * (grip - 1);
@@ -800,10 +839,10 @@ function updateCamera(dt) {
         const cl = Math.hypot(cx, cz) || 1;
         const dx = cx / cl, dz = cz / cl;
         // keep the camera low (below the crest) so the wave stands up above the horizon
-        const back = 4.0 + Hh * 0.35, out = 4.2 + Hh * 0.85;
-        const cy = Math.min(0.7 + 0.3 * Hh + 0.25 * Math.max(0, pos.y), 0.85 * Hh + 0.4);
+        const back = 2.7 + Hh * 0.25, out = 3.0 + Hh * 0.5;
+        const cy = Math.min(0.6 + 0.2 * Hh + 0.45 * Math.max(0, pos.y), 0.85 * Hh + 0.4);
         tp.set(pos.x - dx * back + d.x * out, cy, pos.z - dz * back + d.z * out);
-        tl.set(pos.x + dx * 3.0 - d.x * 1.8, pos.y + 0.8, pos.z + dz * 3.0 - d.z * 1.8);
+        tl.set(pos.x + dx * 1.6 - d.x * 1.2, pos.y + 1.0, pos.z + dz * 1.6 - d.z * 1.2);
         if (S.mode === 'air') { tp.y = Math.max(tp.y, S.pos.y * 0.6 + 0.5); tl.y = S.pos.y + 0.4; }
       } else if (camMode === 1) {
         tp.set(pos.x + d.x * 15 - a.x * side * 5, pos.y + 3 + Hh * 0.5, pos.z + d.z * 15 - a.z * side * 5);
@@ -862,7 +901,7 @@ function emitWaveSpray(dt) {
     const near = toXZ(w.sb, w.uc);
     const dist = Math.hypot(near.x - camera.position.x, near.z - camera.position.z);
     if (dist > 420) continue;
-    const n = (w.closeout ? 70 : 34) * dt * q * Math.min(1.5, w.H / 2);
+    const n = (w.closeout ? 140 : 80) * dt * q * Math.min(1.7, w.H / 2);
     for (let i = 0; i < n; i++) {
       const ds = rand(-10, 1.5);
       const s = w.sb + w.peel * ds;
@@ -871,10 +910,24 @@ function emitWaveSpray(dt) {
       const u = w.uc + L.Lf * rand(0.85, 1.1);
       const p = toXZ(s, u);
       const y = wv.height(p.x, p.z);
-      W.spray.emit(p.x, y + 0.2, p.z, sp.d.x * rand(1, 3.5) + sp.a.x * w.peel * rand(-1, 1), rand(2, 5.5) * Math.min(1.6, L.Hh / 2), sp.d.z * rand(1, 3.5) + sp.a.z * w.peel * rand(-1, 1), rand(0.5, 1.4) * Math.min(1.5, L.Hh / 2), rand(0.7, 1.5), 1, 0.85);
+      const up = Math.random() < 0.3 ? rand(5, 10) : rand(2, 5.5);
+      W.spray.emit(p.x, y + 0.2, p.z, sp.d.x * rand(1, 4) + sp.a.x * w.peel * rand(-1.5, 1.5), up * Math.min(1.6, L.Hh / 2), sp.d.z * rand(1, 4) + sp.a.z * w.peel * rand(-1.5, 1.5), rand(0.6, 1.8) * Math.min(1.5, L.Hh / 2), rand(0.8, 1.7), 1, 0.9);
+    }
+    // the lip feathering and throwing: spray blown off the top of the curl
+    const lipN = 40 * dt * q * Math.min(1.7, w.H / 2);
+    for (let i = 0; i < lipN; i++) {
+      const ds = rand(-2, 22);
+      const s = w.sb + w.peel * ds;
+      const L = wv.local(w, s, w.uc);
+      if (L.Hh < 1 || L.T < 0.1) continue;
+      const u = w.uc + L.Lf * L.T * rand(0, 1);
+      const p = toXZ(s, u);
+      const tt = (u - w.uc) / L.Lf;
+      const y = L.Hh * (1.05 - 0.86 * tt * tt) + 0.2;
+      W.spray.emit(p.x, y, p.z, sp.d.x * rand(0.5, 2.5) - sp.d.x * 1.5, rand(0.5, 2.5), sp.d.z * rand(0.5, 2.5) - sp.d.z * 1.5, rand(0.25, 0.7), rand(0.5, 1.1), 0.6, 0.75);
     }
     // mist off the back of the broken section
-    const m = 12 * dt * q;
+    const m = 24 * dt * q;
     for (let i = 0; i < m; i++) {
       const ds = rand(-70, -6);
       const s = w.sb + w.peel * ds;
@@ -1000,6 +1053,7 @@ function frame(now) {
   W.amb.update(t, W.waves);
   emitWaveSpray(sdt);
   W.spray.update(sdt, W.waves);
+  W.spray.mat.uniforms.uScale.value = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
   const tailOn = (S.mode === 'ride' || S.mode === 'popup') && S.V > 2;
   const f = fwdOf(S.psi);
   W.trail.update(sdt, W.waves, { on: tailOn, x: S.pos.x - f.x * 0.9, z: S.pos.z - f.z * 0.9, dirx: f.x, dirz: f.z, width: 0.25 });
@@ -1021,7 +1075,7 @@ function frame(now) {
   // fade to black between rides
   if (game.fade > 0) { game.fade = Math.max(0, game.fade - dt * 1.6); }
   $('fader').style.opacity = game.fade;
-  renderer.render(W.scene, camera);
+  draw();
 }
 
 function bankTick(dt) {
@@ -1105,10 +1159,10 @@ function highlightPin(i) { document.querySelectorAll('.pin').forEach((p) => p.cl
 
 // customise
 function buildCustom() {
-  const rows = [['Skin', 'skins', 'skin'], ['Rash vest', 'vests', 'vest'], ['Board shorts', 'shorts', 'shorts'], ['Hair', 'hair', 'hair'], ['Board', 'boards', 'board']];
+  const rows = [['Body', 'skins', 'skin'], ['Hawaiian shirt', 'vests', 'vest'], ['Board shorts', 'shorts', 'shorts'], ['Bucket hat', 'hair', 'hair'], ['Board', 'boards', 'board']];
   $('customRows').innerHTML = rows.map(([label, list, key]) => `<div class="crow"><span>${label}</span><div class="sw">${LOOKS[list].map((c) => `<button data-k="${key}" data-c="${c}" style="background:${c}" class="${look[key] === c ? 'on' : ''}"></button>`).join('')}</div></div>`).join('');
   $('customRows').querySelectorAll('button').forEach((b) => b.onclick = () => {
-    look[b.dataset.k] = b.dataset.c; store.set('look', look); audio.click();
+    look[b.dataset.k] = b.dataset.c; store.set('look2', look); audio.click();
     W.rag.setLook(look); buildCustom();
   });
 }
@@ -1121,8 +1175,8 @@ document.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click
   settings[k] = v; store.set('settings', settings); audio.start(); audio.click();
   if (k === 'music') audio.setMusic(v);
   if (k === 'sfx') audio.setSfx(v);
-  if (k === 'time' && W) W.sky.set(v, W.scene, renderer);
-  if (k === 'quality') { resize(); const sp = W.spot; setupSpot(sp); }
+  if (k === 'time' && W) setupSpot(W.spot);
+  if (k === 'quality') { resize(); setupPost(); const sp = W.spot; setupSpot(sp); }
   syncSettingsUI();
 }));
 
@@ -1154,7 +1208,7 @@ boot().catch((e) => {
 // for debugging in the console
 window.__surf = {
   game, S, score, get W() { return W; }, SPOTS, startSession, keys, setupSpot, cam,
-  snap(cp, cl) { for (let i = 0; i < 5; i++) updateCamera(5); if (cp) { window.__camOv = [cp, cl]; updateCamera(0.01); } W.ocean.update(W.waves.t, game.state === 'play' ? S.pos : cam.look); W.sky.update(camera, W.waves.t); W.rag.render(S.boardMat); renderLocals(); renderer.render(W.scene, camera); },
+  snap(cp, cl) { for (let i = 0; i < 5; i++) updateCamera(5); if (cp) { window.__camOv = [cp, cl]; updateCamera(0.01); } W.ocean.update(W.waves.t, game.state === 'play' ? S.pos : cam.look); W.sky.update(camera, W.waves.t); W.rag.render(S.boardMat); renderLocals(); draw(); },
   // advance the simulation quickly (testing)
   sim(sec, inp = {}) {
     const n = Math.round(sec / H);
