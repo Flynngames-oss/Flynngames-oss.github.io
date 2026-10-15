@@ -420,31 +420,40 @@ function stepLineup(h, inp) {
   const sp = W.spot, wv = W.waves;
   const paddling = inp.up;
   S.padHeld = paddling ? S.padHeld + h : 0;
-  S.padSpeed = lerp(S.padSpeed, paddling ? 1.7 : inp.down ? -1.2 : 0, 1 - Math.exp(-h * (paddling ? 2.2 : 2.5)));
-  const mv = -inp.steer; // the line-up camera looks out to sea: screen-right is -a
-  S.s += mv * 2.2 * h;
-  S.u += S.padSpeed * h;
-  S.s = clamp(S.s, sp.peakS - 140, sp.peakS + 140);
-  S.u = clamp(S.u, sp.uBreak - 70, sp.uBreak + 40);
-  S.padPhase += h * (paddling || inp.steer ? 6.5 : 0);
-  // whitewater pushes you around
+  // ← → turn the board, ↑ paddles forward the way you're facing, ↓ back-paddles
+  let turn = -inp.steer * 1.7;
+  // help: when a wave is about to reach you and you're paddling, swing round to face the beach
+  let waveNear = false;
+  for (const w of wv.waves) { const tt = (S.u - w.uc) / w.c; if (!w.ridden && !w.lb && tt > -0.3 && tt < 3.5) waveNear = true; }
+  if (paddling && waveNear && !inp.steer) {
+    const want = psiOf(sp.d.x, sp.d.z);
+    turn = clamp(wrapPi(want - S.psi) * 2.5, -1.6, 1.6);
+  }
+  S.psi = wrapPi(S.psi + turn * h);
+  S.padSpeed = lerp(S.padSpeed, paddling ? 2.6 : inp.down ? -0.8 : 0, 1 - Math.exp(-h * (paddling ? 1.8 : 1.4)));
+  const f = fwdOf(S.psi);
+  const vx = f.x * S.padSpeed, vz = f.z * S.padSpeed;
+  S.s += (vx * sp.a.x + vz * sp.a.z) * h;
+  S.u += (vx * sp.d.x + vz * sp.d.z) * h;
+  S.s = clamp(S.s, sp.peakS - 450, sp.peakS + 450);
+  S.u = clamp(S.u, sp.uBreak - 260, Math.min(sp.uEnd - 4, -12));
+  S.padPhase += h * (paddling ? 6.5 : Math.abs(turn) > 0.1 ? 4 : 0);
+  // whitewater pushes you toward the beach
   const p = toXZ(S.s, S.u);
   const foam = wv.foamAt(p.x, p.z);
   if (foam > 0.35) { S.u += foam * 2.5 * h; S.washT = (S.washT || 0) + h; } else S.washT = 0;
-  // face the beach when paddling, the ocean when sitting
-  const targetPsi = paddling || S.padSpeed > 0.5 ? psiOf(sp.d.x + sp.a.x * mv * 0.4, sp.d.z + sp.a.z * mv * 0.4) : psiOf(-sp.d.x, -sp.d.z);
-  S.psi += wrapPi(targetPsi - S.psi) * (1 - Math.exp(-h * 3));
   S.pos.set(p.x, wv.height(p.x, p.z), p.z);
   computeBoardMat();
-  const prone = paddling || S.padSpeed > 0.4 || Math.abs(inp.steer) > 0;
+  const prone = paddling || Math.abs(S.padSpeed) > 0.4 || Math.abs(turn) > 0.1;
   S.prone = lerp(S.prone || 0, prone ? 1 : 0, 1 - Math.exp(-h * 5));
-  W.rag.active(h, S.bodyMat, poseSit, { t: game.time }, (o, q) => poseLie(o, { paddle: S.padPhase, paddleAmt: paddling || inp.steer ? 1 : 0 }), S.prone, 1);
-  // catch a wave
+  W.rag.active(h, S.bodyMat, poseSit, { t: game.time }, (o, q) => poseLie(o, { paddle: S.padPhase, paddleAmt: paddling || Math.abs(turn) > 0.1 ? 1 : 0 }), S.prone, 1);
+  // catch a wave: paddling, roughly facing the beach, with the face under you
+  const facing = f.x * sp.d.x + f.z * sp.d.z;
   for (const w of wv.waves) {
     if (w.ridden || w.lb || w.fade < 0.6) continue;
     const L = wv.local(w, S.s, S.u);
     if (L.Hh < 0.75 || L.br > 0.45) continue;
-    if (L.du > 0.0 && L.du < 1.4 * L.Lf && paddling && S.padSpeed > 0.9 && S.padHeld > 0.3) { catchWave(w, inp); return; }
+    if (L.du > 0.0 && L.du < 1.4 * L.Lf && paddling && facing > 0.2 && S.padSpeed > 0.9 && S.padHeld > 0.3) { catchWave(w, inp); return; }
   }
 }
 
@@ -453,7 +462,7 @@ function catchWave(w, inp) {
   S.wave = w; w.ridden = true;
   S.mode = 'popup'; S.popT = 0;
   let dir = w.peel;
-  if (inp.steer) dir = inp.steer > 0 ? -1 : 1; // what you see from the line-up camera: screen-right is -a
+  { const f = fwdOf(S.psi), ea = f.x * sp.a.x + f.z * sp.a.z; if (Math.abs(ea) > 0.3) dir = Math.sign(ea); } // go the way you're pointing
   S.dirSign = dir; S.camSide = dir;
   const th = 0.42;
   const ex = Math.cos(th) * sp.a.x * dir + Math.sin(th) * sp.d.x, ez = Math.cos(th) * sp.a.z * dir + Math.sin(th) * sp.d.z;
@@ -818,9 +827,9 @@ function updateCamera(dt) {
   } else {
     const pos = S.mode === 'wipe' || (S.mode === 'ended' && W.rag.limp) ? W.rag.P[J.pelvis] : S.pos;
     if (S.mode === 'lineup') {
-      const side = 0.45;
-      tp.set(pos.x + d.x * 6 + a.x * 3 * side, 1.7, pos.z + d.z * 6 + a.z * 3 * side);
-      tl.set(pos.x - d.x * 14, 1.6, pos.z - d.z * 14);
+      const f = fwdOf(S.psi);
+      tp.set(pos.x - f.x * 5.5, 2.1, pos.z - f.z * 5.5);
+      tl.set(pos.x + f.x * 10, 1.0, pos.z + f.z * 10);
       k = 2.5;
     } else if (S.mode === 'wipe' || S.mode === 'ended') {
       tp.set(pos.x + d.x * 7 - a.x * S.camSide * 3, pos.y + 3.2, pos.z + d.z * 7 - a.z * S.camSide * 3);
@@ -995,13 +1004,16 @@ function updateHUD(dt) {
     }
     if (next && best < 9) {
       const ft = Math.round(next.Hmax * 3.28);
-      const dir = next.peel > 0 ? 'breaks ◀' : 'breaks ▶';
-      const want = next.s0 + next.peel * (next.P * 1.6 + 7);
-      const off = want - S.s;
-      const move = Math.abs(off) > 10 ? (off > 0 ? '  ·  ◀ move' : '  ·  move ▶') : '';
-      hint = best < 2.6 ? `PADDLE! Hold ↑  (${ft} ft ${dir})${move}` : `Wave in ${Math.ceil(best)}…  ${ft} ft ${dir}${move}`;
+      const L = wv.local(next, S.s, next.uc);
+      const far = L.Hh < 0.9 ? '  ·  too far from the peak, paddle toward the other surfers' : '';
+      hint = best < 2.6 ? `PADDLE! Hold ${isTouch ? '▲' : '↑'}  (${ft} ft wave)${far}` : `Wave in ${Math.ceil(best)}…  ${ft} ft${far}`;
       $('hint').classList.toggle('urgent', best < 2.6);
-    } else { hint = isTouch ? 'Waiting for a set… use ◀ ▶ to move, ▲ to paddle' : 'Waiting for a set…  ← → move along the line-up  ·  ↑ paddle'; $('hint').classList.remove('urgent'); }
+    } else {
+      const away = Math.abs(S.s - W.spot.peakS) > 60 || Math.abs(S.u - W.spot.uBreak) > 50;
+      hint = away ? 'Paddle back out to the other surfers to catch waves'
+        : isTouch ? 'Waiting for a set…  ◀ ▶ turn  ·  ▲ paddle' : 'Waiting for a set…  ← → turn  ·  ↑ paddle';
+      $('hint').classList.remove('urgent');
+    }
   } else if (S.mode === 'popup' || S.mode === 'ride') {
     if (game.time - (S.hintShown || -99) < 8) hint = isTouch ? '◀ ▶ carve · ▲ pump · ▼ crouch · JUMP at the lip' : '← → carve  ·  ↑ pump  ·  ↓ crouch  ·  SPACE jump at the lip';
     $('hint').classList.remove('urgent');
