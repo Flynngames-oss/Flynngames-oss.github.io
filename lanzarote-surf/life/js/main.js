@@ -174,7 +174,7 @@ await progress(0.9, 'Spawning people and traffic');
 const player = new Character(G.save.outfit, { isPlayer: true, name: G.save.name });
 G.player = player;
 // back from surfing: you walk up the beach at that spot's surf shack
-{ const at = new URLSearchParams(window.__QUERY ?? location.search).get('at'); if (at && LOC['surf_' + at]) G.arriveAt = LOC['surf_' + at]; }
+{ const at = new URLSearchParams(window.__QUERY ?? location.search).get('at') || (location.hash.match(/^#at-(\w+)/) || [])[1]; if (at && LOC['surf_' + at]) G.arriveAt = LOC['surf_' + at]; }
 G.goSurf = (id) => {
   writeSave();
   const f = document.createElement('div');
@@ -182,7 +182,7 @@ G.goSurf = (id) => {
   f.textContent = '🏄 Paddling out…';
   document.body.appendChild(f);
   requestAnimationFrame(() => { f.style.opacity = 1; });
-  setTimeout(() => { if (window.__SINGLE) parent.postMessage({ go: 'surf', q: '?spot=' + id }, '*'); else location.href = '../?spot=' + id; }, 550);
+  setTimeout(() => { if (window.__SINGLE) parent.postMessage({ go: 'surf', q: '?spot=' + id }, '*'); else if (window.__NAV) location.href = window.__NAV.surf + '#spot-' + id; else location.href = '../?spot=' + id; }, 550);
 };
 player.place(LOC.spawn.x, 0, LOC.spawn.z, Math.PI);
 player.respawn = (home) => {

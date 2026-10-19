@@ -172,7 +172,7 @@ async function boot() {
   renderer.compile(W.scene, camera);
   setBoot(1, 'Surf’s up!');
   game.state = 'title';
-  const want = new URLSearchParams(window.__QUERY ?? location.search).get('spot');
+  const want = new URLSearchParams(window.__QUERY ?? location.search).get('spot') || (location.hash.match(/^#spot-(\w+)/) || [])[1];
   const sp = SPOTS.find((s) => s.id === want);
   setTimeout(() => {
     $('boot').classList.add('hidden');
@@ -1229,7 +1229,9 @@ const toIsland = () => {
   audio.click(); $('fader').style.opacity = 1;
   const q = W && game.state !== 'title' ? '?at=' + W.spot.id : '';
   // (in the one-file version both games live in the same page: ask it to switch)
-  if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*'); else location.href = 'life/' + q;
+  if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*');
+  else if (window.__NAV) location.href = window.__NAV.life + (q ? '#at-' + W.spot.id : '');
+  else location.href = 'life/' + q;
 };
 $('btnIsland').onclick = toIsland;
 $('btnIsland2').onclick = toIsland;
