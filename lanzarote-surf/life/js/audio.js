@@ -9,6 +9,8 @@ export function audioStream() {
   try { if (!tap) { tap = ctx.createMediaStreamDestination(); muffle.connect(tap); } return tap.stream; } catch (e) { return null; }
 }
 
+// (the one-page version pauses the island while you surf)
+export function suspendAudio(on) { if (!ctx) return; try { (on ? ctx.suspend() : ctx.resume()).catch(() => {}); } catch (e) { /* ignore */ } }
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try {

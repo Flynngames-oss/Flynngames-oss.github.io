@@ -2,317 +2,78 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Wobble Surf: Lanzarote</title>
-<meta name="description" content="A wobbly ragdoll surfing game on the real island of Lanzarote: Famara, San Juan and El Quemao.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
-<script type="importmap">
-{ "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-} }
-</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Wobble Surf Lanzarote</title>
+<meta name="description" content="A wobbly ragdoll surfing game on the real island of Lanzarote, with the whole island to explore.">
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet">
 <style>
-:root {
-  --ink: #0b1f2a; --sea: #0fa3b1; --sea2: #0b6e8a; --sand: #ffd27a; --coral: #ff5a5f; --lava: #2a1d1a; --white: #fffaf0;
-  --glass: rgba(8, 28, 40, 0.62); --glass2: rgba(8, 28, 40, 0.82);
-}
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1f2a; color: var(--white); font-family: 'Nunito', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
-canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-.hidden { display: none !important; }
-button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
-
-.logo { font-family: 'Lilita One', sans-serif; line-height: 0.88; letter-spacing: 0.01em; text-shadow: 0 4px 0 rgba(0,0,0,.25); }
-.logo .w1 { display: block; font-size: clamp(48px, min(9vw, 13vh), 112px); color: var(--white); transform: rotate(-4deg); transform-origin: left; }
-.logo .w1 span { display: inline-block; animation: wob 2.4s ease-in-out infinite; }
-.logo .w1 span:nth-child(2) { animation-delay: .1s } .logo .w1 span:nth-child(3) { animation-delay: .2s } .logo .w1 span:nth-child(4) { animation-delay: .3s }
-.logo .w1 span:nth-child(5) { animation-delay: .4s } .logo .w1 span:nth-child(6) { animation-delay: .5s }
-.logo .w2 { display: block; font-size: clamp(32px, min(6vw, 8.5vh), 74px); color: var(--sand); margin-left: .35em; transform: rotate(-4deg); }
-.logo .w3 { display: inline-block; font-size: clamp(18px, 2.4vw, 28px); background: var(--coral); color: #fff; padding: .15em .5em; border-radius: .4em; margin: .6em 0 0 .7em; transform: rotate(-3deg); }
-@keyframes wob { 0%,100% { transform: translateY(0) rotate(0) } 25% { transform: translateY(-6px) rotate(-4deg) } 75% { transform: translateY(3px) rotate(3deg) } }
-
-/* boot */
-#boot { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 120%, #0fa3b1 0%, #0b4f6c 45%, #08202d 100%); transition: opacity .5s; }
-#boot.hidden { display: grid !important; opacity: 0; pointer-events: none; }
-.boot-inner { width: min(520px, 86vw); }
-.bar { height: 14px; border-radius: 99px; background: rgba(255,255,255,.15); margin-top: 34px; overflow: hidden; }
-#bootFill { height: 100%; width: 0; background: linear-gradient(90deg, var(--sand), var(--coral)); border-radius: 99px; transition: width .3s; }
-#bootText { margin-top: 10px; opacity: .85; font-weight: 700; }
-
-/* screens */
-.screen { position: fixed; inset: 0; z-index: 20; }
-#title { background: linear-gradient(90deg, rgba(5,20,30,.78) 0%, rgba(5,20,30,.35) 45%, rgba(5,20,30,0) 70%); display: flex; flex-direction: column; justify-content: center; padding: 4vh 6vw; }
-.menu { display: flex; flex-direction: column; gap: 10px; margin-top: 3.5vh; width: min(380px, 80vw); }
-.mbtn { text-align: left; padding: min(14px, 1.6vh) 20px; border-radius: 16px; background: var(--glass); border: 2px solid rgba(255,255,255,.12); transition: transform .12s, background .12s, border-color .12s; backdrop-filter: blur(6px); }
-.mbtn b { display: block; font-family: 'Lilita One'; font-weight: 400; font-size: 26px; letter-spacing: .02em; }
-.mbtn small { display: block; opacity: .75; font-weight: 700; font-size: 14px; }
-.mbtn:hover, .mbtn:focus-visible { transform: translateX(8px) rotate(-1deg); background: var(--sea2); border-color: var(--sand); outline: none; }
-.mbtn.primary { background: var(--coral); border-color: rgba(255,255,255,.3); }
-.mbtn.primary:hover { background: #ff7276; }
-.mbtn.island { background: linear-gradient(135deg, rgba(46,160,90,.85), rgba(30,120,170,.85)); border-color: rgba(255,255,255,.3); }
-.settings { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 3vh; font-size: 13px; font-weight: 800; }
-.settings .grp { display: flex; align-items: center; gap: 6px; }
-.settings .grp > span { opacity: .7; text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
-.chip { padding: 6px 10px; border-radius: 99px; background: rgba(255,255,255,.12); font-weight: 800; }
-.chip.on { background: var(--sand); color: var(--ink); }
-.credit { margin-top: 2vh; font-size: 12px; opacity: .6; max-width: 640px; }
-
-.panel { position: absolute; inset: 4vh 4vw; background: var(--glass2); border-radius: 26px; padding: 26px 30px; backdrop-filter: blur(10px); border: 2px solid rgba(255,255,255,.08); overflow: auto; }
-.panel h2 { font-family: 'Lilita One'; font-weight: 400; font-size: 40px; margin: 0 0 4px; }
-.panel .sub { opacity: .75; font-weight: 700; margin-bottom: 18px; }
-.back { position: absolute; top: 22px; right: 26px; padding: 10px 18px; border-radius: 99px; background: rgba(255,255,255,.14); font-weight: 900; }
-.back:hover { background: var(--coral); }
-
-#select .wrap { display: grid; grid-template-columns: minmax(240px, 0.85fr) 1.4fr; gap: 26px; align-items: start; }
-.map { position: relative; border-radius: 18px; overflow: hidden; border: 3px solid rgba(255,255,255,.15); background: #12667e; }
-#islandMap { width: 100%; display: block; image-rendering: auto; }
-.map .lbl { position: absolute; left: 12px; bottom: 10px; font-size: 12px; font-weight: 800; opacity: .8; background: rgba(0,0,0,.35); padding: 3px 8px; border-radius: 6px; }
-.map .north { position: absolute; right: 12px; top: 10px; font-family: 'Lilita One'; font-size: 18px; opacity: .8; }
-.pin { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--coral); border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(255,90,95,.35); transition: transform .2s; }
-.pin span { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 900; background: rgba(0,0,0,.6); padding: 2px 7px; border-radius: 6px; }
-.pin.on { transform: scale(1.5); background: var(--sand); z-index: 2; }
-.pin.sanjuan span { bottom: auto; top: 18px; }
-.pin.quemao span { left: auto; right: 14px; transform: none; bottom: 4px; }
-.pin.famara span { left: 14px; transform: none; bottom: 6px; }
-#spotCards { display: flex; flex-direction: column; gap: 14px; }
-.spot { text-align: left; padding: 16px 20px; border-radius: 18px; background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.1); transition: transform .12s, border-color .12s, background .12s; position: relative; }
-.spot:hover { transform: translateX(6px); border-color: var(--sand); background: rgba(15,163,177,.25); }
-.spot .lvl { color: var(--sand); font-weight: 900; font-size: 13px; letter-spacing: .05em; }
-.spot .lvl .off { opacity: .25; }
-.spot .nm { font-family: 'Lilita One'; font-size: 30px; line-height: 1.05; }
-.spot .ty { font-weight: 800; opacity: .9; }
-.spot .ds { opacity: .78; font-size: 14px; margin-top: 4px; font-weight: 600; }
-.spot .co { font-size: 12px; opacity: .55; margin-top: 6px; font-weight: 800; }
-.spot.locked { opacity: .55; filter: grayscale(.6); }
-.spot .lock { position: absolute; right: 16px; top: 14px; font-weight: 900; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 99px; }
-
-#custom .panel, #howto .panel, #pause .panel, #results .panel { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 92vh; }
-#custom .panel { left: auto; right: 4vw; transform: translateY(-50%); }
-.crow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-weight: 800; }
-.sw { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.sw button { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); }
-.sw button.on { border-color: #fff; transform: scale(1.18); box-shadow: 0 0 0 3px var(--coral); }
-.keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-weight: 700; margin-top: 8px; }
-.keys kbd { font-family: inherit; font-weight: 900; background: rgba(255,255,255,.14); border-radius: 8px; padding: 3px 9px; white-space: nowrap; }
-.keys .h { grid-column: 1 / -1; font-family: 'Lilita One'; font-size: 20px; color: var(--sand); margin-top: 8px; }
-.row2 { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-.row2 .mbtn { flex: 1; min-width: 150px; text-align: center; }
-.row2 .mbtn:hover { transform: translateY(-3px); }
-#resTitle { font-family: 'Lilita One'; font-size: 48px; text-align: center; }
-#resSub { text-align: center; font-weight: 800; opacity: .85; margin-bottom: 14px; }
-#resTable .row { display: grid; grid-template-columns: 1fr auto 70px; gap: 10px; padding: 8px 12px; border-radius: 10px; font-weight: 800; }
-#resTable .row.you { background: rgba(255,210,122,.2); }
-#resTable .w { opacity: .7; }
-#resTable b { text-align: right; }
-
-/* HUD */
-#hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
-.tl { position: absolute; left: 18px; top: 14px; }
-#hudSpot { font-family: 'Lilita One'; font-size: 26px; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
-#hudWaves { font-weight: 800; font-size: 14px; opacity: .9; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
-#hudTimer { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-family: 'Lilita One'; font-size: 34px; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
-#hudTimer.low { color: var(--coral); animation: pulse 1s infinite; }
-@keyframes pulse { 50% { transform: translateX(-50%) scale(1.15); } }
-#hudBoard { position: absolute; right: 16px; top: 14px; background: var(--glass); border-radius: 14px; padding: 8px 10px; min-width: 170px; font-weight: 800; font-size: 14px; }
-#hudBoard .row { display: flex; justify-content: space-between; gap: 14px; padding: 2px 4px; }
-#hudBoard .row.you { color: var(--sand); }
-#btnPause { position: absolute; right: 16px; bottom: 16px; pointer-events: auto; width: 46px; height: 46px; border-radius: 50%; background: var(--glass); font-weight: 900; font-size: 18px; }
-#hudWave { position: absolute; left: 18px; top: 74px; font-family: 'Lilita One'; font-size: 22px; color: var(--sand); text-shadow: 0 2px 0 rgba(0,0,0,.35); }
-.speed { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(340px, 60vw); }
-.speed .track { height: 10px; border-radius: 99px; background: rgba(0,0,0,.35); overflow: hidden; }
-#hudSpeed { height: 100%; width: 0; background: linear-gradient(90deg, var(--sea), var(--sand), var(--coral)); border-radius: 99px; transition: width .1s; }
-#hudKmh { text-align: center; font-weight: 900; font-size: 13px; margin-top: 3px; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
-#hudChain { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%) scale(.9); opacity: 0; transition: opacity .2s, transform .2s; text-align: center; background: var(--glass); padding: 8px 16px 10px; border-radius: 14px; overflow: hidden; min-width: 200px; }
-#hudChain.on { opacity: 1; transform: translateX(-50%) scale(1); }
-#hudChain span { display: block; font-weight: 800; font-size: 13px; opacity: .85; }
-#hudChain b { font-family: 'Lilita One'; font-weight: 400; font-size: 24px; color: var(--sand); }
-#hudChain i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--coral); }
-#hint { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); font-weight: 900; font-size: 16px; background: var(--glass); padding: 8px 16px; border-radius: 99px; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis; }
-#hint:empty { display: none; }
-#hint.urgent { background: var(--coral); animation: pulse2 .6s infinite; }
-@keyframes pulse2 { 50% { transform: translateX(-50%) scale(1.07); } }
-#hudTube { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(.8); opacity: 0; font-family: 'Lilita One'; font-size: 34px; color: #7ff3ff; text-shadow: 0 3px 0 rgba(0,0,0,.35); transition: opacity .2s, transform .2s; }
-#hudTube.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-#pops { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.pop { text-align: center; animation: popin 1.7s ease-out forwards; }
-.pop .n { font-family: 'Lilita One'; font-size: 34px; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.35), 0 0 18px rgba(15,163,177,.8); transform: rotate(-3deg); }
-.pop .p { font-weight: 900; color: var(--sand); font-size: 20px; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
-.pop.big .n { font-size: 50px; color: var(--sand); }
-.pop.combo .n { color: #7dff5a; font-size: 30px; }
-.pop.lost .n, .pop.wipe .n { color: var(--coral); }
-@keyframes popin { 0% { opacity: 0; transform: scale(.4) translateY(20px); } 12% { opacity: 1; transform: scale(1.15); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-30px); } }
-#toast { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 12; background: var(--glass2); padding: 8px 18px; border-radius: 99px; font-weight: 900; opacity: 0; pointer-events: none; }
-#toast.show { animation: toast 1.8s ease forwards; }
-@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 10px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
-.bigmsg { position: fixed; left: 50%; top: 26%; transform: translate(-50%, -50%); z-index: 12; text-align: center; pointer-events: none; opacity: 0; }
-.bigmsg.show { animation: bigm 2.6s ease forwards; }
-.bigmsg .a { font-family: 'Lilita One'; font-size: clamp(48px, 9vw, 96px); line-height: 1; text-shadow: 0 5px 0 rgba(0,0,0,.3); }
-.bigmsg .b { font-weight: 900; font-size: 20px; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
-.bigmsg.score .a { color: var(--sand); }
-.bigmsg.score .a::before { content: 'WAVE SCORE'; display: block; font-size: 20px; color: #fff; letter-spacing: .1em; }
-@keyframes bigm { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6) rotate(-6deg); } 10% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) rotate(-2deg); } 18% { transform: translate(-50%, -50%) scale(1) rotate(-2deg); } 82% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -60%) scale(1) rotate(-2deg); } }
-#drops { position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: 0;
-  background:
-    radial-gradient(circle at 18% 30%, rgba(255,255,255,.35) 0 2.5%, transparent 3.2%),
-    radial-gradient(circle at 70% 22%, rgba(255,255,255,.3) 0 3.5%, transparent 4.2%),
-    radial-gradient(circle at 82% 70%, rgba(255,255,255,.28) 0 2%, transparent 2.6%),
-    radial-gradient(circle at 35% 78%, rgba(255,255,255,.3) 0 4%, transparent 4.8%),
-    radial-gradient(circle at 55% 50%, rgba(255,255,255,.18) 0 6%, transparent 7%),
-    radial-gradient(circle at 8% 70%, rgba(255,255,255,.3) 0 1.6%, transparent 2.2%);
-  backdrop-filter: blur(1.5px); }
-#drops.show { animation: drops 3s ease-out forwards; }
-@keyframes drops { 0% { opacity: 1; } 60% { opacity: .8; } 100% { opacity: 0; } }
-#fader { position: fixed; inset: 0; background: #06141c; z-index: 11; pointer-events: none; opacity: 0; }
-#loadingSpot { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(6,20,28,.7); font-family: 'Lilita One'; font-size: 36px; }
-
-/* touch */
-#touch { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
-#touch button { position: absolute; pointer-events: auto; width: 76px; height: 76px; border-radius: 50%; background: rgba(8,28,40,.45); border: 3px solid rgba(255,255,255,.35); font-size: 28px; font-weight: 900; touch-action: none; }
-#touch button.on { background: rgba(255,90,95,.7); }
-#touch .l { left: 20px; bottom: 26px; } #touch .r { left: 112px; bottom: 26px; }
-#touch .u { right: 112px; bottom: 112px; } #touch .d { right: 112px; bottom: 22px; }
-#touch .j { right: 18px; bottom: 60px; width: 86px; height: 86px; font-size: 16px; background: rgba(255,90,95,.45); }
-
-@media (max-width: 760px) {
-  #select .wrap { grid-template-columns: 1fr; }
-  .map { max-width: 320px; }
-  .panel { inset: 2vh 3vw; padding: 20px; }
-  #custom .panel { right: auto; left: 50%; transform: translate(-50%, -50%); top: auto; bottom: 2vh; transform: translateX(-50%); max-height: 50vh; }
-  #hudBoard { top: 64px; font-size: 12px; min-width: 140px; }
-  #hint { top: auto; bottom: 120px; font-size: 13px; }
-  .pop .n { font-size: 26px; } .pop.big .n { font-size: 36px; }
-}
+  html, body { margin: 0; height: 100%; background: #06121c; overflow: hidden; }
+  #wait { position: fixed; inset: 0; display: grid; place-items: center; color: #fffaf0; font: 800 28px 'Lilita One', system-ui, sans-serif; letter-spacing: .03em; }
+  #wait[hidden] { display: none; }
+  iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 1; background: transparent; }
+  iframe.off { visibility: hidden; pointer-events: none; z-index: 0; }
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
-
-<div id="boot">
-  <div class="boot-inner">
-    <div class="logo"><span class="w1"><span>W</span><span>O</span><span>B</span><span>B</span><span>L</span><span>E</span> SURF</span><span class="w2">LANZAROTE</span></div>
-    <div class="bar"><div id="bootFill"></div></div>
-    <div id="bootText">Loading…</div>
-  </div>
-</div>
-
-<div id="title" class="screen hidden">
-  <div class="logo"><span class="w1"><span>W</span><span>O</span><span>B</span><span>B</span><span>L</span><span>E</span> SURF</span><span class="w2">LANZAROTE</span><span class="w3">Real island · real waves · very wobbly surfer</span></div>
-  <div class="menu">
-    <button class="mbtn primary" id="btnFree"><b>Free surf</b><small>Pick a spot and shred</small></button>
-    <button class="mbtn island" id="btnIsland"><b>🏝️ Explore the island</b><small>Lanzarote Life: walk, drive, fly, jobs, theme park…</small></button>
-    <button class="mbtn" id="btnContest"><b>Surf contest</b><small>Beat the locals in 5-minute heats</small></button>
-    <button class="mbtn" id="btnCustom"><b>Customise</b><small>Board, wetsuit, hair</small></button>
-    <button class="mbtn" id="btnHow"><b>How to surf</b><small>Controls &amp; tricks</small></button>
-  </div>
-  <div class="settings">
-    <div class="grp"><span>Light</span><button class="chip" data-set="time" data-val="morning">Morning</button><button class="chip" data-set="time" data-val="midday">Midday</button><button class="chip" data-set="time" data-val="sunset">Sunset</button></div>
-    <div class="grp"><span>Graphics</span><button class="chip" data-set="quality" data-val="low">Fast</button><button class="chip" data-set="quality" data-val="medium">Nice</button><button class="chip" data-set="quality" data-val="high">Ultra</button></div>
-    <div class="grp"><span>Music</span><button class="chip" data-set="music" data-val="true">On</button><button class="chip" data-set="music" data-val="false">Off</button></div>
-  </div>
-  <div class="credit">The island is built from real elevation data of Lanzarote (SRTM via AWS Terrain Tiles / Mapzen). Surf spots: Famara, San Juan and El Quemao.</div>
-</div>
-
-<div id="select" class="screen hidden">
-  <div class="panel">
-    <button class="back" data-back>◀ Back</button>
-    <h2 id="selTitle">Pick a spot</h2>
-    <div class="sub">Lanzarote, Canary Islands · 29°N 13.6°W · the north-west coast catches the big Atlantic swells</div>
-    <div class="wrap">
-      <div class="map"><canvas id="islandMap"></canvas><div id="mapPins"></div><div class="north">N ▲</div><div class="lbl">Lanzarote · real terrain</div></div>
-      <div id="spotCards"></div>
-    </div>
-  </div>
-</div>
-
-<div id="custom" class="screen hidden">
-  <div class="panel">
-    <h2>Customise</h2>
-    <div class="sub">Your surfer updates live in the water</div>
-    <div id="customRows"></div>
-    <div class="row2"><button class="mbtn primary" data-back><b>Done</b></button></div>
-  </div>
-</div>
-
-<div id="howto" class="screen hidden">
-  <div class="panel">
-    <h2>How to surf</h2>
-    <div class="keys">
-      <div class="h">In the line-up</div>
-      <kbd>← →</kbd><span>Turn your board</span>
-      <kbd>↑ hold</kbd><span>Paddle forward. Hold it as a wave reaches you to catch it (you'll swing round to face the beach)</span>
-      <kbd>↓</kbd><span>Back-paddle</span>
-      <div class="h">Riding</div>
-      <kbd>← →</kbd><span>Carve. Turn hard at the top for snaps, back toward the curl for cutbacks</span>
-      <kbd>↑</kbd><span>Pump for speed (stay high near the curl, that's where the power is)</span>
-      <kbd>↓</kbd><span>Crouch — tighter turns, and stay low in the barrel</span>
-      <kbd>Space</kbd><span>Jump. Or just hit the lip fast going up the face to launch an air</span>
-      <div class="h">In the air</div>
-      <kbd>← →</kbd><span>Spin (180 = air reverse, 360 = full rotation…)</span>
-      <kbd>↑ ↓</kbd><span>Flip!</span>
-      <kbd>Shift / hold Space</kbd><span>Grab the rail</span>
-      <div class="h">Other</div>
-      <kbd>C</kbd><span>Change camera</span>
-      <kbd>Esc / P</kbd><span>Pause</span><kbd>M</kbd><span>Music on/off</span>
-    </div>
-    <p style="opacity:.8;font-weight:700">Get barreled by riding just in front of the curl where the lip throws over. Don't get caught by the lip, the foam ball or go over the falls! Chain tricks for a combo multiplier. Your wave is scored out of 10, like a real contest.</p>
-    <div class="row2"><button class="mbtn primary" data-back><b>Got it</b></button></div>
-  </div>
-</div>
-
-<div id="pause" class="screen hidden">
-  <div class="panel">
-    <h2>Paused</h2>
-    <div class="row2">
-      <button class="mbtn primary" id="btnResume"><b>Resume</b></button>
-      <button class="mbtn" id="btnSpots"><b>Change spot</b></button>
-      <button class="mbtn" id="btnQuit"><b>Main menu</b></button>
-      <button class="mbtn island" id="btnIsland2"><b>🏝️ Walk up the beach</b><small>back to the island</small></button>
-    </div>
-  </div>
-</div>
-
-<div id="results" class="screen hidden">
-  <div class="panel">
-    <div id="resTitle">Heat over</div>
-    <div id="resSub"></div>
-    <div id="resTable"></div>
-    <div class="row2">
-      <button class="mbtn primary hidden" id="btnNextSpot"><b>Next spot ▶</b></button>
-      <button class="mbtn" id="btnAgain"><b>Surf again</b></button>
-      <button class="mbtn" id="btnResMenu"><b>Menu</b></button>
-    </div>
-  </div>
-</div>
-
-<div id="hud" class="hidden">
-  <div class="tl"><div id="hudSpot"></div><div id="hudWaves"></div></div>
-  <div id="hudWave"></div>
-  <div id="hudTimer"></div>
-  <div id="hudBoard"></div>
-  <div id="hint"></div>
-  <div id="hudTube"></div>
-  <div id="pops"></div>
-  <div id="hudChain"></div>
-  <div class="speed"><div class="track"><div id="hudSpeed"></div></div><div id="hudKmh"></div></div>
-  <button id="btnPause">❚❚</button>
-</div>
-
-<div id="touch" class="hidden">
-  <button class="l" data-key="ArrowLeft">◀</button>
-  <button class="r" data-key="ArrowRight">▶</button>
-  <button class="u" data-key="ArrowUp">▲</button>
-  <button class="d" data-key="ArrowDown">▼</button>
-  <button class="j" data-key="Space">JUMP</button>
-</div>
-
-<div id="toast"></div>
-<div id="bigmsg" class="bigmsg"></div>
-<div id="drops"></div>
-<div id="fader"></div>
-<div id="loadingSpot" class="hidden">Paddling out…</div>
-
-<script type="module" src="js/main.js"></script>
+<div id="wait">Loading Lanzarote…</div>
+<script>
+const SHELL = { srcdoc: false, pages: { surf: 'surf.html', life: 'life/index.html' } };
+// One page, two games: surfing and the island each run in their own full-screen frame. The one you're not
+// playing stays loaded but paused, so going surfing or walking up the beach is instant after the first time.
+window.__LANZ_SHELL = true;
+const frames = {}, ready = {}, pending = {};
+let cur = null;
+const hashFor = (which) => { const q = new URLSearchParams(pending[which] || ''); const v = q.get(which === 'life' ? 'at' : 'spot'); return v ? '#' + (which === 'life' ? 'at-' : 'spot-') + v : ''; };
+async function make(which) {
+  const f = document.createElement('iframe');
+  f.setAttribute('allow', 'fullscreen; autoplay; gamepad');
+  f.setAttribute('title', which === 'life' ? 'Lanzarote Life' : 'Wobble Surf');
+  f.className = 'off';
+  frames[which] = f;
+  if (SHELL.srcdoc) f.srcdoc = await (await fetch(SHELL.pages[which])).text(); else f.src = SHELL.pages[which];
+  document.body.appendChild(f);
+  // a browser that won't run a game inside the page: open the game's own page instead
+  setTimeout(() => {
+    let ok = false;
+    try { ok = !!(f.contentDocument && f.contentDocument.querySelector('canvas')); } catch (e) { ok = false; }
+    if (!ok && !ready[which]) location.href = SHELL.pages[which] + hashFor(which);
+  }, 9000);
+  return f;
+}
+function show(which) {
+  cur = which;
+  for (const k in frames) {
+    const on = k === which;
+    frames[k].classList.toggle('off', !on);
+    if (ready[k]) try { frames[k].contentWindow.postMessage({ pause: !on }, '*'); } catch (e) { /* ignore */ }
+  }
+  document.getElementById('wait').hidden = !!ready[which];
+  try { frames[which].contentWindow.focus(); } catch (e) { /* ignore */ }
+}
+function deliver(t) {
+  if (pending[t] === undefined || !ready[t]) return;
+  frames[t].contentWindow.postMessage({ arrive: pending[t] }, '*');
+  delete pending[t];
+}
+addEventListener('message', async (e) => {
+  const m = e.data || {};
+  if (m.go === 'surf' || m.go === 'life') {
+    pending[m.go] = m.q || '';
+    if (!frames[m.go]) await make(m.go);
+    show(m.go); deliver(m.go);
+  }
+  if (m.ready && frames[m.ready]) {
+    ready[m.ready] = true;
+    if (cur !== m.ready) frames[m.ready].contentWindow.postMessage({ pause: true }, '*');
+    else { document.getElementById('wait').hidden = true; try { frames[m.ready].contentWindow.focus(); } catch (err) { /* ignore */ } }
+    deliver(m.ready);
+  }
+});
+{
+  const q = location.search, first = /[?&]at=/.test(q) ? 'life' : 'surf';
+  pending[first] = q;
+  make(first).then(() => show(first));
+}
+</script>
 </body>
 </html>

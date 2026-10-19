@@ -4,6 +4,17 @@ import * as THREE from 'three';
 import { SKY_GLSL } from './sky.js';
 
 export const MAXW = 4;
+// waves up to 5 m use the normal proportions; bigger ones (the mega waves) are scaled up as a whole
+export const waveScale = (H) => Math.max(1, H / 5);
+export const MEGA_OUT = 170;
+// how high the wave is along its length (q = distance from the peak toward the shoulder). Normal waves are a
+// peak that fades away; the big ones are a long straight wall with a flat top, like a real swell line.
+export function waveEnv(q, k) {
+  const e1 = Math.exp(-sq(q / (q > 0 ? 420 : 70)));
+  if (k <= 1) return e1;
+  const W = q > 0 ? 150 * k : 55 * k, r = sq(q / W);
+  return e1 + (Math.exp(-r * r) - e1) * Math.min(1, (k - 1) / 1.5);
+}
 const ss = (a, b, x) => { let t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
 const sq = (x) => x * x;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -50,6 +61,7 @@ export class WaveSystem {
       id: this.ids++, uc: uc ?? sp.uBreak - 330, H: Hmax * 0.3, Hmax, s0: sp.peakS + rand(-16, 16) - peel * 8,
       peel, P: sp.P * rand(0.9, 1.1) * (mega ? 1.8 : 1), sb: 0, bk: 0, broke: false, fade: 0, stNow: 0, c: 9,
       len: sp.len * rand(0.85, 1.15) * (mega ? 2 : 1), t: 0, ph: rand(0, 6), dying: false, ridden: false, mega,
+      uBreak: sp.uBreak - (mega ? MEGA_OUT : 0),           // mega waves break further out, over the outer reef
     };
     w.sb = w.s0;
     this.waves.push(w);
@@ -70,20 +82,21 @@ export class WaveSystem {
       this.nextSet = this.t + rand(sp.setPeriod * 0.8, sp.setPeriod * 1.2);
     }
     if (sp.Hmax > 0 && this.t >= this.nextMega) {
-      const w = this.waves.some((q) => q.mega) ? null : this.spawn(sp.uBreak - 330, true);
+      const w = this.waves.some((q) => q.mega) ? null : this.spawn(sp.uBreak - MEGA_OUT - 330, true);
       if (w) { this.nextMega = this.t + rand(85, 140); if (this.onMega) this.onMega(w); } else this.nextMega = this.t + 3;
     }
     for (const w of this.waves) {
-      const far = ss(sp.uBreak - 60, sp.uBreak - 320, w.uc);
+      const ub = w.uBreak;
+      const far = ss(ub - 60, ub - 320, w.uc);
       w.c = (sp.C + (9 - sp.C) * far) * (w.mega ? 1.5 : 1);
       w.uc += w.c * dt;
       if (!w.dying) w.fade = Math.min(1, w.fade + dt / 4);
-      const pre = ss(sp.uBreak - 330, sp.uBreak, w.uc);
+      const pre = ss(ub - 330, ub, w.uc);
       w.H = w.Hmax * (0.28 + 0.72 * pre);
       // a mega wave spends itself after it breaks, so only whitewater reaches the beach
-      if (w.mega && w.broke) w.H *= Math.max(0.1, Math.exp(-(w.uc - sp.uBreak) / 75));
-      w.stNow = sp.st * (0.25 + 0.75 * ss(sp.uBreak - 140, sp.uBreak, w.uc));
-      if (!w.broke && w.uc >= sp.uBreak) { w.broke = true; w.sb = w.s0 - w.peel * 3; }
+      if (w.mega && w.broke) w.H *= Math.max(0.1, Math.exp(-(w.uc - ub) / 110));
+      w.stNow = (w.mega ? Math.max(sp.st, 1.0) : sp.st) * (0.25 + 0.75 * ss(ub - (w.mega ? 320 : 140), ub, w.uc));
+      if (!w.broke && w.uc >= ub) { w.broke = true; w.sb = w.s0 - w.peel * 3; }
       if (w.broke) {
         w.bk = Math.min(1, w.bk + dt / 1.0);
         w.t += dt;
@@ -101,23 +114,24 @@ export class WaveSystem {
 
   // Local shape parameters of one wave at (s,u).
   local(w, s, u) {
+    const k = waveScale(w.H);
     const q = (s - w.s0) * w.peel;
-    const env = Math.exp(-sq(q / (q > 0 ? 420 : 70))) * Math.max(0, w.fade);
+    const env = waveEnv(q, k) * Math.max(0, w.fade);
     const ds = (s - w.sb) * w.peel;
-    const br = w.bk * (1 - ss(-16, 0, ds));
-    const sh = 1 - 0.5 * ss(30, 280, ds);
+    const br = w.bk * (1 - ss(-16 * k, 0, ds));
+    const sh = 1 - 0.5 * ss(30 * k, 280 * k, ds);
     const Hh = w.H * env * sh * (1 - 0.45 * br);
-    const st = w.stNow * (1 - br) * (1 - 0.65 * ss(10, 250, ds));
+    const st = w.stNow * (1 - br) * (1 - 0.65 * ss(10 * k, 250 * k, ds));
     const Lf = Math.max(w.H, 0.3) * (3.2 - 2.2 * st);
     const du = u - w.uc;
-    const T = w.bk * (ds >= 0 ? 1 - ss(0, 34, ds) : 1);
-    return { env, ds, br, Hh, st, Lf, du, x: du / Lf, T };
+    const T = w.bk * (ds >= 0 ? 1 - ss(0, 34 * k, ds) : 1);
+    return { env, ds, br, Hh, st, Lf, du, x: du / Lf, T, k };
   }
 
   waveY(w, s, u) {
     const L = this.local(w, s, u);
     let y;
-    if (L.du < 0) y = Math.exp(-sq(L.du / (w.H * 5.5 + 1)));
+    if (L.du < 0) y = Math.exp(-sq(L.du / ((w.H * 5.5 + 1) / Math.sqrt(L.k))));
     else { const x = Math.min(L.du / L.Lf, 1); y = (1 - x) * (1 - x) * (1 + 2 * x * (1 - L.st)); }
     y -= 0.1 * Math.exp(-sq((L.du - 1.6 * L.Lf) / L.Lf));
     return L.Hh * y;
@@ -145,7 +159,7 @@ export class WaveSystem {
       if (w.fade <= 0) continue;
       const L = this.local(w, s, u);
       let k = L.br * Math.exp(-sq((L.du - 0.3 * L.Lf) / (1.4 * L.Lf)));
-      if (L.du < L.Lf) k += L.br * 0.7 * Math.exp(Math.min(L.du, 0) / 30);
+      if (L.du < L.Lf) k += L.br * 0.7 * Math.exp(Math.min(L.du, 0) / (30 * L.k));
       f += k * L.env;
     }
     return f;
@@ -174,6 +188,12 @@ uniform vec4 uAmb[3];
 uniform vec2 uAmbW[3];
 float ss(float a,float b,float x){float t=clamp((x-a)/(b-a),0.,1.);return t*t*(3.-2.*t);}
 float sq(float x){return x*x;}
+float waveEnv(float q,float k){
+  float e1=exp(-sq(q/(q>0.?420.:70.)));
+  if(k<=1.) return e1;
+  float W=q>0.?150.*k:55.*k; float r=sq(q/W);
+  return e1+(exp(-r*r)-e1)*min(1.,(k-1.)/1.5);
+}
 float ambient(vec2 p){
   float h=0.;
   for(int i=0;i<3;i++) h+=uAmb[i].w*sin(uAmb[i].z*dot(uAmb[i].xy,p)-uAmbW[i].x*uTime+uAmbW[i].y);
@@ -185,30 +205,31 @@ float waveField(vec2 p, out float foam, out float thin, out float tube){
   for(int i=0;i<${MAXW};i++){
     vec4 A=uW0[i]; vec4 B=uW1[i];
     if(B.z<=0.0) continue;
+    float k=max(1.,A.z/5.);
     float q=(s-A.w)*B.x;
-    float env=exp(-sq(q/(q>0.?420.:70.)))*B.z;
+    float env=waveEnv(q,k)*B.z;
     float ds=(s-A.y)*B.x;
-    float br=B.y*(1.-ss(-16.,0.,ds));
-    float sh=1.-0.5*ss(30.,280.,ds);
+    float br=B.y*(1.-ss(-16.*k,0.,ds));
+    float sh=1.-0.5*ss(30.*k,280.*k,ds);
     float Hh=A.z*env*sh*(1.-0.45*br);
-    float st=B.w*(1.-br)*(1.-0.65*ss(10.,250.,ds));
+    float st=B.w*(1.-br)*(1.-0.65*ss(10.*k,250.*k,ds));
     float Lf=max(A.z,0.3)*(3.2-2.2*st);
     float du=u-A.x;
     float y;
-    if(du<0.) y=exp(-sq(du/(A.z*5.5+1.)));
+    if(du<0.) y=exp(-sq(du/((A.z*5.5+1.)/sqrt(k))));
     else { float x=min(du/Lf,1.); y=(1.-x)*(1.-x)*(1.+2.*x*(1.-st)); }
     y-=0.1*exp(-sq((du-1.6*Lf)/Lf));
     h+=Hh*y;
     float f=br*exp(-sq((du-0.3*Lf)/(1.4*Lf)));
-    if(du<Lf) f+=br*0.7*exp(min(du,0.)/30.);
+    if(du<Lf) f+=br*0.7*exp(min(du,0.)/(30.*k));
     f*=env;
-    f+=B.y*env*exp(-sq((du-Lf)/(0.8+0.4*Lf)))*exp(-sq((ds+3.)/6.))*1.4;
-    f+=st*env*0.7*exp(-sq((du+0.2)/0.55))*ss(-2.,25.,ds)*ss(1.2,2.2,A.z);
+    f+=B.y*env*exp(-sq((du-Lf)/(0.8+0.4*Lf)))*exp(-sq((ds+3.*k)/(6.*k)))*1.4;
+    f+=st*env*0.7*exp(-sq((du+0.2*k)/(0.55*k)))*ss(-2.*k,25.*k,ds)*ss(1.2,2.2,A.z);
     foam+=f;
     thin+=env*(1.-br)*(0.35+0.65*st)*ss(0.2,0.95,y)*ss(-3.,0.,du)*ss(0.5,1.5,A.z);
-    float T=B.y*(ds>=0.?1.-ss(0.,34.,ds):1.)*ss(0.9,1.4,A.z*env);
+    float T=B.y*(ds>=0.?1.-ss(0.,34.*k,ds):1.)*ss(0.9,1.4,A.z*env);
     float xx=du/Lf;
-    tube+=T*ss(0.,0.12,xx)*(1.-ss(T*0.7,T*1.02,xx))*ss(-12.,-2.,ds);
+    tube+=T*ss(0.,0.12,xx)*(1.-ss(T*0.7,T*1.02,xx))*ss(-12.*k,-2.*k,ds);
   }
   return h+ambient(p);
 }
@@ -451,27 +472,33 @@ export class Ocean {
           varying vec3 vW; varying vec3 vN; varying float vFoam, vT, vCol;
           vec3 lipPos(float ds, float tau, out float T, out float col){
             vec4 A=uL0, B=uL1;
+            float k=max(1.,A.z/5.);
             float s=A.y+B.x*ds;
             float q=(s-A.w)*B.x;
-            float env=exp(-sq(q/(q>0.?420.:70.)))*B.z;
-            float sh=1.-0.5*ss(30.,280.,ds);
+            float env=waveEnv(q,k)*B.z;
+            float sh=1.-0.5*ss(30.*k,280.*k,ds);
             float Hh=A.z*env*sh;
-            float st=B.w*(1.-0.65*ss(10.,250.,ds));
+            float st=B.w*(1.-0.65*ss(10.*k,250.*k,ds));
             float Lf=max(A.z,0.3)*(3.2-2.2*st);
-            T=B.y*(ds>=0.?1.-ss(0.,34.,ds):1.)*ss(0.9,1.4,A.z*env);
-            col=ss(0.,-15.,ds);
+            T=B.y*(ds>=0.?1.-ss(0.,34.*k,ds):1.)*ss(0.9,1.4,A.z*env);
+            col=ss(0.,-15.*k,ds);
             float tt=tau*T;
-            float u=A.x-0.25+Lf*1.02*tt;
-            float y=Hh*(1.+0.07*sin(3.14159*tt))-Hh*0.86*tt*tt+0.04;
+            // the lip leaves the crest, pitches up and out and curls round in an arc down to the water in
+            // front of the wave: together with the face below it, that makes the round tube of a barrel
+            float th=mix(2.262,-1.414,tt);
+            float rx=Lf*1.04, ry=Hh*0.59;
+            float u=A.x-0.25+0.707*rx+rx*cos(th);
+            float y=Hh-0.707*ry+ry*sin(th)+0.04;
             y=mix(y,Hh*0.3*(1.-tt*0.5)-0.8,col);
             vec2 p=uA*s+uD*u;
             return vec3(p.x,y+ambient(p),p.y);
           }
           void main(){
-            float ds=-24.+68.*position.x;
+            float kk=max(1.,uL0.z/5.);
+            float ds=(-24.+68.*position.x)*kk;
             float T,c,T2,c2;
             vec3 P=lipPos(ds,position.y,T,c);
-            vec3 P1=lipPos(ds+0.4,position.y,T2,c2);
+            vec3 P1=lipPos(ds+0.4*kk,position.y,T2,c2);
             vec3 P2=lipPos(ds,position.y+0.03,T2,c2);
             vec3 n=cross(P2-P,P1-P);
             if(dot(n,n)<1e-10) n=vec3(0.,1.,0.);

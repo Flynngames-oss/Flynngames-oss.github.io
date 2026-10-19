@@ -17,7 +17,9 @@ import * as NET from './net.js';
 import * as ADMIN from './admin.js';
 G.adminSpeedMult = () => ADMIN.speedMult() * (G.fun ? G.fun.speed : 1); G.adminJumpMult = () => ADMIN.jumpMult() * (G.fun ? G.fun.jump : 1);
 ADMIN.restore();
-import { initAudio, sfx, setEngine, setMusic, musicPlaying, ambience } from './audio.js';
+import { initAudio, sfx, setEngine, setMusic, musicPlaying, ambience, suspendAudio } from './audio.js';
+// inside the one-page game (surfing and the island in the same page)?
+if (!window.__SINGLE) try { if (window.parent !== window && window.parent.__LANZ_SHELL) window.__SINGLE = true; } catch (e) { /* not ours */ }
 import { initTraffic, updateTraffic, initSkyTraffic, updateSkyTraffic, initRoadTraffic } from './traffic.js';
 import { updateDebris } from './debris.js';
 import { updateCockpit } from './cockpit.js';
@@ -182,6 +184,7 @@ G.goSurf = (id) => {
   f.textContent = '🏄 Paddling out…';
   document.body.appendChild(f);
   requestAnimationFrame(() => { f.style.opacity = 1; });
+  if (window.__SINGLE) setTimeout(() => f.remove(), 1600);
   setTimeout(() => { if (window.__SINGLE) parent.postMessage({ go: 'surf', q: '?spot=' + id }, '*'); else if (window.__NAV) location.href = window.__NAV.surf + '#spot-' + id; else location.href = '../?spot=' + id; }, 550);
 };
 player.place(LOC.spawn.x, 0, LOC.spawn.z, Math.PI);
@@ -1060,6 +1063,7 @@ let last = performance.now(), frame = 0;
 const _sunV = new THREE.Vector3();
 function loop(now) {
   requestAnimationFrame(loop);
+  if (G.paused) { last = now; return; }        // (out surfing)
   const real = Math.min(0.05, (now - last) / 1000);
   last = now;
   // slow motion for huge explosions
@@ -1162,6 +1166,20 @@ buildTitle();
 await progress(1, 'Ready');
 requestAnimationFrame(loop);
 setTimeout(() => $('loading').classList.add('done'), 250);
+// one-page game: the page pauses us while you surf, and tells us which surf shack you walked up from
+if (window.__SINGLE) {
+  addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.pause !== undefined) { G.paused = !!m.pause; suspendAudio(G.paused); if (!G.paused) last = performance.now(); }
+    if (m.arrive !== undefined) {
+      const at = new URLSearchParams(m.arrive).get('at'), s = at && LOC['surf_' + at];
+      if (!s) return;
+      if (!G.started) { G.arriveAt = s; startGame(); }
+      else { if (player.vehicle) player.vehicle.removeOccupant(player); player.place(s.x, groundHeight(s.x, s.z, 999) + 0.1, s.z, s.yaw || 0); G.cam.yaw = (s.yaw || 0) + Math.PI; }
+    }
+  });
+  parent.postMessage({ ready: 'life' }, '*');
+}
 setTimeout(() => $('loading').remove(), 1000);
 window.__bobbly = G; // handy for debugging in the console
 void UP;

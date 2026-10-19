@@ -1,7 +1,7 @@
 // Wobble Surf: Lanzarote — main game: spots, surfing physics, tricks, scoring, camera, UI.
 import * as THREE from 'three';
 import { Sky } from './sky.js';
-import { WaveSystem, Ocean, Spray, Trail } from './ocean.js';
+import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js';
 import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js';
 import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, LOOKS, J, setEnvMap } from './surfer.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -11,6 +11,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
+// inside the one-page game (surfing and the island in the same page)?
+if (!window.__SINGLE) try { if (window.parent !== window && window.parent.__LANZ_SHELL) window.__SINGLE = true; } catch (e) { /* not ours */ }
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const ss = (a, b, x) => { let t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
@@ -177,6 +179,7 @@ async function boot() {
   setTimeout(() => {
     $('boot').classList.add('hidden');
     if (sp) startSession(sp, 'free'); else showScreen('title');
+    if (window.__SINGLE) parent.postMessage({ ready: 'surf' }, '*');
   }, 350);
 }
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -220,7 +223,17 @@ function setupSpot(spot) {
   waves.onMega = (w) => {
     if (game.state !== 'play') return;
     audio.horn(); shake(0.25);
-    bigMsg('MEGA WAVE!', `🌊 A ${Math.round(w.Hmax * 3.28)} ft monster is on the horizon · face the beach and paddle into it`, 'score');
+    bigMsg('MEGA WAVE!', `🌊 A ${Math.round(w.Hmax * 3.28)} ft monster is on the horizon · the jet-ski is towing you out to the peak`, 'score');
+    // the jet-ski tows you out to where the mega waves break (only if you're sitting waiting)
+    if (S.mode === 'lineup') {
+      game.fade = 1;
+      setTimeout(() => {
+        if (S.mode !== 'lineup' || !W || !W.waves.waves.includes(w)) return;
+        S.u = w.uBreak - 14; S.s = w.s0 + w.peel * 12; S.padSpeed = 0;
+        S.psi = psiOf(spot.d.x, spot.d.z);
+        toast('🚤 Towed out to the outer reef · hold ↑ to paddle in when it comes!');
+      }, 250);
+    }
   };
   const q = settings.quality;
   const depthXf = new THREE.Vector4(GEO.XMIN - origin.x, GEO.ZMIN - origin.z, 1 / GEO.S, 1 / GEO.S);
@@ -448,12 +461,22 @@ function stepLineup(h, inp) {
   S.s += (vx * sp.a.x + vz * sp.a.z) * h;
   S.u += (vx * sp.d.x + vz * sp.d.z) * h;
   S.s = clamp(S.s, sp.peakS - 450, sp.peakS + 450);
-  S.u = clamp(S.u, sp.uBreak - 260, Math.min(sp.uEnd - 4, -12));
+  S.u = clamp(S.u, sp.uBreak - 380, Math.min(sp.uEnd - 4, -12));
   S.padPhase += h * (paddling ? 6.5 : Math.abs(turn) > 0.1 ? 4 : 0);
   // whitewater pushes you toward the beach
   const p = toXZ(S.s, S.u);
   const foam = wv.foamAt(p.x, p.z);
   if (foam > 0.35) { S.u += foam * 2.5 * h; S.washT = (S.washT || 0) + h; } else S.washT = 0;
+  // after a mega wave has gone through, the jet-ski brings you back in to the normal peak
+  if (S.u < sp.uBreak - 60 && !wv.waves.some((w) => w.mega && !w.broke)) {
+    S.towT = (S.towT || 0) + h;
+    if (S.towT > 5) { S.towT = 0; game.fade = 1; S.u = sp.uBreak - 6; S.s = sp.peakS + rand(-8, 8); S.padSpeed = 0; toast('🚤 Back to the normal peak'); }
+  } else S.towT = 0;
+  // after a mega wave has gone through, the jet-ski brings you back in to the normal peak
+  if (S.u < sp.uBreak - 60 && !wv.waves.some((w) => w.mega && !w.broke)) {
+    S.towT = (S.towT || 0) + h;
+    if (S.towT > 5) { S.towT = 0; game.fade = 1; S.u = sp.uBreak - 6; S.s = sp.peakS + rand(-8, 8); S.padSpeed = 0; toast('🚤 Back to the normal peak'); }
+  } else S.towT = 0;
   if (foam > 1.1 && wv.waves.some((w) => w.mega && w.broke && Math.abs(w.uc - S.u) < 25)) { S.vel.set(sp.d.x * 9, 4, sp.d.z * 9); wipe('Caught inside by the MEGA WAVE!'); return; }
   S.pos.set(p.x, wv.height(p.x, p.z), p.z);
   computeBoardMat();
@@ -514,7 +537,8 @@ function stepRide(h, inp) {
   const slopeAlong = hs * ea + hu * ed;
   S.V += -9.81 * 0.85 * slopeAlong * h;
   const onFace = L.du > -0.6 && L.x < 1.3 && L.Hh > 0.5;
-  const pocket = (1 - L.br) * L.st * ss(1.25, 0.05, L.x) * ss(-1.0, 0.0, L.du) * Math.exp(-Math.max(L.ds, 0) / 120) * (L.Hh > 0.6 ? 1 : 0);
+  const K = L.k;      // (1 for normal waves; bigger for the mega waves, so everything along the wave scales with it)
+  const pocket = (1 - L.br) * L.st * ss(1.25, 0.05, L.x) * ss(-1.0, 0.0, L.du) * Math.exp(-Math.max(L.ds, 0) / (120 * K)) * (L.Hh > 0.6 ? 1 : 0);
   S.V += (2.7 * pocket * Math.max(0, along) + 0.7 * Math.min(1, Math.max(0, -hu)) * (onFace ? 1 : 0)) * h;
   S.V -= (0.07 * S.V + 0.0045 * S.V * S.V) * h;
   S.V -= Math.abs(S.turn) * S.V * 0.085 * h;
@@ -524,7 +548,7 @@ function stepRide(h, inp) {
   S.pumpA = Math.max(0, S.pumpA - h * 3);
   S.V = clamp(S.V, 0, w.mega ? 40 : 23);
   // crouch: hold ↓, or automatically inside the tube
-  const tubeAhead = L.T > 0.4 && L.x < L.T && L.ds > -3 && L.ds < 20;
+  const tubeAhead = L.T > 0.4 && L.x < L.T && L.ds > -3 * K && L.ds < 20 * K;
   const cT = inp.down ? 1 : tubeAhead ? 0.85 : 0.22 + 0.3 * Math.min(1, Math.abs(S.turn) / 2.5) + S.pumpA * 0.3;
   S.crouch = lerp(S.crouch, cT, 1 - Math.exp(-h * 8));
   // the wave carries you along with it when you're on the face
@@ -569,21 +593,21 @@ function stepRide(h, inp) {
   if (!popping && L.x < 0.06 && L.du > -0.8 && relU < -3.2 && L.br < 0.35 && L.Hh > 0.9) { launch(L, relU, inp.jump); return; }
   if (!popping && inp.jumpHit && L.x < 0.35 && L.du > -0.8 && S.V > 5 && L.Hh > 0.7) { launch(L, Math.min(relU, -2), true); return; }
   // ---- barrels
-  const inTubeNow = L.T > 0.45 && L.ds > -2.5 && L.ds < 18 && L.x > 0.1 && L.x < L.T * 0.92 && L.Hh > 1.3;
+  const inTubeNow = L.T > 0.45 && L.ds > -2.5 * K && L.ds < 18 * K && L.x > 0.1 && L.x < L.T * 0.92 && L.Hh > 1.3;
   if (inTubeNow) { S.tubeT += h; score.wave += 60 * h; }
   if (S.inTube && !inTubeNow) {
     if (S.tubeT > 0.35) {
-      const nm = S.tubeT > 2.5 ? 'MASSIVE BARREL' : S.tubeT > 1.2 ? 'DEEP BARREL' : 'BARREL';
-      addTrick(nm, 400 + 750 * S.tubeT, S.tubeT > 1.2);
+      const nm = w.mega ? (S.tubeT > 2 ? 'MEGA BARREL OF THE YEAR' : 'MEGA BARREL') : S.tubeT > 2.5 ? 'MASSIVE BARREL' : S.tubeT > 1.2 ? 'DEEP BARREL' : 'BARREL';
+      addTrick(nm, (400 + 750 * S.tubeT) * (w.mega ? 3 : 1), S.tubeT > 1.2 || w.mega);
     }
     S.tubeT = 0;
   }
   S.inTube = inTubeNow;
   // ---- wipeouts
-  if (L.T > 0.75 && L.ds > -4 && L.ds < 1.5 && L.x > L.T * 0.82 && L.x < L.T * 1.25) return wipe('The lip landed on you!');
+  if (L.T > 0.75 && L.ds > -4 * K && L.ds < 1.5 * K && L.x > L.T * 0.82 && L.x < L.T * 1.25) return wipe(w.mega ? 'Crushed by the MEGA lip!' : 'The lip landed on you!');
   const movingOn = along > 0.55 && S.V * along > w.P * 0.8;
-  if (L.x < 0.07 && L.du > -0.5 && L.ds > -2 && L.ds < 8 && L.T > 0.3 && !movingOn) return wipe('Over the falls!');
-  if (L.ds < -2.5 && L.br > 0.4 && L.du > -2 && L.du < 2 * L.Lf) { S.foamT += h; if (S.foamT > 0.7) return wipe('Eaten by the foam ball!'); }
+  if (L.x < 0.07 && L.du > -0.5 && L.ds > -2 * K && L.ds < 8 * K && L.T > 0.3 && !movingOn) return wipe('Over the falls!');
+  if (L.ds < -2.5 * K && L.br > 0.4 && L.du > -2 && L.du < 2 * L.Lf) { S.foamT += h; if (S.foamT > 0.7) return wipe('Eaten by the foam ball!'); }
   else S.foamT = Math.max(0, S.foamT - h * 2);
   // floater over the breaking section
   if (L.x < 0.08 && L.du > -0.8 && L.br > 0.2 && along > 0.55 && S.V > 7) { S.floatT += h; if (S.floatT > 0.5 && !S.floatDone) { S.floatDone = true; addTrick('FLOATER', 320); } }
@@ -921,13 +945,23 @@ function updateCamera(dt) {
 function emitWaveSpray(dt) {
   const wv = W.waves, sp = W.spot, q = settings.quality === 'low' ? 0.45 : settings.quality === 'high' ? 1.4 : 1;
   for (const w of wv.waves) {
+    if (w.mega && !w.broke && w.H > 8 && w.fade > 0.3) {
+      const K = waveScale(w.H);
+      for (let i = 0; i < 70 * dt * q; i++) {
+        const sAt = w.s0 + w.peel * rand(-50, 140) * K, L = wv.local(w, sAt, w.uc);
+        if (L.Hh < 6) continue;
+        const p = toXZ(sAt, w.uc + rand(-1, 1.5));
+        W.spray.emit(p.x, wv.height(p.x, p.z) + 0.5, p.z, -sp.d.x * rand(4, 10), rand(3, 8), -sp.d.z * rand(4, 10), rand(1.2, 3.5) * Math.sqrt(K), rand(1.5, 2.8), 0.35, 0.6);
+      }
+    }
     if (!w.broke || w.fade < 0.3 || w.H < 0.9) continue;
+    const K = waveScale(w.H), rk = Math.sqrt(K);
     const near = toXZ(w.sb, w.uc);
     const dist = Math.hypot(near.x - camera.position.x, near.z - camera.position.z);
-    if (dist > 420) continue;
-    const n = (w.closeout ? 140 : 80) * dt * q * Math.min(1.7, w.H / 2);
+    if (dist > 420 * K) continue;
+    const n = (w.closeout ? 140 : 80) * dt * q * Math.min(1.7, w.H / 2) * rk;
     for (let i = 0; i < n; i++) {
-      const ds = rand(-10, 1.5);
+      const ds = rand(-10, 1.5) * K;
       const s = w.sb + w.peel * ds;
       const L = wv.local(w, s, w.uc);
       if (L.Hh < 0.6) continue;
@@ -935,31 +969,45 @@ function emitWaveSpray(dt) {
       const p = toXZ(s, u);
       const y = wv.height(p.x, p.z);
       const up = Math.random() < 0.3 ? rand(5, 10) : rand(2, 5.5);
-      W.spray.emit(p.x, y + 0.2, p.z, sp.d.x * rand(1, 4) + sp.a.x * w.peel * rand(-1.5, 1.5), up * Math.min(1.6, L.Hh / 2), sp.d.z * rand(1, 4) + sp.a.z * w.peel * rand(-1.5, 1.5), rand(0.6, 1.8) * Math.min(1.5, L.Hh / 2), rand(0.8, 1.7), 1, 0.9);
+      W.spray.emit(p.x, y + 0.2, p.z, (sp.d.x * rand(1, 4) + sp.a.x * w.peel * rand(-1.5, 1.5)) * rk, up * Math.min(1.6, L.Hh / 2) * rk, (sp.d.z * rand(1, 4) + sp.a.z * w.peel * rand(-1.5, 1.5)) * rk, rand(0.6, 1.8) * Math.min(1.5, L.Hh / 2) * K, rand(0.8, 1.7) * rk, 1, 0.9);
     }
     // the lip feathering and throwing: spray blown off the top of the curl
-    const lipN = 40 * dt * q * Math.min(1.7, w.H / 2);
+    const lipN = 40 * dt * q * Math.min(1.7, w.H / 2) * rk;
     for (let i = 0; i < lipN; i++) {
-      const ds = rand(-2, 22);
+      const ds = rand(-2, 22) * K;
       const s = w.sb + w.peel * ds;
       const L = wv.local(w, s, w.uc);
       if (L.Hh < 1 || L.T < 0.1) continue;
-      const u = w.uc + L.Lf * L.T * rand(0, 1);
+      // a point on the curling lip (same arc as the lip shape in the water shader)
+      const th = 2.262 + (-1.414 - 2.262) * L.T * rand(0.6, 1), rx = L.Lf * 1.04, ry = L.Hh * 0.59;
+      const u = w.uc - 0.25 + 0.707 * rx + rx * Math.cos(th);
       const p = toXZ(s, u);
-      const tt = (u - w.uc) / L.Lf;
-      const y = L.Hh * (1.05 - 0.86 * tt * tt) + 0.2;
-      W.spray.emit(p.x, y, p.z, sp.d.x * rand(0.5, 2.5) - sp.d.x * 1.5, rand(0.5, 2.5), sp.d.z * rand(0.5, 2.5) - sp.d.z * 1.5, rand(0.25, 0.7), rand(0.5, 1.1), 0.6, 0.75);
+      const y = L.Hh - 0.707 * ry + ry * Math.sin(th) + 0.2;
+      W.spray.emit(p.x, y, p.z, (sp.d.x * rand(0.5, 2.5) - sp.d.x * 1.5) * rk, rand(0.5, 2.5) * rk, (sp.d.z * rand(0.5, 2.5) - sp.d.z * 1.5) * rk, rand(0.25, 0.7) * rk, rand(0.5, 1.1) * rk, 0.6, 0.75);
+    }
+    // the big ones throw a cloud of spray up the back when the lip explodes (the "spit" and mist of Nazaré)
+    if (K > 2) for (let i = 0; i < 30 * dt * q * rk; i++) {
+      const ds = rand(-14, -1) * K, s2 = w.sb + w.peel * ds, L = wv.local(w, s2, w.uc);
+      const p = toXZ(s2, w.uc + L.Lf * rand(0.6, 1.1));
+      W.spray.emit(p.x, wv.height(p.x, p.z) + 1, p.z, -sp.d.x * rand(2, 8), rand(6, 16) * rk, -sp.d.z * rand(2, 8), rand(3, 7) * rk, rand(2, 3.5), 0.25, 0.55);
+    }
+    // the lip landing: a huge explosion of white water in front of the tube on the big waves
+    if (K > 2) for (let i = 0; i < 45 * dt * q * rk; i++) {
+      const ds = rand(-8, 1) * K, s2 = w.sb + w.peel * ds, L = wv.local(w, s2, w.uc);
+      if (L.T < 0.3) continue;
+      const p = toXZ(s2, w.uc + L.Lf * rand(0.75, 1.0));
+      W.spray.emit(p.x, wv.height(p.x, p.z) + 0.5, p.z, sp.d.x * rand(-3, 6) + sp.a.x * w.peel * rand(-4, 4), rand(8, 22) * rk * 0.6, sp.d.z * rand(-3, 6) + sp.a.z * w.peel * rand(-4, 4), rand(3, 8) * rk, rand(1.8, 3.2), 0.5, 0.8);
     }
     // mist off the back of the broken section
-    const m = 24 * dt * q;
+    const m = 24 * dt * q * rk;
     for (let i = 0; i < m; i++) {
-      const ds = rand(-70, -6);
+      const ds = rand(-70, -6) * K;
       const s = w.sb + w.peel * ds;
       const L = wv.local(w, s, w.uc);
       if (L.Hh < 0.4) continue;
       const p = toXZ(s, w.uc + rand(-1, 3));
       const y = wv.height(p.x, p.z);
-      W.spray.emit(p.x, y + 0.3, p.z, sp.d.x * 2, rand(0.5, 1.5), sp.d.z * 2, rand(1.6, 3.2), rand(1.5, 2.5), 0.05, 0.35);
+      W.spray.emit(p.x, y + 0.3, p.z, sp.d.x * 2, rand(0.5, 1.5) * rk, sp.d.z * 2, rand(1.6, 3.2) * rk, rand(1.5, 2.5), 0.05, 0.35);
     }
   }
 }
@@ -1048,6 +1096,7 @@ let last = performance.now();
 let lastMode = '';
 function frame(now) {
   requestAnimationFrame(frame);
+  if (game.paused) { last = now; return; }        // (exploring the island)
   let dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!W) return;
@@ -1263,3 +1312,17 @@ window.__surf = {
     return { mode: S.mode, s: S.s, u: S.u, V: S.V, wave: score.wave };
   },
 };
+
+// one-page game: the page pauses us while you explore the island, and tells us which spot to paddle out at
+if (window.__SINGLE) addEventListener('message', (e) => {
+  const m = e.data || {};
+  if (m.pause !== undefined) {
+    game.paused = !!m.pause;
+    try { if (audio.ctx) (game.paused ? audio.ctx.suspend() : audio.ctx.resume()).catch(() => {}); } catch (err) { /* ignore */ }
+    if (!game.paused) last = performance.now();
+  }
+  if (m.arrive !== undefined) {
+    const sp = SPOTS.find((s) => s.id === new URLSearchParams(m.arrive).get('spot'));
+    if (sp && W) { game.fade = 1; startSession(sp, 'free'); }
+  }
+});
