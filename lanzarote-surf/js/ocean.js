@@ -36,17 +36,20 @@ export class WaveSystem {
     // a wave already on its way so the first one arrives quickly
     this.spawn(spot.uBreak - 110);
     this.setLeft = 1; this.nextInSet = 13;
+    // every minute or two a MEGA wave rolls in: about ten times the size of the normal ones
+    this.nextMega = rand(35, 60);
+    this.onMega = null;
   }
 
-  spawn(uc) {
+  spawn(uc, mega = false) {
     const sp = this.spot;
     if (this.waves.length >= MAXW) return null;
-    const Hmax = rand(sp.Hmin, sp.Hmax);
+    const Hmax = mega ? sp.Hmax * rand(8.5, 10) : rand(sp.Hmin, sp.Hmax);
     const peel = sp.peel || (Math.random() < 0.5 ? -1 : 1);
     const w = {
       id: this.ids++, uc: uc ?? sp.uBreak - 330, H: Hmax * 0.3, Hmax, s0: sp.peakS + rand(-16, 16) - peel * 8,
-      peel, P: sp.P * rand(0.9, 1.1), sb: 0, bk: 0, broke: false, fade: 0, stNow: 0, c: 9,
-      len: sp.len * rand(0.85, 1.15), t: 0, ph: rand(0, 6), dying: false, ridden: false,
+      peel, P: sp.P * rand(0.9, 1.1) * (mega ? 1.8 : 1), sb: 0, bk: 0, broke: false, fade: 0, stNow: 0, c: 9,
+      len: sp.len * rand(0.85, 1.15) * (mega ? 2 : 1), t: 0, ph: rand(0, 6), dying: false, ridden: false, mega,
     };
     w.sb = w.s0;
     this.waves.push(w);
@@ -66,13 +69,19 @@ export class WaveSystem {
       this.nextInSet = Math.max(this.nextInSet, this.t);
       this.nextSet = this.t + rand(sp.setPeriod * 0.8, sp.setPeriod * 1.2);
     }
+    if (sp.Hmax > 0 && this.t >= this.nextMega) {
+      const w = this.waves.some((q) => q.mega) ? null : this.spawn(sp.uBreak - 330, true);
+      if (w) { this.nextMega = this.t + rand(85, 140); if (this.onMega) this.onMega(w); } else this.nextMega = this.t + 3;
+    }
     for (const w of this.waves) {
       const far = ss(sp.uBreak - 60, sp.uBreak - 320, w.uc);
-      w.c = sp.C + (9 - sp.C) * far;
+      w.c = (sp.C + (9 - sp.C) * far) * (w.mega ? 1.5 : 1);
       w.uc += w.c * dt;
       if (!w.dying) w.fade = Math.min(1, w.fade + dt / 4);
       const pre = ss(sp.uBreak - 330, sp.uBreak, w.uc);
       w.H = w.Hmax * (0.28 + 0.72 * pre);
+      // a mega wave spends itself after it breaks, so only whitewater reaches the beach
+      if (w.mega && w.broke) w.H *= Math.max(0.1, Math.exp(-(w.uc - sp.uBreak) / 75));
       w.stNow = sp.st * (0.25 + 0.75 * ss(sp.uBreak - 140, sp.uBreak, w.uc));
       if (!w.broke && w.uc >= sp.uBreak) { w.broke = true; w.sb = w.s0 - w.peel * 3; }
       if (w.broke) {

@@ -172,7 +172,7 @@ async function boot() {
   renderer.compile(W.scene, camera);
   setBoot(1, 'Surf’s up!');
   game.state = 'title';
-  const want = new URLSearchParams(location.search).get('spot');
+  const want = new URLSearchParams(window.__QUERY ?? location.search).get('spot');
   const sp = SPOTS.find((s) => s.id === want);
   setTimeout(() => {
     $('boot').classList.add('hidden');
@@ -217,6 +217,11 @@ function setupSpot(spot) {
   spot.a = { x: -spot.d.z, z: spot.d.x };
   spot.origin = origin;
   const waves = new WaveSystem(spot);
+  waves.onMega = (w) => {
+    if (game.state !== 'play') return;
+    audio.horn(); shake(0.25);
+    bigMsg('MEGA WAVE!', `🌊 A ${Math.round(w.Hmax * 3.28)} ft monster is on the horizon · face the beach and paddle into it`, 'score');
+  };
   const q = settings.quality;
   const depthXf = new THREE.Vector4(GEO.XMIN - origin.x, GEO.ZMIN - origin.z, 1 / GEO.S, 1 / GEO.S);
   const ocean = new Ocean(scene, waves, { depthTex, depthXf, sky, gridA: q === 'low' ? 120 : q === 'high' ? 230 : 180, gridD: q === 'low' ? 220 : q === 'high' ? 420 : 320 });
@@ -322,6 +327,8 @@ const to10 = (p) => Math.round(1000 * (1 - Math.exp(-p / 3400))) / 100;
 
 function endRide(reason, good) {
   if (S.mode === 'ended') return;
+  if (good && S.megaRide) addTrick('MEGA WAVE RIDE', 3000, true);
+  S.megaRide = false;
   if (good) bankChain(); else loseChain();
   const sc = to10(score.wave);
   if (S.wave) S.wave.ridden = true;
@@ -447,6 +454,7 @@ function stepLineup(h, inp) {
   const p = toXZ(S.s, S.u);
   const foam = wv.foamAt(p.x, p.z);
   if (foam > 0.35) { S.u += foam * 2.5 * h; S.washT = (S.washT || 0) + h; } else S.washT = 0;
+  if (foam > 1.1 && wv.waves.some((w) => w.mega && w.broke && Math.abs(w.uc - S.u) < 25)) { S.vel.set(sp.d.x * 9, 4, sp.d.z * 9); wipe('Caught inside by the MEGA WAVE!'); return; }
   S.pos.set(p.x, wv.height(p.x, p.z), p.z);
   computeBoardMat();
   const prone = paddling || Math.abs(S.padSpeed) > 0.4 || Math.abs(turn) > 0.1;
@@ -479,7 +487,9 @@ function catchWave(w, inp) {
   score.wave = 0; score.chain = []; score.chainPts = 0; score.mult = 1;
   W.trail.clear();
   audio.burst(0.5, 1600, 0.3, 'lowpass', 0.4);
-  toast(dir === w.peel ? (dir > 0 ? 'Going right →' : '← Going left') : 'Wrong way! Turn around!');
+  S.megaRide = !!w.mega;
+  if (w.mega) { score.mult = 2; S.V = Math.max(S.V, 14); bigMsg('MEGA DROP!', `🌊 ${Math.round(w.Hmax * 3.28)} ft of water — hold on!`, 'score'); audio.cheer(); shake(0.5); }
+  else toast(dir === w.peel ? (dir > 0 ? 'Going right →' : '← Going left') : 'Wrong way! Turn around!');
 }
 
 // --- riding the face --------------------------------------------------------------
@@ -510,9 +520,9 @@ function stepRide(h, inp) {
   S.V -= Math.abs(S.turn) * S.V * 0.085 * h;
   if (L.br > 0.4 && L.du > -1 && L.du < 2 * L.Lf) S.V -= 2.5 * h; // whitewater is slow
   S.pumpCD -= h;
-  if (inp.up && !popping && S.pumpCD <= 0 && onFace && S.V < 19) { S.V += 1.3; S.pumpCD = 0.45; S.pumpA = 1; }
+  if (inp.up && !popping && S.pumpCD <= 0 && onFace && S.V < (w.mega ? 32 : 19)) { S.V += 1.3; S.pumpCD = 0.45; S.pumpA = 1; }
   S.pumpA = Math.max(0, S.pumpA - h * 3);
-  S.V = clamp(S.V, 0, 23);
+  S.V = clamp(S.V, 0, w.mega ? 40 : 23);
   // crouch: hold ↓, or automatically inside the tube
   const tubeAhead = L.T > 0.4 && L.x < L.T && L.ds > -3 && L.ds < 20;
   const cT = inp.down ? 1 : tubeAhead ? 0.85 : 0.22 + 0.3 * Math.min(1, Math.abs(S.turn) / 2.5) + S.pumpA * 0.3;
@@ -846,7 +856,7 @@ function updateCamera(dt) {
       if (Math.abs(ea) > 0.35) S.camSide = lerp(S.camSide, Math.sign(ea), 1 - Math.exp(-dt * 1.3));
       const side = S.camSide;
       const w = S.wave;
-      const Hh = w ? w.H : 2;
+      const Hh = w ? Math.min(w.H, 15) : 2;      // (on a mega wave the camera stays close enough to see you)
       if (camMode === 0) {
         // in front of the wave (beach side), a little behind the surfer, so the face stands up like a wall
         const cx = a.x * side * 1.0 + f.x * 0.35, cz = a.z * side * 1.0 + f.z * 0.35;
@@ -1007,7 +1017,12 @@ function updateHUD(dt) {
       const tt = (S.u - w.uc) / w.c;
       if (tt < best) { best = tt; next = w; }
     }
-    if (next && best < 9) {
+    const mega = wv.waves.find((w) => w.mega && !w.ridden && !w.broke && w.uc < S.u);
+    if (mega && (!next || next === mega || best > 4)) {
+      const tt = Math.max(0, (S.u - mega.uc) / mega.c);
+      hint = tt < 4 ? `🌊 MEGA WAVE! PADDLE ${isTouch ? '▲' : '↑'} NOW!  (${Math.round(mega.Hmax * 3.28)} ft)` : `🌊 MEGA WAVE coming in ${Math.ceil(tt)}s · ${Math.round(mega.Hmax * 3.28)} ft · face the beach and get ready`;
+      $('hint').classList.toggle('urgent', tt < 6);
+    } else if (next && best < 9) {
       const ft = Math.round(next.Hmax * 3.28);
       const L = wv.local(next, S.s, next.uc);
       const far = L.Hh < 0.9 ? '  ·  too far from the peak, paddle toward the other surfers' : '';
@@ -1041,7 +1056,7 @@ function frame(now) {
   for (const k in pressed) pressed[k] = false;
   if (game.state === 'pause' || game.state === 'results') dt = 0;
   // slow motion in big airs and deep barrels
-  const slow = (S.mode === 'air' && S.airT > 0.25 && S.vy < 3) || (S.inTube && S.tubeT > 0.4);
+  const slow = (S.mode === 'air' && S.airT > 0.25 && S.vy < 3) || (S.inTube && S.tubeT > 0.4) || (S.mode === 'popup' && S.megaRide);
   game.timeScale = lerp(game.timeScale, playing && slow ? 0.62 : 1, 1 - Math.exp(-dt * 6));
   const sdt = dt * game.timeScale;
   if (playing && S.mode !== lastMode) { if (S.mode === 'ride' && lastMode === 'popup') S.hintShown = game.time; lastMode = S.mode; }
@@ -1210,7 +1225,12 @@ $('btnNextSpot').onclick = () => { const i = SPOTS.indexOf(W.spot); startSession
 $('btnResMenu').onclick = () => { game.state = 'title'; showScreen('title'); $('hud').classList.add('hidden'); };
 $('btnPause').onclick = () => togglePause();
 // the open-world island game (Lanzarote Life) lives in life/: leave the water at this spot's surf shack
-const toIsland = () => { audio.click(); $('fader').style.opacity = 1; location.href = 'life/' + (W && game.state !== 'title' ? '?at=' + W.spot.id : ''); };
+const toIsland = () => {
+  audio.click(); $('fader').style.opacity = 1;
+  const q = W && game.state !== 'title' ? '?at=' + W.spot.id : '';
+  // (in the one-file version both games live in the same page: ask it to switch)
+  if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*'); else location.href = 'life/' + q;
+};
 $('btnIsland').onclick = toIsland;
 $('btnIsland2').onclick = toIsland;
 
