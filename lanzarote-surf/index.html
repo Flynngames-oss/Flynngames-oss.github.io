@@ -17,63 +17,26 @@
 <body>
 <div id="wait">Loading Lanzarote…</div>
 <script>
-const SHELL = { srcdoc: false, pages: { surf: 'surf.html', life: 'life/index.html' } };
-// One page, two games: surfing and the island each run in their own full-screen frame. The one you're not
-// playing stays loaded but paused, so going surfing or walking up the beach is instant after the first time.
-window.__LANZ_SHELL = true;
-const frames = {}, ready = {}, pending = {};
-let cur = null;
-const hashFor = (which) => { const q = new URLSearchParams(pending[which] || ''); const v = q.get(which === 'life' ? 'at' : 'spot'); return v ? '#' + (which === 'life' ? 'at-' : 'spot-') + v : ''; };
-async function make(which) {
-  const f = document.createElement('iframe');
-  f.setAttribute('allow', 'fullscreen; autoplay; gamepad');
-  f.setAttribute('title', which === 'life' ? 'Lanzarote Life' : 'Wobble Surf');
-  f.className = 'off';
-  frames[which] = f;
-  if (SHELL.srcdoc) f.srcdoc = await (await fetch(SHELL.pages[which])).text(); else f.src = SHELL.pages[which];
-  document.body.appendChild(f);
-  // a browser that won't run a game inside the page: open the game's own page instead
-  setTimeout(() => {
-    let ok = false;
-    try { ok = !!(f.contentDocument && f.contentDocument.querySelector('canvas')); } catch (e) { ok = false; }
-    if (!ok && !ready[which]) location.href = SHELL.pages[which] + hashFor(which);
-  }, 9000);
-  return f;
-}
-function show(which) {
-  cur = which;
-  for (const k in frames) {
-    const on = k === which;
-    frames[k].classList.toggle('off', !on);
-    if (ready[k]) try { frames[k].contentWindow.postMessage({ pause: !on }, '*'); } catch (e) { /* ignore */ }
-  }
-  document.getElementById('wait').hidden = !!ready[which];
-  try { frames[which].contentWindow.focus(); } catch (e) { /* ignore */ }
-}
-function deliver(t) {
-  if (pending[t] === undefined || !ready[t]) return;
-  frames[t].contentWindow.postMessage({ arrive: pending[t] }, '*');
-  delete pending[t];
-}
-addEventListener('message', async (e) => {
-  const m = e.data || {};
-  if (m.go === 'surf' || m.go === 'life') {
-    pending[m.go] = m.q || '';
-    if (!frames[m.go]) await make(m.go);
-    show(m.go); deliver(m.go);
-  }
-  if (m.ready && frames[m.ready]) {
-    ready[m.ready] = true;
-    if (cur !== m.ready) frames[m.ready].contentWindow.postMessage({ pause: true }, '*');
-    else { document.getElementById('wait').hidden = true; try { frames[m.ready].contentWindow.focus(); } catch (err) { /* ignore */ } }
-    deliver(m.ready);
-  }
-});
-{
-  const q = location.search, first = /[?&]at=/.test(q) ? 'life' : 'surf';
-  pending[first] = q;
-  make(first).then(() => show(first));
-}
+const SHELL = { pages: { surf: 'surf.html', life: 'life/index.html' }, base: { life: 'life/' } };
+// One page, two games. The page shows either the surf game or the island; walking up the beach or going
+// surfing reloads this same page into the other game (only one is ever loaded, which keeps it light).
+(function () {
+  const h = location.hash.slice(1).match(/^(surf|life)(?:-(\w+))?$/);
+  let which = 'surf', q = location.search;
+  if (h) { which = h[1]; q = h[2] ? (which === 'life' ? '?at=' : '?spot=') + h[2] : ''; }
+  else if (/[?&]at=/.test(q)) which = 'life';
+  window.__QUERY = q;
+  window.__LANZ_GO = (w, qq) => {
+    const v = new URLSearchParams(qq || '').get(w === 'life' ? 'at' : 'spot');
+    location.hash = w + (v ? '-' + v : '');
+    location.reload();
+  };
+  const fail = (e) => { const el = document.getElementById('wait'); if (el) el.textContent = 'Could not load the game: ' + (e && e.message || e); };
+  fetch(SHELL.pages[which]).then((r) => { if (!r.ok) throw new Error(r.status + ' ' + SHELL.pages[which]); return r.text(); }).then((html) => {
+    if (SHELL.base && SHELL.base[which]) html = html.replace(/<head>/i, '<head><base href="' + SHELL.base[which] + '">');
+    document.open(); document.write(html); document.close();
+  }).catch(fail);
+})();
 </script>
 </body>
 </html>

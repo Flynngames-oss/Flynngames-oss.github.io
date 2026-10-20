@@ -185,7 +185,7 @@ G.goSurf = (id) => {
   document.body.appendChild(f);
   requestAnimationFrame(() => { f.style.opacity = 1; });
   if (window.__SINGLE) setTimeout(() => f.remove(), 1600);
-  setTimeout(() => { if (window.__SINGLE) parent.postMessage({ go: 'surf', q: '?spot=' + id }, '*'); else if (window.__NAV) location.href = window.__NAV.surf + '#spot-' + id; else location.href = '../?spot=' + id; }, 550);
+  setTimeout(() => { if (window.__LANZ_GO) window.__LANZ_GO('surf', '?spot=' + id); else if (window.__SINGLE) parent.postMessage({ go: 'surf', q: '?spot=' + id }, '*'); else if (window.__NAV) location.href = window.__NAV.surf + '#spot-' + id; else location.href = '../?spot=' + id; }, 550);
 };
 player.place(LOC.spawn.x, 0, LOC.spawn.z, Math.PI);
 player.respawn = (home) => {
@@ -1166,6 +1166,7 @@ buildTitle();
 await progress(1, 'Ready');
 requestAnimationFrame(loop);
 setTimeout(() => $('loading').classList.add('done'), 250);
+if (window.__LANZ_GO && G.arriveAt) setTimeout(() => startGame(), 400);
 // one-page game: the page pauses us while you surf, and tells us which surf shack you walked up from
 if (window.__SINGLE) {
   addEventListener('message', (e) => {
