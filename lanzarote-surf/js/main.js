@@ -1278,7 +1278,8 @@ const toIsland = () => {
   audio.click(); $('fader').style.opacity = 1;
   const q = W && game.state !== 'title' ? '?at=' + W.spot.id : '';
   // (in the one-file version both games live in the same page: ask it to switch)
-  if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*');
+  if (window.__LANZ_GO) window.__LANZ_GO('life', q);              // (the same page swaps to the island)
+  else if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*');
   else if (window.__NAV) location.href = window.__NAV.life + (q ? '#at-' + W.spot.id : '');
   else location.href = 'life/' + q;
 };
