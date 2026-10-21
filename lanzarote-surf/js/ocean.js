@@ -1,8 +1,8 @@
 // Ocean: the wave model (shared by physics in JS and rendering in GLSL), the water meshes,
 // the curling lip, spray particles and the surfer's foam trail.
 import * as THREE from 'three';
-import { SKY_GLSL } from './sky.js';
-import { UW } from './water.js';
+import { SKY_GLSL } from './sky.js?v=8';
+import { UW } from './water.js?v=8';
 
 export const MAXW = 4;
 // waves up to 5 m use the normal proportions; bigger ones (the mega waves) are scaled up as a whole

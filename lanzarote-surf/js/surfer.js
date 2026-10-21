@@ -1,7 +1,7 @@
 // The surfer: a wobbly verlet ragdoll that is pulled toward animated poses while riding,
 // and goes fully limp (and tumbles in the whitewater) when you wipe out. Plus the board.
 import * as THREE from 'three';
-import { makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js';
+import { makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js?v=8';
 
 const V3 = THREE.Vector3;
 // particle indices
@@ -10,7 +10,7 @@ const NP = 16;
 const LEN = { torso: 0.42, neck: 0.16, head: 0.2, sh: 0.19, ua: 0.29, fa: 0.27, hip: 0.1, th: 0.44, sn: 0.44 };
 const RAD = [0.14, 0.15, 0.06, 0.13, 0.07, 0.055, 0.05, 0.07, 0.055, 0.05, 0.08, 0.07, 0.06, 0.08, 0.07, 0.06];
 
-export { setEnvMap, makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js';
+export { setEnvMap, makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js?v=8';
 
 // ---------------------------------------------------------------------------
 // poses (board-local coordinates: x = right rail, y = up from deck, z = toward tail)
