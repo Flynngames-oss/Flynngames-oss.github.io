@@ -88,6 +88,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .spot .lock { position: absolute; right: 16px; top: 14px; font-weight: 900; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 99px; }
 
 #custom .panel, #howto .panel, #pause .panel, #results .panel { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 92vh; }
+#custom .panel { width: min(600px, 92vw); }
 #custom .panel { left: auto; right: 4vw; transform: translateY(-50%); }
 .crow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-weight: 800; }
 .sw { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
@@ -117,6 +118,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 #hudBoard { position: absolute; right: 16px; top: 14px; background: var(--glass); border-radius: 14px; padding: 8px 10px; min-width: 170px; font-weight: 800; font-size: 14px; }
 #hudBoard .row { display: flex; justify-content: space-between; gap: 14px; padding: 2px 4px; }
 #hudBoard .row.you { color: var(--sand); }
+#btnView { position: absolute; right: 16px; top: 46%; pointer-events: auto; width: 46px; height: 46px; border-radius: 50%; background: var(--glass); font-size: 20px; }
+#underwater { position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0; transition: opacity .25s; background: radial-gradient(ellipse at 50% 40%, rgba(40,190,210,0) 40%, rgba(0,40,60,.55) 100%); }
+#underwater.on { opacity: 1; }
 #btnPause { position: absolute; right: 16px; bottom: 16px; pointer-events: auto; width: 46px; height: 46px; border-radius: 50%; background: var(--glass); font-weight: 900; font-size: 18px; }
 #hudWave { position: absolute; left: 18px; top: 74px; font-family: 'Lilita One'; font-size: 22px; color: var(--sand); text-shadow: 0 2px 0 rgba(0,0,0,.35); }
 .speed { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(340px, 60vw); }
@@ -166,13 +170,57 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 #fader { position: fixed; inset: 0; background: #06141c; z-index: 11; pointer-events: none; opacity: 0; }
 #loadingSpot { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(6,20,28,.7); font-family: 'Lilita One'; font-size: 36px; }
 
+
+/* creator */
+#customTabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.tab { padding: 8px 14px; border-radius: 99px; background: rgba(255,255,255,.1); font-weight: 900; font-size: 14px; }
+.tab.on { background: var(--sand); color: var(--ink); }
+#customRows { max-height: calc(92vh - 250px); overflow: auto; padding-right: 6px; }
+.crow.col { flex-direction: column; align-items: stretch; gap: 6px; }
+.crow.col .sw { justify-content: flex-start; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.opt { padding: 7px 12px; border-radius: 12px; background: rgba(255,255,255,.1); font-weight: 800; font-size: 14px; border: 2px solid transparent; }
+.opt i { display: block; font-style: normal; font-size: 11px; opacity: .7; }
+.opt:hover { background: rgba(255,255,255,.18); }
+.opt.on { background: var(--sea2); border-color: var(--sand); }
+.sw button, .sw .pickc { width: 28px; height: 28px; }
+.pickc { position: relative; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); font-weight: 900; color: #fff; text-shadow: 0 1px 2px #000; border: 3px solid rgba(255,255,255,.25); cursor: pointer; overflow: hidden; }
+.pickc input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.sl { display: flex; align-items: center; gap: 10px; } .sl b { min-width: 64px; text-align: right; font-size: 13px; }
+input[type=range] { accent-color: var(--coral); width: 160px; }
+.txt { font: inherit; font-weight: 800; padding: 8px 12px; border-radius: 10px; border: 2px solid rgba(255,255,255,.2); background: rgba(0,0,0,.3); color: #fff; width: 180px; user-select: text; -webkit-user-select: text; }
+.sub2 { opacity: .8; font-weight: 700; font-size: 14px; margin-bottom: 10px; }
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.preset { text-align: left; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.1); }
+.preset:hover { border-color: var(--sand); }
+.preset.on { background: rgba(15,163,177,.35); border-color: var(--sand); }
+.preset b { display: block; font-family: 'Lilita One'; font-weight: 400; font-size: 20px; }
+.preset small { opacity: .7; font-weight: 700; font-size: 12px; }
+.preset .dots { display: flex; gap: 4px; margin-bottom: 4px; } .preset .dots i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); }
+.preset .dots i.bd { width: 34px; border-radius: 99px; }
+.paintbtn { width: 100%; margin: 4px 0 8px; }
+.row2.tight { margin-top: 10px; }
+/* spray paint */
+#paint { display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; }
+#paint > * { pointer-events: auto; }
+.pbar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: linear-gradient(rgba(5,20,30,.8), rgba(5,20,30,0)); flex-wrap: wrap; }
+.pbar h2 { font-family: 'Lilita One'; font-weight: 400; margin: 0; font-size: 30px; }
+.pbar #paintDone { margin-left: auto; padding: 8px 18px; }
+.pwrap { background: var(--glass2); padding: 14px 18px 4px; border-radius: 22px 22px 0 0; text-align: center; }
+#paintCanvas { display: block; margin: 0 auto; touch-action: none; cursor: crosshair; background: repeating-conic-gradient(rgba(255,255,255,.06) 0 25%, transparent 0 50%) 0 0 / 24px 24px; border-radius: 10px; }
+.phelp { font-size: 12px; font-weight: 800; opacity: .65; margin-top: 6px; }
+.pbot { background: var(--glass2); padding: 8px 18px 16px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.pbot .sw { justify-content: center; }
+.psl { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: center; font-weight: 800; }
+.psl label { display: flex; align-items: center; gap: 8px; }
+
 /* touch */
 #touch { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
 #touch button { position: absolute; pointer-events: auto; width: 76px; height: 76px; border-radius: 50%; background: rgba(8,28,40,.45); border: 3px solid rgba(255,255,255,.35); font-size: 28px; font-weight: 900; touch-action: none; }
 #touch button.on { background: rgba(255,90,95,.7); }
 #touch .l { left: 20px; bottom: 26px; } #touch .r { left: 112px; bottom: 26px; }
 #touch .u { right: 112px; bottom: 112px; } #touch .d { right: 112px; bottom: 22px; }
-#touch .j { right: 18px; bottom: 60px; width: 86px; height: 86px; font-size: 16px; background: rgba(255,90,95,.45); }
+#touch .j { right: 18px; bottom: 60px; width: 86px; height: 86px; font-size: 14px; line-height: 1.1; background: rgba(255,90,95,.45); }
 
 @media (max-width: 760px) {
   #select .wrap { grid-template-columns: 1fr; }
@@ -201,7 +249,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   <div class="menu">
     <button class="mbtn primary" id="btnFree"><b>Free surf</b><small>Pick a spot and shred</small></button>
     <button class="mbtn" id="btnContest"><b>Surf contest</b><small>Beat the locals in 5-minute heats</small></button>
-    <button class="mbtn" id="btnCustom"><b>Customise</b><small>Board, wetsuit, hair</small></button>
+    <button class="mbtn" id="btnCustom"><b>Your surfer</b><small>Customise everything · spray paint your board</small></button>
     <button class="mbtn" id="btnHow"><b>How to surf</b><small>Controls &amp; tricks</small></button>
   </div>
   <div class="settings">
@@ -226,10 +274,35 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 
 <div id="custom" class="screen hidden">
   <div class="panel">
-    <h2>Customise</h2>
-    <div class="sub">Your surfer updates live in the water</div>
+    <h2 id="customTitle">Customise</h2>
+    <div class="sub" id="customSub">Your surfer updates live in the water</div>
+    <div id="customTabs"></div>
     <div id="customRows"></div>
-    <div class="row2"><button class="mbtn primary" data-back><b>Done</b></button></div>
+    <div class="row2"><button class="mbtn primary" data-back><b>Done ✓</b></button></div>
+  </div>
+</div>
+
+<div id="paint" class="screen hidden">
+  <div class="pbar">
+    <h2>🎨 Spray paint</h2>
+    <div id="paintTools" class="chips"></div>
+    <button class="mbtn primary" id="paintDone"><b>Done ✓</b></button>
+  </div>
+  <div class="pwrap">
+    <canvas id="paintCanvas"></canvas>
+    <div class="phelp">Nose → this way · hold the spray can still and the paint builds up</div>
+  </div>
+  <div class="pbot">
+    <div id="paintColors" class="sw"></div>
+    <div id="paintStamps" class="chips hidden"></div>
+    <div class="psl">
+      <label>Size <input type="range" id="paintSize" min="4" max="70" step="1"></label>
+      <label id="paintFlowRow">Pressure <input type="range" id="paintFlow" min="0.1" max="1.5" step="0.05"></label>
+      <button class="opt" id="paintUndo">↶ Undo</button>
+      <button class="opt" id="paintFill">Fill all</button>
+      <button class="opt" id="paintBlank">Blank board</button>
+      <button class="opt" id="paintClear">Wipe paint</button>
+    </div>
   </div>
 </div>
 
@@ -241,6 +314,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
       <kbd>← →</kbd><span>Turn your board</span>
       <kbd>↑ hold</kbd><span>Paddle forward. Hold it as a wave reaches you to catch it (you'll swing round to face the beach)</span>
       <kbd>↓</kbd><span>Back-paddle</span>
+      <kbd>Space</kbd><span>Duck dive under a wave or the whitewater so it doesn't wash you in (hold to stay down longer)</span>
       <div class="h">Riding</div>
       <kbd>← →</kbd><span>Carve. Turn hard at the top for snaps, back toward the curl for cutbacks</span>
       <kbd>↑</kbd><span>Pump for speed (stay high near the curl, that's where the power is)</span>
@@ -251,6 +325,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
       <kbd>↑ ↓</kbd><span>Flip!</span>
       <kbd>Shift / hold Space</kbd><span>Grab the rail</span>
       <div class="h">Other</div>
+      <kbd>V</kbd><span>First person view (see through your surfer's eyes)</span>
       <kbd>C</kbd><span>Change camera</span>
       <kbd>Esc / P</kbd><span>Pause</span><kbd>M</kbd><span>Music on/off</span>
     </div>
@@ -294,6 +369,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   <div id="hudChain"></div>
   <div class="speed"><div class="track"><div id="hudSpeed"></div></div><div id="hudKmh"></div></div>
   <button id="btnPause">❚❚</button>
+  <button id="btnView" title="First person (V)">👀</button>
 </div>
 
 <div id="touch" class="hidden">
@@ -301,12 +377,13 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   <button class="r" data-key="ArrowRight">▶</button>
   <button class="u" data-key="ArrowUp">▲</button>
   <button class="d" data-key="ArrowDown">▼</button>
-  <button class="j" data-key="Space">JUMP</button>
+  <button class="j" data-key="Space">JUMP<br>DIVE</button>
 </div>
 
 <div id="toast"></div>
 <div id="bigmsg" class="bigmsg"></div>
 <div id="drops"></div>
+<div id="underwater"></div>
 <div id="fader"></div>
 <div id="loadingSpot" class="hidden">Paddling out…</div>
 
