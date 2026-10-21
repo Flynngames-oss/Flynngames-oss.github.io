@@ -47,6 +47,7 @@ export const DEFAULT_LOOK = {
   top: 'hawaiian', topColor: '#1aa7e0', topPattern: 'flowers', topAccent: '#ffd23d',
   bottom: 'boardies', bottomColor: '#2b3150', bottomPattern: 'stripes', bottomAccent: '#ffd23d',
   board: { shape: 'shortboard', len: 1, fins: 'thruster', base: '#ffd21f', accent: '#1ec8ff', rail: '#ff7a1f', bottom: '#1aa0d8', design: 'retro', finColor: '#223040' },
+  ski: { hull: '#f2f2f2', deck: '#ffd21f', accent: '#16181d', seat: '#2b2f36', design: 'racing', sled: true, sledColor: '#ffd23d' },
 };
 export const PRESETS = [
   { name: 'Wobbly Joe', ...DEFAULT_LOOK },
@@ -61,7 +62,7 @@ export const PRESETS = [
 
 // fill in anything missing (and turn the old four-colour looks into the new kind)
 export function normalizeLook(l = {}) {
-  const out = { ...DEFAULT_LOOK, ...l, board: { ...DEFAULT_LOOK.board, ...(typeof l.board === 'object' ? l.board : {}) } };
+  const out = { ...DEFAULT_LOOK, ...l, board: { ...DEFAULT_LOOK.board, ...(typeof l.board === 'object' ? l.board : {}) }, ski: { ...DEFAULT_LOOK.ski, ...(l.ski && typeof l.ski === 'object' ? l.ski : {}) } };
   if (l.vest && !l.topColor) out.topColor = l.vest;
   if (l.shorts && !l.bottomColor) out.bottomColor = l.shorts;
   if (l.hair && l.hair.startsWith && l.hair.startsWith('#')) { out.hatColor = l.hair; out.hair = 'none'; out.hat = 'bucket'; }

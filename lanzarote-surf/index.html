@@ -119,6 +119,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 #hudBoard { position: absolute; right: 16px; top: 14px; background: var(--glass); border-radius: 14px; padding: 8px 10px; min-width: 170px; font-weight: 800; font-size: 14px; }
 #hudBoard .row { display: flex; justify-content: space-between; gap: 14px; padding: 2px 4px; }
 #hudBoard .row.you { color: var(--sand); }
+#btnSki, #btnTow { position: absolute; right: 16px; pointer-events: auto; width: 46px; height: 46px; border-radius: 50%; background: var(--glass); font-size: 20px; }
+#btnSki { top: calc(46% + 54px); } #btnTow { top: calc(46% + 108px); }
 #btnView { position: absolute; right: 16px; top: 46%; pointer-events: auto; width: 46px; height: 46px; border-radius: 50%; background: var(--glass); font-size: 20px; }
 #underwater { position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0; transition: opacity .25s; background: radial-gradient(ellipse at 50% 40%, rgba(40,190,210,0) 40%, rgba(0,40,60,.55) 100%); }
 #underwater.on { opacity: 1; }
@@ -298,7 +300,7 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
 
 <div id="paint" class="screen hidden">
   <div class="pbar">
-    <h2>🎨 Spray paint</h2>
+    <h2 id="paintTitle">🎨 Spray paint</h2>
     <div id="paintTools" class="chips"></div>
     <button class="mbtn primary" id="paintDone"><b>Done ✓</b></button>
   </div>
@@ -352,6 +354,12 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
       <kbd>↑</kbd><span>Pump for speed (stay high near the curl, that's where the power is)</span>
       <kbd>↓</kbd><span>Crouch — tighter turns, and stay low in the barrel</span>
       <kbd>Space</kbd><span>Jump. Or just hit the lip fast going up the face to launch an air</span>
+      <div class="h">Jet ski</div>
+      <kbd>J</kbd><span>Jump on your jet ski (and back on your board)</span>
+      <kbd>↑ / ↓</kbd><span>Gas / brake and reverse</span>
+      <kbd>← →</kbd><span>Steer. In the air: barrel roll! (↑ ↓ to flip)</span>
+      <kbd>Space</kbd><span>Turbo boost. Hit a wave fast to launch into the air</span>
+      <kbd>T</kbd><span>On your board: get towed into a wave by the lifeguard's jet ski, or grab a friend's rope (paddle up behind their jet ski). Space lets go — do it on the wave face!</span>
       <div class="h">In the air</div>
       <kbd>← →</kbd><span>Spin (180 = air reverse, 360 = full rotation…)</span>
       <kbd>↑ ↓</kbd><span>Flip!</span>
@@ -402,6 +410,8 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
   <div class="speed"><div class="track"><div id="hudSpeed"></div></div><div id="hudKmh"></div></div>
   <button id="btnPause">❚❚</button>
   <button id="btnView" title="First person (V)">👀</button>
+  <button id="btnSki" title="Jet ski (J)">🚤</button>
+  <button id="btnTow" title="Tow-in (T)">🪢</button>
 </div>
 
 <div id="touch" class="hidden">
@@ -441,6 +451,6 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
   }, 45000);
 })();
 </script>
-<script type="module" src="js/main.js?v=9"></script>
+<script type="module" src="js/main.js?v=10"></script>
 </body>
 </html>
