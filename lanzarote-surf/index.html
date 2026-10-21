@@ -7,6 +7,7 @@
 <meta name="description" content="A wobbly ragdoll surfing game on the real island of Lanzarote: Famara, San Juan and El Quemao.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+<script async src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -87,7 +88,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .spot.locked { opacity: .55; filter: grayscale(.6); }
 .spot .lock { position: absolute; right: 16px; top: 14px; font-weight: 900; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 99px; }
 
-#custom .panel, #howto .panel, #pause .panel, #results .panel { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 92vh; }
+#online .panel, #custom .panel, #howto .panel, #pause .panel, #results .panel { inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 92vh; }
 #custom .panel { width: min(600px, 92vw); }
 #custom .panel { left: auto; right: 4vw; transform: translateY(-50%); }
 .crow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-weight: 800; }
@@ -214,6 +215,18 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
 .psl { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: center; font-weight: 800; }
 .psl label { display: flex; align-items: center; gap: 8px; }
 
+/* multiplayer */
+.roomcode { text-align: center; font-weight: 800; margin: 6px 0 12px; }
+.roomcode b { display: block; font-family: 'Lilita One'; font-weight: 400; font-size: 54px; letter-spacing: .15em; color: var(--sand); user-select: text; -webkit-user-select: text; }
+.rrow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 10px; font-weight: 800; }
+.rrow.you { background: rgba(255,210,122,.15); }
+.rrow small { opacity: .7; }
+#onStatus { margin-top: 10px; font-weight: 800; color: var(--sand); min-height: 1.2em; }
+#hud.net #hint { top: 100px; }
+#hudNet { margin-top: 4px; font-weight: 800; font-size: 13px; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+#hudNet b { color: var(--sand); letter-spacing: .08em; }
+#hudNet small { opacity: .8; }
+
 /* touch */
 #touch { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
 #touch button { position: absolute; pointer-events: auto; width: 76px; height: 76px; border-radius: 50%; background: rgba(8,28,40,.45); border: 3px solid rgba(255,255,255,.35); font-size: 28px; font-weight: 900; touch-action: none; }
@@ -248,6 +261,7 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
   <div class="logo"><span class="w1"><span>W</span><span>O</span><span>B</span><span>B</span><span>L</span><span>E</span> SURF</span><span class="w2">LANZAROTE</span><span class="w3">Real island · real waves · very wobbly surfer</span></div>
   <div class="menu">
     <button class="mbtn primary" id="btnFree"><b>Free surf</b><small>Pick a spot and shred</small></button>
+    <button class="mbtn" id="btnOnline"><b>Surf with friends</b><small>Multiplayer · share a room code</small></button>
     <button class="mbtn" id="btnContest"><b>Surf contest</b><small>Beat the locals in 5-minute heats</small></button>
     <button class="mbtn" id="btnCustom"><b>Your surfer</b><small>Customise everything · spray paint your board</small></button>
     <button class="mbtn" id="btnHow"><b>How to surf</b><small>Controls &amp; tricks</small></button>
@@ -306,6 +320,24 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
   </div>
 </div>
 
+<div id="online" class="screen hidden">
+  <div class="panel">
+    <h2>Surf with friends</h2>
+    <div class="sub">Make a room and tell your friends the code, or type a friend's code to join them. You'll see each other in the water, share the same waves and drop in on each other!</div>
+    <div id="onIdle">
+      <button class="mbtn primary" id="btnHost" style="width:100%"><b>Make a room</b><small>Get a code to share with your friends</small></button>
+      <div class="crow"><span>Friend's code</span><span style="display:flex;gap:8px"><input id="joinCode" class="txt" maxlength="6" placeholder="ABCDE" autocomplete="off" style="width:130px;text-transform:uppercase;letter-spacing:.15em"><button class="opt" id="btnJoin">Join ▶</button></span></div>
+    </div>
+    <div id="onRoom" class="hidden">
+      <div class="roomcode">Room code <b id="roomCode"></b></div>
+      <div id="roomList"></div>
+      <div class="row2"><button class="mbtn primary" id="btnOnSurf"><b>Go surfing ▶</b></button><button class="mbtn" id="btnLeave"><b>Leave room</b></button></div>
+    </div>
+    <div id="onStatus"></div>
+    <div class="row2"><button class="mbtn" data-back><b>◀ Back</b></button></div>
+  </div>
+</div>
+
 <div id="howto" class="screen hidden">
   <div class="panel">
     <h2>How to surf</h2>
@@ -359,7 +391,7 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
 </div>
 
 <div id="hud" class="hidden">
-  <div class="tl"><div id="hudSpot"></div><div id="hudWaves"></div></div>
+  <div class="tl"><div id="hudSpot"></div><div id="hudWaves"></div><div id="hudNet"></div></div>
   <div id="hudWave"></div>
   <div id="hudTimer"></div>
   <div id="hudBoard"></div>
@@ -409,6 +441,6 @@ input[type=range] { accent-color: var(--coral); width: 160px; }
   }, 45000);
 })();
 </script>
-<script type="module" src="js/main.js?v=8"></script>
+<script type="module" src="js/main.js?v=9"></script>
 </body>
 </html>
