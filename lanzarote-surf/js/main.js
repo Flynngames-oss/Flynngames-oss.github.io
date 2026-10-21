@@ -1,17 +1,17 @@
 // Wobble Surf: Lanzarote — main game: spots, surfing physics, tricks, scoring, camera, UI.
 import * as THREE from 'three';
-import { Sky } from './sky.js';
-import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js';
-import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js';
-import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, J, setEnvMap } from './surfer.js';
-import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js';
-import { initCreator } from './creator.js';
-import { Reef, UW, patchObject } from './water.js';
+import { Sky } from './sky.js?v=8';
+import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js?v=8';
+import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js?v=8';
+import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, J, setEnvMap } from './surfer.js?v=8';
+import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js?v=8';
+import { initCreator } from './creator.js?v=8';
+import { Reef, UW, patchObject } from './water.js?v=8';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Audio } from './audio.js';
+import { Audio } from './audio.js?v=8';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -71,6 +71,12 @@ const progress = Object.assign({ unlocked: 1, best: {} }, store.get('progress', 
 // ---------------------------------------------------------------------------
 const canvas = $('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality !== 'low', powerPreference: 'high-performance' });
+// if the graphics chip gives up (Chromebooks sometimes do), offer a reload instead of a frozen screen
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  toast('Graphics crashed. Reloading…');
+  setTimeout(() => location.reload(), 1500);
+});
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const camera = new THREE.PerspectiveCamera(62, 1, 0.3, 60000);

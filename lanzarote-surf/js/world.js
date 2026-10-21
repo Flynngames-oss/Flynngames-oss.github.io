@@ -2,7 +2,7 @@
 // colour map, white villages, palms, kites and birds.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { patchUnderwater } from './water.js';
+import { patchUnderwater } from './water.js?v=8';
 
 export const GEO = { LAT0: 29.06, LON0: -13.64, N: 1536, S: 56000, XMIN: -29000, ZMIN: -29500 };
 const MLAT = 111320, MLON = 111320 * Math.cos(GEO.LAT0 * Math.PI / 180);
@@ -157,6 +157,7 @@ export function buildTerrain(island, origin, albedo, quality, rocky = 0.6) {
         `);
   };
   patchUnderwater(mat);
+  mat.customProgramCacheKey = () => 'terrain' + rocky; // (the sea floor differs per spot)
   const mesh = new THREE.Mesh(g, mat);
   return mesh;
 }

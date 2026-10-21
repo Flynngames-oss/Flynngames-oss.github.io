@@ -1,6 +1,6 @@
 // The surfer creator (pick a surfer, then change everything about them and their board)
 // and the spray paint workshop for the deck of the board.
-import { OPTIONS, PRESETS, BOARD_FEEL, DEFAULT_LOOK, normalizeLook, drawDeck, boardOutline, boardDims, paintCanvas, PAINT_W, PAINT_H } from './looks.js';
+import { OPTIONS, PRESETS, BOARD_FEEL, DEFAULT_LOOK, normalizeLook, drawDeck, boardOutline, boardDims, paintCanvas, PAINT_W, PAINT_H } from './looks.js?v=8';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
