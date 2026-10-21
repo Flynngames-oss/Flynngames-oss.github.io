@@ -11,8 +11,6 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
-// inside the one-page game (surfing and the island in the same page)?
-if (!window.__SINGLE) try { if (window.parent !== window && window.parent.__LANZ_SHELL) window.__SINGLE = true; } catch (e) { /* not ours */ }
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const ss = (a, b, x) => { let t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
@@ -174,12 +172,11 @@ async function boot() {
   renderer.compile(W.scene, camera);
   setBoot(1, 'Surf’s up!');
   game.state = 'title';
-  const want = new URLSearchParams(window.__QUERY ?? location.search).get('spot') || (location.hash.match(/^#spot-(\w+)/) || [])[1];
+  const want = new URLSearchParams(location.search).get('spot') || (location.hash.match(/^#spot-(\w+)/) || [])[1];
   const sp = SPOTS.find((s) => s.id === want);
   setTimeout(() => {
     $('boot').classList.add('hidden');
     if (sp) startSession(sp, 'free'); else showScreen('title');
-    if (window.__SINGLE) parent.postMessage({ ready: 'surf' }, '*');
   }, 350);
 }
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -1096,7 +1093,6 @@ let last = performance.now();
 let lastMode = '';
 function frame(now) {
   requestAnimationFrame(frame);
-  if (game.paused) { last = now; return; }        // (exploring the island)
   let dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!W) return;
@@ -1273,18 +1269,7 @@ $('btnAgain').onclick = () => startSession(W.spot, game.mode);
 $('btnNextSpot').onclick = () => { const i = SPOTS.indexOf(W.spot); startSession(SPOTS[i + 1], 'contest'); };
 $('btnResMenu').onclick = () => { game.state = 'title'; showScreen('title'); $('hud').classList.add('hidden'); };
 $('btnPause').onclick = () => togglePause();
-// the open-world island game (Lanzarote Life) lives in life/: leave the water at this spot's surf shack
-const toIsland = () => {
-  audio.click(); $('fader').style.opacity = 1;
-  const q = W && game.state !== 'title' ? '?at=' + W.spot.id : '';
-  // (in the one-file version both games live in the same page: ask it to switch)
-  if (window.__LANZ_GO) window.__LANZ_GO('life', q);              // (the same page swaps to the island)
-  else if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*');
-  else if (window.__NAV) location.href = window.__NAV.life + (q ? '#at-' + W.spot.id : '');
-  else location.href = 'life/' + q;
-};
-$('btnIsland').onclick = toIsland;
-$('btnIsland2').onclick = toIsland;
+
 
 // customise preview: the surfer sits in the line-up right in front of the camera
 function previewSurfer(on) {
@@ -1313,17 +1298,3 @@ window.__surf = {
     return { mode: S.mode, s: S.s, u: S.u, V: S.V, wave: score.wave };
   },
 };
-
-// one-page game: the page pauses us while you explore the island, and tells us which spot to paddle out at
-if (window.__SINGLE) addEventListener('message', (e) => {
-  const m = e.data || {};
-  if (m.pause !== undefined) {
-    game.paused = !!m.pause;
-    try { if (audio.ctx) (game.paused ? audio.ctx.suspend() : audio.ctx.resume()).catch(() => {}); } catch (err) { /* ignore */ }
-    if (!game.paused) last = performance.now();
-  }
-  if (m.arrive !== undefined) {
-    const sp = SPOTS.find((s) => s.id === new URLSearchParams(m.arrive).get('spot'));
-    if (sp && W) { game.fade = 1; startSession(sp, 'free'); }
-  }
-});
