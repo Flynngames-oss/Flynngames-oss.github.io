@@ -1,27 +1,30 @@
 // The surfer creator (pick a surfer, then change everything about them and their board)
 // and the spray paint workshop for the deck of the board.
-import { OPTIONS, PRESETS, BOARD_FEEL, DEFAULT_LOOK, normalizeLook, drawDeck, boardOutline, boardDims, paintCanvas, PAINT_W, PAINT_H } from './looks.js?v=9';
+import { OPTIONS, PRESETS, BOARD_FEEL, DEFAULT_LOOK, normalizeLook, drawDeck, boardOutline, boardDims, paintCanvas, PAINT_W, PAINT_H } from './looks.js?v=10';
+import { SKI_OPTIONS, SKI_L, SKI_B, SKI_PW, SKI_PH, skiOutline, drawSkiDeck, skiPaintCanvas } from './jetski.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
-// ctx: { look, save(look), savePaint(dataURL), applyLook(), redrawBoard(), click(), onPaintMode(on), onDone() }
+// ctx: { look, save(look), savePaint(dataURL), saveSkiPaint(dataURL), applyLook(), redrawBoard(), redrawSki(), click(), onPaintMode(on, target) }
 export function initCreator(ctx) {
   const look = ctx.look;
   let tab = 'surfers';
-  const TABS = [['surfers', 'Surfers'], ['body', 'Body'], ['face', 'Face'], ['hair', 'Hair & hats'], ['clothes', 'Clothes'], ['board', 'Board']];
+  const TABS = [['surfers', 'Surfers'], ['body', 'Body'], ['face', 'Face'], ['hair', 'Hair & hats'], ['clothes', 'Clothes'], ['board', 'Board'], ['ski', 'Jet ski']];
 
   const changed = (rebuild = true) => { ctx.save(look); if (rebuild) ctx.applyLook(); render(); };
   const set = (path, v) => {
-    if (path.startsWith('board.')) look.board[path.slice(6)] = v; else look[path] = v;
+    if (v === 'true') v = true; else if (v === 'false') v = false;
+    const [a, b] = path.split('.');
+    if (b) look[a][b] = v; else look[a] = v;
     changed();
   };
-  const get = (path) => (path.startsWith('board.') ? look.board[path.slice(6)] : look[path]);
+  const get = (path) => { const [a, b] = path.split('.'); return b ? look[a][b] : look[a]; };
 
   // building blocks
   const chips = (label, path, list, extra = {}) => `<div class="crow col"><span>${label}</span><div class="chips">${list.map(([id, nm]) =>
-    `<button class="opt ${get(path) === id ? 'on' : ''}" data-lk="${path}" data-v="${id}">${esc(nm)}${extra[id] ? `<i>${esc(extra[id])}</i>` : ''}</button>`).join('')}</div></div>`;
+    `<button class="opt ${String(get(path)) === id ? 'on' : ''}" data-lk="${path}" data-v="${id}">${esc(nm)}${extra[id] ? `<i>${esc(extra[id])}</i>` : ''}</button>`).join('')}</div></div>`;
   const swatches = (label, path, list = OPTIONS.colors) => `<div class="crow col"><span>${label}</span><div class="sw">${list.map((c) =>
     `<button data-lk="${path}" data-v="${c}" style="background:${c}" class="${get(path) === c ? 'on' : ''}" aria-label="${c}"></button>`).join('')}<label class="pickc" title="Any colour"><input type="color" data-lk="${path}" value="${get(path)}">+</label></div></div>`;
   const slider = (label, path, min, max, step, fmt) => `<div class="crow"><span>${label}</span><div class="sl"><input type="range" data-lk="${path}" min="${min}" max="${max}" step="${step}" value="${get(path)}"><b>${fmt(get(path))}</b></div></div>`;
@@ -61,6 +64,12 @@ export function initCreator(ctx) {
           + swatches('Deck colour', 'board.base') + swatches('Design colour', 'board.accent') + swatches('Rails & stripes', 'board.rail')
           + swatches('Bottom', 'board.bottom') + swatches('Fins', 'board.finColor');
       }
+      case 'ski': return `<div class="sub2">Press <b>J</b> in the water to jump on your jet ski (and back to your board).</div>`
+        + `<button class="mbtn primary paintbtn" id="cPaintSki"><b>🎨 Spray paint the jet ski</b><small>Paint your own design on the deck</small></button>`
+        + chips('Graphics', 'ski.design', SKI_OPTIONS.design)
+        + swatches('Hull', 'ski.hull') + swatches('Deck', 'ski.deck') + swatches('Graphics colour', 'ski.accent') + swatches('Seat', 'ski.seat')
+        + chips('Rescue sled', 'ski.sled', [['true', 'On (for towing surfers)'], ['false', 'Off']])
+        + (look.ski.sled ? swatches('Sled colour', 'ski.sledColor') : '');
     }
     return '';
   }
@@ -84,14 +93,15 @@ export function initCreator(ctx) {
     }
     if (t.dataset.lk) { ctx.click(); set(t.dataset.lk, t.dataset.v); return; }
     if (t.id === 'cRandom') { ctx.click(); randomise(); return; }
-    if (t.id === 'cPaint') { ctx.click(); openPaint(); return; }
+    if (t.id === 'cPaint') { ctx.click(); openPaint('board'); return; }
+    if (t.id === 'cPaintSki') { ctx.click(); openPaint('ski'); return; }
   });
   $('custom').addEventListener('input', (e) => {
     const t = e.target;
     if (t.id === 'cName') { look.name = t.value || 'You'; ctx.save(look); return; }
     if (!t.dataset.lk) return;
     const v = t.type === 'range' ? +t.value : t.value;
-    if (t.dataset.lk.startsWith('board.')) look.board[t.dataset.lk.slice(6)] = v; else look[t.dataset.lk] = v;
+    { const [a, b] = t.dataset.lk.split('.'); if (b) look[a][b] = v; else look[a] = v; }
     ctx.save(look); ctx.applyLook();
   });
   $('custom').addEventListener('change', (e) => { if (e.target.dataset.lk) render(); });
@@ -115,50 +125,57 @@ export function initCreator(ctx) {
   // spray paint workshop
   // -------------------------------------------------------------------------
   const P = { tool: 'spray', color: '#ff3d6e', size: 26, flow: 0.6, stamp: 'star', text: 'SURF', down: false, x: 0, y: 0, lx: 0, ly: 0, undo: [], raf: 0, last: 0 };
-  const deckCv = document.createElement('canvas'); deckCv.width = PAINT_W; deckCv.height = PAINT_H;
+  // what we're painting: the surfboard or the jet ski
+  const TARGETS = {
+    board: { W: PAINT_W, H: PAINT_H, canvas: paintCanvas, dims: () => boardDims(look.board), outline: () => boardOutline(look.board.shape, 96), draw: (g) => drawDeck(g, look.board, paintCanvas()), save: (u) => ctx.savePaint(u), redraw: () => ctx.redrawBoard(), blank: () => { look.board.design = 'none'; }, title: '🎨 Spray paint · surfboard' },
+    ski: { W: SKI_PW, H: SKI_PH, canvas: skiPaintCanvas, dims: () => ({ L: SKI_L, W: SKI_B }), outline: () => skiOutline(96), draw: (g) => drawSkiDeck(g, look.ski, skiPaintCanvas()), save: (u) => ctx.saveSkiPaint(u), redraw: () => ctx.redrawSki(), blank: () => { look.ski.design = 'none'; }, title: '🎨 Spray paint · jet ski' },
+  };
+  let T = TARGETS.board;
+  let deckCv = document.createElement('canvas');
   const view = $('paintCanvas');
   let DW = 1400, DH = 380, outlinePath = null;
   const PAINT_COLORS = ['#ffffff', '#16181d', '#ff3d6e', '#ff7a1f', '#ffd23d', '#7dff5a', '#2ecc71', '#1ec8ff', '#1f3cff', '#b06bff', '#ff5fa2', '#8a5634', '#c0c0c0', '#00a37a', '#ff0000', '#ffe14d'];
   const STAMPS = [['star', '★'], ['heart', '♥'], ['bolt', '⚡'], ['smile', '☺'], ['flower', '✿'], ['wave', '〰'], ['text', 'Aa']];
 
   function layoutPaint() {
-    const d = boardDims(look.board);
+    const d = T.dims();
+    deckCv.width = T.W; deckCv.height = T.H;
     DW = 1400; DH = Math.round(DW * d.W / d.L);
     view.width = DW; view.height = DH;
     const sc = Math.min(Math.min(innerWidth * 0.94, 1100) / DW, innerHeight * 0.32 / DH);
     view.style.width = Math.round(DW * sc) + 'px'; view.style.height = Math.round(DH * sc) + 'px';
     // the outline of the board in paint coordinates (256 across the widest point, 1024 nose to tail)
     outlinePath = new Path2D();
-    const pts = boardOutline(look.board.shape, 96);
-    pts.forEach(([t, w], i) => { const x = PAINT_W / 2 + w * PAINT_W / 2, y = t * PAINT_H; i ? outlinePath.lineTo(x, y) : outlinePath.moveTo(x, y); });
-    for (let i = pts.length - 1; i >= 0; i--) { const [t, w] = pts[i]; outlinePath.lineTo(PAINT_W / 2 - w * PAINT_W / 2, t * PAINT_H); }
+    const pts = T.outline();
+    pts.forEach(([t, w], i) => { const x = T.W / 2 + w * T.W / 2, y = t * T.H; i ? outlinePath.lineTo(x, y) : outlinePath.moveTo(x, y); });
+    for (let i = pts.length - 1; i >= 0; i--) { const [t, w] = pts[i]; outlinePath.lineTo(T.W / 2 - w * T.W / 2, t * T.H); }
     outlinePath.closePath();
   }
   // the view shows the board lying sideways, nose to the right
-  const toPaint = (sx, sy) => ({ x: sy / DH * PAINT_W, y: (DW - sx) / DW * PAINT_H });
+  const toPaint = (sx, sy) => ({ x: sy / DH * T.W, y: (DW - sx) / DW * T.H });
   function drawView() {
     const g = view.getContext('2d');
-    drawDeck(deckCv.getContext('2d'), look.board, paintCanvas());
+    T.draw(deckCv.getContext('2d'));
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, DW, DH);
-    g.setTransform(0, DH / PAINT_W, -DW / PAINT_H, 0, DW, 0);
+    g.setTransform(0, DH / T.W, -DW / T.H, 0, DW, 0);
     g.save();
     g.clip(outlinePath);
     g.drawImage(deckCv, 0, 0);
     g.restore();
     g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.75)'; g.stroke(outlinePath);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.redrawBoard();
+    T.redraw();
   }
 
   function pushUndo() {
-    const c = paintCanvas();
-    P.undo.push(c.getContext('2d').getImageData(0, 0, PAINT_W, PAINT_H));
+    const c = T.canvas();
+    P.undo.push(c.getContext('2d').getImageData(0, 0, T.W, T.H));
     if (P.undo.length > 25) P.undo.shift();
   }
   // paint pixels are about square on the real board, so a round brush stays round
   function sprayAt(x, y, dt) {
-    const g = paintCanvas().getContext('2d');
+    const g = T.canvas().getContext('2d');
     g.fillStyle = P.color;
     const r = P.size;
     const n = Math.min(900, Math.round(P.flow * r * r * dt * 14));
@@ -172,7 +189,7 @@ export function initCreator(ctx) {
     g.globalAlpha = 1;
   }
   function line(x0, y0, x1, y1, erase) {
-    const g = paintCanvas().getContext('2d');
+    const g = T.canvas().getContext('2d');
     g.save();
     g.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
     g.strokeStyle = P.color; g.lineCap = g.lineJoin = 'round'; g.lineWidth = P.size * (erase ? 1.4 : 0.8);
@@ -180,7 +197,7 @@ export function initCreator(ctx) {
     g.restore();
   }
   function stamp(x, y) {
-    const g = paintCanvas().getContext('2d');
+    const g = T.canvas().getContext('2d');
     g.save();
     g.translate(x, y); g.rotate(-Math.PI / 2); // upright when the board is seen nose-right
     g.fillStyle = P.color; g.strokeStyle = P.color;
@@ -236,7 +253,7 @@ export function initCreator(ctx) {
     }
     P.x = p.x; P.y = p.y;
   });
-  const up = () => { if (!P.down) return; P.down = false; drawView(); ctx.savePaint(paintCanvas().toDataURL('image/png')); };
+  const up = () => { if (!P.down) return; P.down = false; drawView(); T.save(T.canvas().toDataURL('image/png')); };
   view.addEventListener('pointerup', up); view.addEventListener('pointercancel', up);
   // holding the can still keeps spraying (paint builds up like a real can)
   function tick() {
@@ -264,10 +281,10 @@ export function initCreator(ctx) {
     if (t.dataset.tool) { P.tool = t.dataset.tool; ctx.click(); renderPaintUI(); }
     else if (t.dataset.pc) { P.color = t.dataset.pc; ctx.click(); renderPaintUI(); }
     else if (t.dataset.stamp) { P.stamp = t.dataset.stamp; P.tool = 'stamp'; ctx.click(); renderPaintUI(); }
-    else if (t.id === 'paintUndo') { const u = P.undo.pop(); if (u) { paintCanvas().getContext('2d').putImageData(u, 0, 0); drawView(); ctx.savePaint(paintCanvas().toDataURL('image/png')); } ctx.click(); }
-    else if (t.id === 'paintClear') { pushUndo(); paintCanvas().getContext('2d').clearRect(0, 0, PAINT_W, PAINT_H); drawView(); ctx.savePaint(null); ctx.click(); }
-    else if (t.id === 'paintFill') { pushUndo(); const g = paintCanvas().getContext('2d'); g.fillStyle = P.color; g.fillRect(0, 0, PAINT_W, PAINT_H); drawView(); ctx.savePaint(paintCanvas().toDataURL('image/png')); ctx.click(); }
-    else if (t.id === 'paintBlank') { look.board.design = 'none'; ctx.save(look); drawView(); ctx.click(); }
+    else if (t.id === 'paintUndo') { const u = P.undo.pop(); if (u) { T.canvas().getContext('2d').putImageData(u, 0, 0); drawView(); T.save(T.canvas().toDataURL('image/png')); } ctx.click(); }
+    else if (t.id === 'paintClear') { pushUndo(); T.canvas().getContext('2d').clearRect(0, 0, T.W, T.H); drawView(); T.save(null); ctx.click(); }
+    else if (t.id === 'paintFill') { pushUndo(); const g = T.canvas().getContext('2d'); g.fillStyle = P.color; g.fillRect(0, 0, T.W, T.H); drawView(); T.save(T.canvas().toDataURL('image/png')); ctx.click(); }
+    else if (t.id === 'paintBlank') { T.blank(); ctx.save(look); ctx.applyLook(); drawView(); ctx.click(); }
     else if (t.id === 'paintDone') { ctx.click(); closePaint(); }
   });
   $('paint').addEventListener('input', (e) => {
@@ -279,23 +296,25 @@ export function initCreator(ctx) {
   });
   $('paint').addEventListener('change', (e) => { if (e.target.id === 'paintPick') renderPaintUI(); });
 
-  function openPaint() {
+  function openPaint(which) {
+    T = TARGETS[which] || TARGETS.board; P.undo = [];
+    $('paintTitle').textContent = T.title;
     layoutPaint();
     $('custom').classList.add('hidden');
     $('paint').classList.remove('hidden');
     renderPaintUI();
     drawView();
-    ctx.onPaintMode(true);
+    ctx.onPaintMode(true, which);
   }
   function closePaint() {
     $('paint').classList.add('hidden');
     $('custom').classList.remove('hidden');
-    ctx.savePaint(hasPaint() ? paintCanvas().toDataURL('image/png') : null);
+    T.save(hasPaint() ? T.canvas().toDataURL('image/png') : null);
     ctx.onPaintMode(false);
     render();
   }
   function hasPaint() {
-    const d = paintCanvas().getContext('2d').getImageData(0, 0, PAINT_W, PAINT_H).data;
+    const d = T.canvas().getContext('2d').getImageData(0, 0, T.W, T.H).data;
     for (let i = 3; i < d.length; i += 16) if (d[i]) return true;
     return false;
   }

@@ -1,7 +1,7 @@
 // The surfer: a wobbly verlet ragdoll that is pulled toward animated poses while riding,
 // and goes fully limp (and tumbles in the whitewater) when you wipe out. Plus the board.
 import * as THREE from 'three';
-import { makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js?v=9';
+import { makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js?v=10';
 
 const V3 = THREE.Vector3;
 // particle indices
@@ -10,7 +10,7 @@ const NP = 16;
 const LEN = { torso: 0.42, neck: 0.16, head: 0.2, sh: 0.19, ua: 0.29, fa: 0.27, hip: 0.1, th: 0.44, sn: 0.44 };
 const RAD = [0.14, 0.15, 0.06, 0.13, 0.07, 0.055, 0.05, 0.07, 0.055, 0.05, 0.08, 0.07, 0.06, 0.08, 0.07, 0.06];
 
-export { setEnvMap, makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js?v=9';
+export { setEnvMap, makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js?v=10';
 
 // ---------------------------------------------------------------------------
 // poses (board-local coordinates: x = right rail, y = up from deck, z = toward tail)
@@ -56,6 +56,12 @@ export function poseStand(o, p) {
   const s1 = Math.sin(t * 2.3) * 0.06 * (1 + wob) + Math.sin(t * 5.1) * 0.02 * wob, s2 = Math.cos(t * 1.9) * 0.06 * (1 + wob);
   _c.set(0.2 + lean * 0.2 + s1 * 2, ay + 0.28 + lean * 0.25 + s2 * 2.5 + (p.armUp || 0), -0.55);
   ik(o[J.lEl], o[J.lSh], _c, LEN.ua, LEN.fa, POLE_ELBOW, o[J.lHa]);
+  if (p.rope) {
+    // both hands on the tow rope handle, out in front of the nose
+    _c.set(0.32, ay - 0.05, -0.42); ik(o[J.lEl], o[J.lSh], _c, LEN.ua, LEN.fa, POLE_ELBOW, o[J.lHa]);
+    _c.set(0.32, ay - 0.1, -0.34); ik(o[J.rEl], o[J.rSh], _c, LEN.ua, LEN.fa, POLE_ELBOW, o[J.rHa]);
+    return;
+  }
   if (p.grab) {
     _c.set(0.24, 0.12, 0.12); // grab the rail
     ik(o[J.rEl], o[J.rSh], _c, LEN.ua, LEN.fa, _d.set(1, 0, 0.5), o[J.rHa]);
@@ -83,6 +89,28 @@ export function poseLie(o, p) {
   }
 }
 
+// riding a jet ski (in the jet ski's own frame: x right, y up, z toward the stern): sat on the seat,
+// feet in the footwells, hands on the handlebars, leaning into the turns and forward when speeding up
+const POLE_RL = new V3(-1, -0.6, 0.3).normalize(), POLE_RR = new V3(1, -0.6, 0.3).normalize();
+export function poseRide(o, p) {
+  const lean = p.lean || 0, fwd = 0.6 + (p.tuck || 0) * 0.3, t = p.t || 0, bob = Math.sin(t * 9) * 0.01 * (p.speed || 0);
+  const px = lean * 0.12;
+  o[J.pelvis].set(px, 0.9 + bob, 0.35);
+  o[J.lHip].set(px - 0.1, 0.9 + bob, 0.37); o[J.rHip].set(px + 0.1, 0.9 + bob, 0.37);
+  o[J.lFt].set(-0.33, 0.45, 0.1); o[J.rFt].set(0.33, 0.45, 0.1);
+  ik(o[J.lKn], o[J.lHip], o[J.lFt], LEN.th, LEN.sn, _c.set(-0.4, 0.5, -1));
+  ik(o[J.rKn], o[J.rHip], o[J.rFt], LEN.th, LEN.sn, _d.set(0.4, 0.5, -1));
+  _d.set(lean * 0.3, Math.cos(fwd), -Math.sin(fwd)).normalize();
+  o[J.chest].copy(o[J.pelvis]).addScaledVector(_d, LEN.torso);
+  o[J.neck].copy(o[J.chest]).addScaledVector(_d, LEN.neck);
+  _d.set(lean * 0.2, 1, -0.15).normalize();
+  o[J.head].copy(o[J.neck]).addScaledVector(_d, LEN.head);
+  o[J.lSh].set(o[J.chest].x - LEN.sh, o[J.chest].y + 0.04, o[J.chest].z); o[J.rSh].set(o[J.chest].x + LEN.sh, o[J.chest].y + 0.04, o[J.chest].z);
+  const steer = p.steer || 0;
+  _c.set(-0.33, 1.0 - steer * 0.04, -0.27 + steer * 0.08); ik(o[J.lEl], o[J.lSh], _c, LEN.ua, LEN.fa, POLE_RL, o[J.lHa]);
+  _c.set(0.33, 1.0 + steer * 0.04, -0.27 - steer * 0.08); ik(o[J.rEl], o[J.rSh], _c, LEN.ua, LEN.fa, POLE_RR, o[J.rHa]);
+}
+
 export function poseSit(o, p) {
   const t = p.t || 0;
   o[J.pelvis].set(0, 0.14, 0.25);
@@ -107,14 +135,15 @@ const STICKS = [
 const STIFF = [0.3, 0.24, 0.2, 0.13, 0.22, 0.13, 0.08, 0.22, 0.13, 0.08, 0.36, 0.42, 1, 0.36, 0.42, 1];
 
 export class Ragdoll {
-  constructor(scene, look) {
+  constructor(scene, look, opts = {}) {
+    this.opts = opts;
     this.P = []; this.O = []; this.T = []; this.L = [];
     for (let i = 0; i < NP; i++) { this.P.push(new V3()); this.O.push(new V3()); this.T.push(new V3()); this.L.push(new V3()); }
     this.rest = [];
     this.limp = false;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.board = makeBoard(normalizeLook(look).board);
+    this.board = makeBoard(normalizeLook(look).board, opts);
     scene.add(this.board);
     // board particles for ragdoll mode: nose, tail, right rail
     this.B = [new V3(), new V3(), new V3()]; this.BO = [new V3(), new V3(), new V3()];
@@ -159,7 +188,7 @@ export class Ragdoll {
     this.build(look);
     const parent = this.board.parent;
     parent.remove(this.board);
-    this.board = makeBoard(normalizeLook(look).board);
+    this.board = makeBoard(normalizeLook(look).board, this.opts);
     parent.add(this.board);
   }
 
@@ -354,10 +383,9 @@ function stick(a, b, len) {
 export function makeLineupSurfer(look, kind = 'sit') {
   look = normalizeLook(look);
   const g = new THREE.Group();
-  const b = makeBoard(look.board, { paint: false });
-  g.add(b);
+  if (kind !== 'ride') g.add(makeBoard(look.board, { paint: false }));
   const P = Array.from({ length: NP }, () => new V3());
-  if (kind === 'stand') poseStand(P, { c: 0.45, lean: 0.15 }); else poseSit(P, { t: 0 });
+  if (kind === 'stand') poseStand(P, { c: 0.45, lean: 0.15 }); else if (kind === 'ride') poseRide(P, { t: 0 }); else poseSit(P, { t: 0 });
   const M = makeMaterials(look);
   const seg = (a, bb, r, m, len) => {
     const d = new V3().subVectors(P[bb], P[a]);

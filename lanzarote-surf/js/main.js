@@ -1,18 +1,19 @@
 // Wobble Surf: Lanzarote — main game: spots, surfing physics, tricks, scoring, camera, UI.
 import * as THREE from 'three';
-import { Sky } from './sky.js?v=9';
-import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js?v=9';
-import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js?v=9';
-import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, J, setEnvMap } from './surfer.js?v=9';
-import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js?v=9';
-import { initCreator } from './creator.js?v=9';
-import { Reef, UW, patchObject } from './water.js?v=9';
-import { Net, randomCode } from './net.js?v=9';
+import { Sky } from './sky.js?v=10';
+import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js?v=10';
+import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js?v=10';
+import { Ragdoll, poseStand, poseLie, poseSit, poseRide, makeLineupSurfer, J, setEnvMap } from './surfer.js?v=10';
+import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js?v=10';
+import { initCreator } from './creator.js?v=10';
+import { Reef, UW, patchObject } from './water.js?v=10';
+import { Net, randomCode } from './net.js?v=10';
+import { makeJetski, SKI_L, loadSkiPaint } from './jetski.js?v=10';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Audio } from './audio.js?v=9';
+import { Audio } from './audio.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 $('bootText').textContent = 'Starting…';
@@ -129,6 +130,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
   if (e.code === 'KeyC' && game.state === 'play') { fpv = false; camMode = (camMode + 1) % 3; toast(['Chase cam', 'Side cam', 'Drone cam'][camMode]); }
   if (e.code === 'KeyV' && game.state === 'play') toggleView();
+  if (e.code === 'KeyJ' && game.state === 'play') toggleVehicle();
+  if (e.code === 'KeyT' && game.state === 'play') towKey();
   if (e.code === 'KeyM') { settings.music = !settings.music; audio.setMusic(settings.music); store.set('settings', settings); syncSettingsUI(); }
   audio.start();
 });
@@ -165,7 +168,7 @@ const S = { // the player's surfer
   turnAcc: 0, turnT: 0, turnMinX: 9, turnMaxX: -9, turnStartAlong: 0, turnMinAlong: 9, cutT: -9,
   pos: new V3(), vel: new V3(), prevPos: new V3(), boardMat: new THREE.Matrix4(), bodyMat: new THREE.Matrix4(),
 };
-const score = { wave: 0, chain: [], chainPts: 0, chainT: 0, mult: 1, lostT: 0, tricks: 0 };
+const score = { wave: 0, chain: [], chainPts: 0, chainT: 0, mult: 1, lostT: 0, tricks: 0, ski: 0 };
 
 // ---------------------------------------------------------------------------
 // loading
@@ -182,6 +185,7 @@ async function boot() {
   depthTex = island.depthTexture();
   setBoot(0.7, 'Building Famara…');
   await loadPaint(store.get('paint', null));
+  await loadSkiPaint(store.get('skipaint', null));
   await nextFrame();
   setupSpot(SPOTS[0]);
   setBoot(0.9, 'Waxing boards…');
@@ -272,6 +276,7 @@ function setupSpot(spot) {
   const trail = new Trail(scene, sky);
   const rag = new Ragdoll(scene, look);
   patchObject(rag.group); patchObject(rag.board);
+  const myski = makeJetski(look.ski); patchObject(myski); myski.visible = false; scene.add(myski);
   const floor = (x, z) => island.h(x + origin.x, z + origin.z);
   // locals sitting in the line-up (they are also your contest rivals)
   const locals = RIVALS.map((r, i) => {
@@ -282,7 +287,7 @@ function setupSpot(spot) {
     scene.add(sit, stand);
     return { ...r, sit, stand, s: spot.peakS + (i - 1) * 16 + rand(-4, 4), u: spot.uBreak - 6 - i * 4, ph: rand(0, 6), riding: null, rideT: 0, cool: rand(5, 20), heat: [] };
   });
-  W = { scene, sky, waves, ocean, terrain, amb, spray, trail, rag, spot, origin, floor, locals, reef, seabed, under: false };
+  W = { scene, sky, waves, ocean, terrain, amb, spray, trail, rag, spot, origin, floor, locals, reef, seabed, under: false, myski, npc: null };
   game.spot = spot;
   resetToLineup(true);
 }
@@ -303,6 +308,8 @@ function surfNormal(x, z, out) {
 // ---------------------------------------------------------------------------
 function startSession(spot, mode) {
   game.mode = mode;
+  S.vehicle = 'board';
+  if (W && W.npc) removeNpc();
   if (W.spot !== spot) setupSpot(spot);
   game.time = 0; game.heatTime = mode === 'contest' ? game.heatLen : 0;
   game.waves = []; game.best = 0;
@@ -333,6 +340,7 @@ function resetToLineup(instant) {
   computeBoardMat();
   W.rag.snap(S.boardMat, poseSit, { t: 0 });
   if (!instant) { game.fade = 1; }
+  if (S.vehicle === 'ski') mountSki();
 }
 
 function togglePause() {
@@ -356,7 +364,7 @@ function addTrick(name, pts, big) {
 function bankChain() {
   if (!score.chain.length) return;
   const pts = Math.round(score.chainPts * score.mult);
-  score.wave += pts;
+  if (S.vehicle === 'ski') score.ski += pts; else score.wave += pts;
   if (score.chain.length > 1) popup(`COMBO ×${score.mult.toFixed(1)}`, pts, false, 'combo');
   score.chain = []; score.chainPts = 0; score.mult = 1;
 }
@@ -465,6 +473,9 @@ function fixedStep(h, inp) {
   else if (S.mode === 'air') stepAir(h, inp);
   else if (S.mode === 'wipe') stepWipe(h);
   else if (S.mode === 'ended') stepEnded(h, inp);
+  else if (S.mode === 'ski') stepSki(h, inp);
+  else if (S.mode === 'tow') stepTow(h, inp);
+  if (W.npc) stepNpc(h);
   stepLocals(h);
 }
 
@@ -821,6 +832,7 @@ function wipe(reason) {
 
 function stepWipe(h) {
   S.wipeT += h;
+  if (S.vehicle === 'ski') skiDrift(h);
   const wv = W.waves, sp = W.spot;
   const c = W.rag.P[J.pelvis];
   let foam = wv.foamAt(c.x, c.z);
@@ -829,6 +841,7 @@ function stepWipe(h) {
   W.rag.limpStep(h, wv, { foam, d: sp.d3 || (sp.d3 = new V3(sp.d.x, 0, sp.d.z)), a: sp.a3 || (sp.a3 = new V3(sp.a.x, 0, sp.a.z)), floor: W.floor });
   W.rag.boardMatrixFromLimp(S.boardMat);
   S.pos.copy(c);
+  if (S.vehicle === 'ski') { if (S.wipeT > 3.2) respawnSki(); return; }
   if (S.wipeT > 3.4) endRide(S.wipeReason, false);
 }
 
@@ -932,9 +945,9 @@ function updateCamera(dt) {
   camera.clearViewOffset();
   if (game.state === 'paint') {
     // looking down on the board from above, nose to the right like the paint canvas; the board sits in the top of the screen
-    const p = S.pos, f = fwdOf(S.psi);
+    let p = S.pos, f = fwdOf(S.psi), sz = (W.rag.board.userData.length || 1.9) / 1.9;
+    if (paintWhat === 'ski') { p = _rp.setFromMatrixPosition(parkedSki(_km)); f = fwdOf(S.psi - Math.PI / 2); sz = SKI_L / 1.9; }
     const rx = -f.z, rz = f.x;
-    const sz = (W.rag.board.userData.length || 1.9) / 1.9;
     tp.set(p.x + rx * 1.1 * sz, p.y + 2.9 * sz, p.z + rz * 1.1 * sz);
     tl.set(p.x, p.y, p.z);
     k = 4;
@@ -958,7 +971,14 @@ function updateCamera(dt) {
     return fpCamera(dt);
   } else {
     const pos = S.mode === 'wipe' || (S.mode === 'ended' && W.rag.limp) ? W.rag.P[J.pelvis] : S.pos;
-    if (S.mode === 'lineup') {
+    if (S.mode === 'ski' || S.mode === 'tow' || (S.vehicle === 'ski' && S.mode === 'wipe' && camMode === 0)) {
+      // behind the jet ski (or the surfer being towed), further back the faster you go
+      const f = fwdOf(S.psi), sp2 = Math.abs(S.V);
+      const back = (S.mode === 'tow' ? 6 : 7) + sp2 * 0.18, high = 2.4 + sp2 * 0.05 + (camMode === 2 ? 10 : camMode === 1 ? 3 : 0);
+      tp.set(pos.x - f.x * back, pos.y + high, pos.z - f.z * back);
+      tl.set(pos.x + f.x * 8, pos.y + 0.8, pos.z + f.z * 8);
+      k = S.skiAir ? 2.5 : 3.5;
+    } else if (S.mode === 'lineup') {
       const f = fwdOf(S.psi);
       tp.set(pos.x - f.x * 5.5, 2.1, pos.z - f.z * 5.5);
       tl.set(pos.x + f.x * 10, 1.0, pos.z + f.z * 10);
@@ -1045,7 +1065,12 @@ function fpCamera(dt) {
     const right = new V3().subVectors(P[J.rSh], P[J.lSh]).normalize();
     fwd.crossVectors(upv, right).normalize();
     k = 6;
-  } else if (S.mode === 'ride' || S.mode === 'popup' || S.mode === 'air') {
+  } else if (S.mode === 'ski') {
+    fwd.setFromMatrixColumn(S.skiMat, 2).negate();
+    if (!S.skiAir) fwd.y *= 0.5;
+    fwd.y -= 0.12; fwd.normalize();
+    upv.lerp(new V3().setFromMatrixColumn(S.skiMat, 1), S.skiAir ? 0.85 : 0.4).normalize();
+  } else if (S.mode === 'ride' || S.mode === 'popup' || S.mode === 'air' || S.mode === 'tow') {
     fwd.setFromMatrixColumn(S.boardMat, 2).negate();
     if (S.mode !== 'air') { fwd.y *= 0.4; fwd.addScaledVector(new V3(-d.x, 0, -d.z), 0.35); }
     fwd.y -= 0.12; fwd.normalize();
@@ -1205,7 +1230,8 @@ function updateHUD(dt) {
     chainEl.classList.add('on');
     chainEl.innerHTML = `<span>${score.chain.slice(-4).join(' + ')}</span><b>${Math.round(score.chainPts)} × ${score.mult.toFixed(1)}</b><i style="width:${clamp(score.chainT / 2.6, 0, 1) * 100}%"></i>`;
   } else chainEl.classList.remove('on');
-  $('hudWave').textContent = S.mode === 'ride' || S.mode === 'air' || S.mode === 'popup' ? `Wave ${to10(score.wave + score.chainPts * score.mult).toFixed(2)}` : '';
+  $('hudWave').textContent = S.mode === 'ride' || S.mode === 'air' || S.mode === 'popup' ? `Wave ${to10(score.wave + score.chainPts * score.mult).toFixed(2)}`
+    : S.vehicle === 'ski' ? `🚤 ${Math.round(score.ski + score.chainPts * score.mult)} pts${S.boost > 0 ? '  ·  TURBO!' : ''}` : '';
   if (game.mode === 'contest') {
     const t = Math.max(0, game.heatTime);
     $('hudTimer').textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -1243,14 +1269,359 @@ function updateHUD(dt) {
     } else {
       const away = Math.abs(S.s - W.spot.peakS) > 60 || Math.abs(S.u - W.spot.uBreak) > 50;
       hint = away ? 'Paddle back out to the other surfers to catch waves'
-        : isTouch ? 'Waiting for a set…  ◀ ▶ turn  ·  ▲ paddle  ·  DIVE duck dive' : 'Waiting for a set…  ← → turn  ·  ↑ paddle  ·  SPACE duck dive  ·  V first person';
+        : isTouch ? 'Waiting for a set…  ◀ ▶ turn  ·  ▲ paddle  ·  DIVE duck dive  ·  🪢 tow-in  ·  🚤 jet ski' : 'Waiting for a set…  ↑ paddle  ·  SPACE duck dive  ·  T jet ski tow-in  ·  J ride a jet ski  ·  V first person';
       $('hint').classList.remove('urgent');
     }
   } else if (S.mode === 'popup' || S.mode === 'ride') {
     if (game.time - (S.hintShown || -99) < 8) hint = isTouch ? '◀ ▶ carve · ▲ pump · ▼ crouch · JUMP at the lip' : '← → carve  ·  ↑ pump  ·  ↓ crouch  ·  SPACE jump at the lip';
     $('hint').classList.remove('urgent');
+  } else if (S.mode === 'ski') {
+    hint = S.skiAir ? (isTouch ? 'In the air! ◀ ▶ barrel roll · ▲ ▼ flip' : 'In the air!  ← → barrel roll  ·  ↑ ↓ flip')
+      : (isTouch ? '🚤 ▲ gas · ◀ ▶ steer · ▼ brake · TURBO · 🏄 back to board' : '🚤 ↑ gas  ·  ← → steer  ·  ↓ brake  ·  SPACE turbo  ·  J back to your board');
+    const towed = net.on ? net.list().filter((p) => p.st.m === 'tow' && p.st.tw === net.id) : [];
+    if (towed.length) hint = `🪢 ${towed.map((p) => esc(p.st.name)).join(', ')} is on your rope! Drive them onto a wave`;
+    $('hint').classList.toggle('urgent', !!towed.length);
+  } else if (S.mode === 'tow') {
+    hint = S.towReady ? `LET GO NOW! ${isTouch ? 'Tap 🪢' : 'SPACE'}` : `🪢 Hold on! ${isTouch ? 'Tap 🪢' : 'SPACE or T'} to let go · let go when you're on a wave`;
+    $('hint').classList.toggle('urgent', !!S.towReady);
   } else if (S.mode === 'air') { hint = isTouch ? '◀ ▶ spin · ▲ ▼ flip · hold JUMP grab' : '← → spin  ·  ↑ ↓ flip  ·  SHIFT / hold SPACE grab'; }
   $('hint').textContent = hint;
+}
+
+
+// ---------------------------------------------------------------------------
+// jet skis: ride your own (J) and get towed into waves (T), like the big-wave surfers do
+// ---------------------------------------------------------------------------
+Object.assign(S, { vehicle: 'board', skiMat: new THREE.Matrix4(), skiY: 0, skiVy: 0, skiPrev: 0, skiAir: false, skiAirT: 0, skiPitch: 0, skiRoll: 0, bank: 0, boost: 0, boostCD: 0, launchN: new V3(0, 1, 0), towBy: null, towReady: false, towReadyT: 0 });
+let paintWhat = 'board';
+const NPC_LOOK = normalizeLook({ name: 'Lifeguard', skin: '#c68b62', hat: 'cap', hatColor: '#e8342f', top: 'rash', topColor: '#e8342f', topPattern: 'plain', bottom: 'boardies', bottomColor: '#ffd23d', bottomPattern: 'plain', glasses: 'sunnies' });
+const NPC_SKI = { hull: '#f2f2f2', deck: '#e8342f', accent: '#ffd23d', seat: '#16181d', design: 'racing', sled: true, sledColor: '#ffd23d' };
+const _k1 = new V3(), _k2 = new V3(), _k3 = new V3(), _k4 = new V3(), _kup = new V3(0, 1, 0), _km = new THREE.Matrix4();
+
+function toggleVehicle() {
+  if (S.mode === 'tow') releaseTow();
+  if (S.mode !== 'lineup' && S.mode !== 'ski') { toast('Finish your wave first!'); return; }
+  game.fade = 0.8;
+  if (S.vehicle === 'board') {
+    S.vehicle = 'ski';
+    mountSki();
+    toast(isTouch ? '🚤 Jet ski! ▲ gas · ◀ ▶ steer · TURBO button' : '🚤 Jet ski! ↑ gas · ← → steer · SPACE turbo · J back to your board');
+  } else {
+    S.vehicle = 'board';
+    S.mode = 'lineup'; S.padSpeed = 0; S.V = 0;
+    S.s = S.pos.x * W.spot.a.x + S.pos.z * W.spot.a.z; S.u = S.pos.x * W.spot.d.x + S.pos.z * W.spot.d.z;
+    computeBoardMat(); W.rag.snap(S.bodyMat, poseSit, { t: 0 });
+    toast('🏄 Back on your board');
+  }
+}
+function mountSki() {
+  S.mode = 'ski'; S.V = 0; S.skiVy = 0; S.skiAir = false; S.skiPitch = S.skiRoll = 0; S.bank = 0; S.diveT = 0;
+  S.skiY = S.skiPrev = W.waves.height(S.pos.x, S.pos.z) + 0.06;
+  computeSkiMat(); S.boardMat.copy(S.skiMat);
+  W.rag.snap(S.skiMat, poseRide, { t: 0 });
+}
+function respawnSki() {
+  game.fade = 1;
+  loseChain();
+  mountSki();
+}
+
+function computeSkiMat() {
+  const p = S.pos;
+  const nrm = S.skiAir ? _k1.copy(S.launchN).lerp(_kup, Math.min(1, S.skiAirT * 0.7)).normalize() : surfNormal(p.x, p.z, _k1);
+  const f = fwdOf(S.psi);
+  _k2.set(f.x, 0, f.z); _k2.addScaledVector(nrm, -_k2.dot(nrm)).normalize();     // forward along the surface
+  _k3.copy(_k2).negate();                                                          // back
+  _k4.crossVectors(_k2, nrm).normalize();                                          // right
+  const up = _k1.addScaledVector(_k4, S.bank).normalize();
+  _k4.crossVectors(up, _k3).normalize();
+  S.skiMat.makeBasis(_k4, up, _k3).setPosition(p.x, S.skiY, p.z);
+  if (S.skiPitch) pitchMat(S.skiMat, S.skiPitch);
+  if (S.skiRoll) { _pv.setFromMatrixPosition(S.skiMat); _pa.setFromMatrixColumn(S.skiMat, 2).normalize(); S.skiMat.setPosition(0, 0, 0); S.skiMat.premultiply(_km.makeRotationAxis(_pa, S.skiRoll)); S.skiMat.setPosition(_pv); }
+}
+
+function stepSki(h, inp) {
+  const sp = W.spot, wv = W.waves, p = S.pos;
+  S.boostCD = Math.max(0, S.boostCD - h);
+  S.boost = Math.max(0, S.boost - h);
+  if (inp.jumpHit && !S.skiAir && S.boostCD <= 0) { S.boost = 2.4; S.boostCD = 5; audio.burst(0.5, 900, 0.4, 'lowpass', 0.5); popup('TURBO!', 0); }
+  const top = S.boost > 0 ? 34 : 25;
+  let f = fwdOf(S.psi);
+  if (!S.skiAir) {
+    const gas = S.boost > 0 ? 1.6 : inp.up ? 1 : 0;
+    if (inp.down) S.V -= (S.V > 0.5 ? 13 : 2.5) * h;                       // brake, then a slow reverse
+    S.V += 11 * gas * (1 - Math.max(0, S.V) / top) * h;
+    S.V -= (0.16 * S.V + 0.004 * S.V * Math.abs(S.V)) * h;
+    S.V = clamp(S.V, -3.5, top);
+    // jet skis steer with the jet, so they turn even when slow, and tighter with the throttle on
+    const rate = inp.steer * (1.1 + 1.1 * Math.min(1, Math.abs(S.V) / 7)) * (S.V < -0.3 ? -1 : 1);
+    S.psi = wrapPi(S.psi - rate * h);
+    S.bank = lerp(S.bank, inp.steer * Math.min(1, Math.abs(S.V) / 9) * 0.5, 1 - Math.exp(-h * 6));
+    // rolling down a wave face speeds you up, going up it slows you down
+    const e = 0.6, slope = (wv.height(p.x + f.x * e, p.z + f.z * e) - wv.height(p.x - f.x * e, p.z - f.z * e)) / (2 * e);
+    S.V -= 9.81 * 0.55 * slope * h;
+    // whitewater slows you and shoves you to the beach
+    const foam = wv.foamAt(p.x, p.z);
+    if (foam > 0.3) { S.V *= Math.exp(-h * foam * 0.7); p.x += sp.d.x * foam * 2.5 * h; p.z += sp.d.z * foam * 2.5 * h; }
+    if (Math.abs(S.V) > 4 && Math.random() < h * 25) W.spray.emit(p.x - f.x * 1.8, S.skiY, p.z - f.z * 1.8, -f.x * 3 + rand(-1, 1), rand(1, 2.5) + Math.abs(S.V) * 0.08, -f.z * 3 + rand(-1, 1), rand(0.3, 0.7), rand(0.4, 0.8), 1, 0.85);
+  } else {
+    // in the air: ← → barrel roll, ↑ ↓ flip
+    S.skiAirT += h;
+    S.skiRoll += -inp.steer * 5.4 * h;
+    S.skiPitch += ((inp.down ? 1 : 0) - (inp.up ? 1 : 0)) * 4.4 * h;
+  }
+  S.prevPos.copy(p);
+  p.x += f.x * S.V * h; p.z += f.z * S.V * h;
+  // too shallow: bump off the reef/sand instead of driving up the beach
+  const hs = wv.height(p.x, p.z);
+  if (W.seabed(p.x, p.z) > hs - 0.45) { p.x = S.prevPos.x; p.z = S.prevPos.z; S.V *= -0.25; if (!S.shallowMsg) { S.shallowMsg = true; toast('Too shallow! Turn back out to sea'); setTimeout(() => { S.shallowMsg = false; }, 3000); } }
+  // stay in the bay
+  const s = p.x * sp.a.x + p.z * sp.a.z, u = p.x * sp.d.x + p.z * sp.d.z;
+  const s2 = clamp(s, sp.peakS - 700, sp.peakS + 700), u2 = clamp(u, sp.uBreak - 600, sp.uEnd - 2);
+  if (s2 !== s || u2 !== u) { const q = toXZ(s2, u2); p.x = q.x; p.z = q.z; S.V *= 0.9; }
+  S.s = s2; S.u = u2;
+  // up and down: ride the surface, and fly when it drops away faster than you can fall (off the top of a wave)
+  const target = wv.height(p.x, p.z) + 0.04 + Math.min(1, Math.abs(S.V) / 16) * 0.12;
+  S.skiVy -= 9.81 * h; S.skiY += S.skiVy * h;
+  if (S.skiY <= target) {
+    if (S.skiAir && landSki()) return;
+    S.skiVy = clamp((target - S.skiPrev) / h, -14, 16);
+    S.skiY = target; S.skiAir = false;
+  } else if (!S.skiAir && S.skiY > target + 0.3) {
+    S.skiAir = true; S.skiAirT = 0; S.skiPitch = 0; S.skiRoll = 0;
+    surfNormal(p.x, p.z, S.launchN);
+  }
+  S.skiPrev = target;
+  S.vel.subVectors(p, S.prevPos).multiplyScalar(1 / h); S.vel.y = S.skiVy;
+  computeSkiMat();
+  S.boardMat.copy(S.skiMat);
+  W.rag.active(h, S.skiMat, poseRide, { lean: S.bank * 2, steer: inp.steer, t: game.time, speed: Math.abs(S.V) / 20, tuck: S.boost > 0 ? 1 : 0 }, null, 0, S.skiAir ? 0.8 : 1);
+  S.pos.y = S.skiY;
+  if (!S.skiAir && Math.abs(S.V) > 2) score.ski += Math.abs(S.V) * 0.4 * h;
+}
+
+function landSki() {
+  const roll = wrapPi(S.skiRoll), pitch = wrapPi(S.skiPitch), pitchSign = Math.sign(S.skiPitch);
+  const rolls = Math.round(Math.abs(S.skiRoll) / (Math.PI * 2)), flips = Math.round(Math.abs(S.skiPitch) / (Math.PI * 2));
+  const clean = Math.abs(roll) < 0.8 && Math.abs(pitch) < 0.7;
+  const t = S.skiAirT;
+  S.skiAir = false; S.skiPitch = S.skiRoll = 0;
+  audio.splash(Math.min(1.2, 0.4 + t * 0.4));
+  for (let i = 0; i < 30; i++) W.spray.emit(S.pos.x + rand(-1, 1), S.skiY, S.pos.z + rand(-1, 1), rand(-3, 3), rand(2, 5) * Math.min(2, 0.5 + t), rand(-3, 3), rand(0.3, 0.8), rand(0.5, 1), 1, 0.9);
+  if (!clean) { S.V *= 0.3; wipe(Math.abs(pitch) >= 0.7 ? 'Nosedived the jet ski!' : 'Rolled the jet ski!'); return true; }
+  let name = '';
+  if (flips) name = (flips > 1 ? 'DOUBLE ' : '') + (pitchSign > 0 ? 'BACKFLIP' : 'FRONTFLIP');
+  if (rolls) name = (name ? name + ' + ' : '') + (rolls > 1 ? rolls + 'x ' : '') + 'BARREL ROLL';
+  if (!name && t > 0.5) name = t > 1.4 ? 'HUGE JET SKI AIR' : 'JET SKI AIR';
+  if (name) addTrick(name, 200 + t * 300 + rolls * 700 + flips * 1200, flips + rolls > 0 || t > 1.4);
+  S.V *= 0.85;
+  shake(Math.min(0.5, t * 0.3));
+  return false;
+}
+
+// after a crash the jet ski drifts on and slowly stops
+function skiDrift(h) {
+  const p = S.pos, f = fwdOf(S.psi), wv = W.waves;
+  S.V *= Math.exp(-h * 1.3);
+  p.x += f.x * S.V * h; p.z += f.z * S.V * h;
+  S.skiY = wv.height(p.x, p.z) + 0.04;
+  S.skiRoll *= Math.exp(-h * 2); S.skiPitch *= Math.exp(-h * 2); S.bank *= Math.exp(-h * 2); S.skiAir = false;
+  computeSkiMat();
+}
+
+// ---- towing ------------------------------------------------------------------
+function towKey() {
+  if (S.mode === 'tow') { releaseTow(); return; }
+  if (S.vehicle === 'ski') { toast(S.mode === 'ski' ? 'Friends grab your rope by paddling up behind you and pressing T' : ''); return; }
+  if (S.mode !== 'lineup') return;
+  // a friend's jet ski close by? grab their rope
+  for (const [id, R] of remotes) {
+    if (!R.st || R.st.vh !== 'ski') continue;
+    _k1.setFromMatrixColumn(R.mat, 2).setY(0).normalize();
+    const sx = R.pos.x + _k1.x * (SKI_L / 2 + 1), sz = R.pos.z + _k1.z * (SKI_L / 2 + 1);
+    if (Math.hypot(S.pos.x - sx, S.pos.z - sz) < 12) { startTow(id); toast(`🪢 Grabbed ${esc(R.st.name)}'s rope! Let go (SPACE) when you're on a wave`); return; }
+  }
+  if (net.on && [...remotes.values()].some((R) => R.st && R.st.vh === 'ski')) { toast('Paddle up behind your friend\'s jet ski and press T to grab the rope'); return; }
+  // otherwise the lifeguard brings their jet ski over
+  if (W.npc) { toast('The jet ski is on its way!'); return; }
+  callNpc();
+}
+function startTow(by) {
+  S.mode = 'tow'; S.towBy = by; S.towReady = false; S.towReadyT = 0; S.diveT = 0;
+  audio.chime(1);
+}
+function getTower() {
+  if (S.towBy === 'npc') return W.npc && W.npc.phase === 'tow' ? W.npc : null;
+  const R = remotes.get(S.towBy);
+  return R && R.st && R.st.vh === 'ski' ? { pos: R.pos, mat: R.mat, V: Math.hypot(R.tv.x, R.tv.z) } : null;
+}
+function stepTow(h, inp) {
+  const sp = W.spot, wv = W.waves, p = S.pos;
+  const T = getTower();
+  if (!T) { releaseTow(); return; }
+  if (inp.jumpHit) { releaseTow(); return; }
+  // the rope runs from the back of the jet ski to your hands, 9 m long
+  _k1.setFromMatrixColumn(T.mat, 2).setY(0).normalize();
+  const ax = T.pos.x + _k1.x * (SKI_L / 2 + 9), az = T.pos.z + _k1.z * (SKI_L / 2 + 9);
+  const dx = ax - p.x, dz = az - p.z, dist = Math.hypot(dx, dz);
+  S.prevPos.copy(p);
+  if (dist > 0.05) { const k = 1 - Math.exp(-h * 3.5); p.x += dx * k; p.z += dz * k; }
+  S.psi = psiOf(T.pos.x - p.x, T.pos.z - p.z);
+  S.s = p.x * sp.a.x + p.z * sp.a.z; S.u = p.x * sp.d.x + p.z * sp.d.z;
+  p.y = wv.height(p.x, p.z);
+  S.vel.subVectors(p, S.prevPos).multiplyScalar(1 / h);
+  S.V = Math.hypot(S.vel.x, S.vel.z);
+  computeBoardMat();
+  const standing = S.V > 3.5;
+  S.prone = lerp(S.prone || 0, standing ? 0 : 1, 1 - Math.exp(-h * 3));
+  W.rag.active(h, standing ? S.boardMat : S.bodyMat, poseStand, { c: 0.4, rope: true, t: game.time, wob: 0.6 }, (o) => poseLie(o, {}), S.prone, 1);
+  if (S.V > 4 && Math.random() < h * 20) W.spray.emit(p.x, p.y + 0.1, p.z, rand(-1, 1), rand(1, 2.5), rand(-1, 1), rand(0.2, 0.5), rand(0.4, 0.7), 1, 0.8);
+  // on a wave face? time to let go
+  S.towReady = false;
+  for (const w of wv.waves) {
+    if (w.ridden || w.fade < 0.6) continue;
+    const L = wv.local(w, S.s, S.u);
+    if (L.Hh > 0.9 && L.du > 0.1 * L.Lf && L.du < 1.3 * L.Lf && L.br < 0.4) { S.towReady = true; break; }
+  }
+  S.towReadyT = S.towReady ? S.towReadyT + h : 0;
+  if (S.towBy === 'npc' && S.towReadyT > 1.4) releaseTow(); // the lifeguard slings you onto it if you don't let go
+}
+function releaseTow() {
+  const v = S.V;
+  S.mode = 'lineup'; S.towBy = null; S.towReady = false; S.padSpeed = 0;
+  if (W.npc && W.npc.phase === 'tow') { W.npc.phase = 'leave'; W.npc.t = 0; }
+  const wv = W.waves;
+  for (const w of wv.waves) {
+    if (w.ridden || w.fade < 0.6) continue;
+    const L = wv.local(w, S.s, S.u);
+    if (L.Hh > 0.7 && L.du > -0.5 && L.du < 1.6 * L.Lf && L.br < 0.5) {
+      catchWave(w, {});
+      S.V = Math.max(S.V, Math.min(v + 2, w.mega ? 26 : 16));
+      addTrick(w.mega ? 'MEGA TOW-IN!' : 'TOW-IN', w.mega ? 800 : 250, !!w.mega);
+      return;
+    }
+  }
+  toast('Let go of the rope');
+}
+
+// ---- the lifeguard's jet ski (tows you in when you're surfing on your own) ------
+function callNpc() {
+  const sp = W.spot;
+  const g = makeJetski(NPC_SKI, { paint: false }), driver = makeLineupSurfer(NPC_LOOK, 'ride');
+  patchObject(g); patchObject(driver);
+  g.matrixAutoUpdate = false; driver.matrixAutoUpdate = false;
+  W.scene.add(g, driver);
+  const st = toXZ(S.s + rand(-40, 40), S.u - 45);
+  W.npc = { g, driver, pos: new V3(st.x, 0, st.z), psi: psiOf(S.pos.x - st.x, S.pos.z - st.z), V: 0, phase: 'come', t: 0, wave: null, mat: new THREE.Matrix4() };
+  toast('🚤 The lifeguard is bringing the jet ski over…');
+  audio.burst(0.3, 600, 0.6, 'lowpass', 0.3);
+}
+function removeNpc() {
+  const n = W.npc; if (!n) return;
+  W.npc = null;
+  for (const o of [n.g, n.driver]) { W.scene.remove(o); o.traverse((q) => { if (q.geometry) q.geometry.dispose(); if (q.material) (Array.isArray(q.material) ? q.material : [q.material]).forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); }); }); }
+  if (S.towBy === 'npc') releaseTow();
+}
+function stepNpc(h) {
+  const n = W.npc, sp = W.spot, wv = W.waves, a = sp.a, d = sp.d;
+  n.t += h;
+  let tx = n.pos.x, tz = n.pos.z, want = 0, head = null;
+  if (n.phase === 'come') {
+    tx = S.pos.x - d.x * 3; tz = S.pos.z - d.z * 3;
+    const dist = Math.hypot(tx - n.pos.x, tz - n.pos.z);
+    want = Math.min(15, dist * 0.6 + 1.5);
+    if (S.mode !== 'lineup' || n.t > 40) { n.phase = 'leave'; n.t = 0; }
+    else if (dist < 4) { n.phase = 'tow'; n.t = 0; startTow('npc'); toast(isTouch ? '🪢 Grab on! The lifeguard tows you to the next wave · tap 🪢 to let go' : '🪢 Grab on! The lifeguard tows you to the next wave · SPACE to let go'); }
+  } else if (n.phase === 'tow') {
+    if (S.mode !== 'tow' || S.towBy !== 'npc') { n.phase = 'leave'; n.t = 0; }
+    if (!n.wave || !wv.waves.includes(n.wave) || n.wave.ridden || n.wave.broke && !n.run) {
+      n.run = false;
+      n.wave = wv.waves.filter((w) => w !== n.skip && !w.ridden && !w.broke && w.uc < S.u - 5 && w.fade > 0.3).sort((p, q) => (q.mega ? 1e4 : 0) + q.uc - ((p.mega ? 1e4 : 0) + p.uc))[0] || null;
+    }
+    const w = n.wave;
+    if (w) {
+      const L = wv.local(w, S.s, S.u);
+      if (!n.run) {
+        // wait in front of the peak, facing the beach, until the wave is right behind the surfer
+        const wait = toXZ(w.s0 + w.peel * 8, Math.max(w.uBreak - 25, w.uc + 28));
+        tx = wait.x; tz = wait.z;
+        const dist = Math.hypot(tx - n.pos.x, tz - n.pos.z);
+        want = Math.min(12, dist * 0.5);
+        if (dist < 6) { head = psiOf(d.x, d.z); want = 0; }
+        if (L.du < L.Lf * 2.5 + 4) n.run = true; // (du = how far the surfer is in front of the crest)
+      } else {
+        // run in with the wave, angled toward the shoulder, so the surfer ends up on the face
+        const hx = d.x * 0.85 + a.x * w.peel * 0.53, hz = d.z * 0.85 + a.z * w.peel * 0.53;
+        head = psiOf(hx, hz);
+        // a little slower than the wave until it has picked the surfer up, then keep pace on the face
+        want = (L.du > 0.9 * L.Lf ? w.c * 0.72 : w.c * 1.02) / 0.85;
+        if (L.du < -0.5 || W.seabed(n.pos.x, n.pos.z) > -1.5) { n.run = false; n.wave = null; n.skip = w; } // missed it (or too shallow): wait for the next one
+      }
+    } else { const q = toXZ(sp.peakS, sp.uBreak - 30); tx = q.x; tz = q.z; want = Math.min(8, Math.hypot(tx - n.pos.x, tz - n.pos.z) * 0.4); }
+  } else {
+    // job done: zoom off out the back
+    const q = toXZ(S.s + 60, S.u - 120); tx = q.x; tz = q.z; want = 18;
+    if (n.t > 7) { removeNpc(); return; }
+  }
+  let des = head !== null ? head : psiOf(tx - n.pos.x, tz - n.pos.z);
+  if (W.seabed(n.pos.x, n.pos.z) > -1.2) { des = psiOf(-d.x, -d.z); want = Math.max(want, 4); } // too shallow: back out to sea
+  n.psi = wrapPi(n.psi + clamp(wrapPi(des - n.psi), -1.8 * h, 1.8 * h));
+  n.V = lerp(n.V, want, 1 - Math.exp(-h * 1.4));
+  const f = fwdOf(n.psi);
+  n.pos.x += f.x * n.V * h; n.pos.z += f.z * n.V * h;
+  n.pos.y = wv.height(n.pos.x, n.pos.z) + 0.04 + Math.min(1, n.V / 16) * 0.12;
+  surfNormal(n.pos.x, n.pos.z, _k1);
+  _k2.set(f.x, 0, f.z).addScaledVector(_k1, -f.x * _k1.x - f.z * _k1.z).normalize();
+  _k3.copy(_k2).negate(); _k4.crossVectors(_k1, _k3).normalize();
+  n.mat.makeBasis(_k4, _k1, _k3).setPosition(n.pos);
+  if (n.V > 4 && Math.random() < h * 20) W.spray.emit(n.pos.x - f.x * 1.8, n.pos.y, n.pos.z - f.z * 1.8, -f.x * 3, rand(1, 2.5), -f.z * 3, rand(0.3, 0.6), rand(0.4, 0.8), 1, 0.85);
+}
+
+// ---- drawing the jet skis and the tow ropes -------------------------------------
+const ropes = [];
+function rope(i, a, b) {
+  let r = ropes[i];
+  if (!r) {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(16 * 3), 3));
+    r = ropes[i] = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffd23d })); r.frustumCulled = false;
+  }
+  if (r.parent !== W.scene) W.scene.add(r);
+  r.visible = true;
+  const ps = r.geometry.attributes.position, sag = Math.max(0, 9.5 - a.distanceTo(b)) * 0.25;
+  for (let k = 0; k < 16; k++) { const t = k / 15; ps.setXYZ(k, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t - Math.sin(t * Math.PI) * sag, a.z + (b.z - a.z) * t); }
+  ps.needsUpdate = true;
+}
+function sternOf(mat, out) { return out.set(0, 0.5, SKI_L / 2 - 0.05).applyMatrix4(mat); }
+function handsOf(P, out) { return out.addVectors(P[J.lHa], P[J.rHa]).multiplyScalar(0.5); }
+function parkedSki(out) {
+  const f = fwdOf(S.psi), rx = -f.z, rz = f.x;
+  const x = S.pos.x - f.x * 3.6 + rx * 1.4, z = S.pos.z - f.z * 3.6 + rz * 1.4;
+  const y = W.waves.height(x, z) + 0.04;
+  _k1.set(0, 1, 0); _k3.set(-rx, 0, -rz); _k4.crossVectors(_k1, _k3);
+  return out.makeBasis(_k4, _k1, _k3).setPosition(x, y, z);
+}
+function renderSkis() {
+  let nr = 0;
+  const ski = W.myski;
+  ski.matrixAutoUpdate = false;
+  const parked = game.state === 'custom' || game.state === 'paint';
+  ski.visible = parked || ((game.state === 'play' || game.state === 'pause' || game.state === 'results') && S.vehicle === 'ski');
+  if (ski.visible) { if (parked) parkedSki(ski.matrix); else ski.matrix.copy(S.skiMat); ski.matrixWorldNeedsUpdate = true; }
+  if (W.npc) {
+    for (const o of [W.npc.g, W.npc.driver]) { o.matrix.copy(W.npc.mat); o.matrixWorldNeedsUpdate = true; }
+    if (S.mode === 'tow' && S.towBy === 'npc') rope(nr++, sternOf(W.npc.mat, _k1), handsOf(W.rag.P, _k2));
+  }
+  if (S.mode === 'tow' && S.towBy !== 'npc') { const R = remotes.get(S.towBy); if (R) rope(nr++, sternOf(R.mat, _k1), handsOf(W.rag.P, _k2)); }
+  // friends being towed (by me or by each other)
+  for (const R of remotes.values()) {
+    if (!R.st || R.st.m !== 'tow' || !R.st.tw) continue;
+    let from = null;
+    if (R.st.tw === net.id && S.vehicle === 'ski') from = sternOf(S.skiMat, _k1);
+    else if (R.st.tw === 'npc' && R.npc && R.npc.visible) from = sternOf(R.npc.matrix, _k1);
+    else { const T = remotes.get(R.st.tw); if (T && T.ski && T.ski.visible) from = sternOf(T.mat, _k1); }
+    if (from) rope(nr++, from, handsOf(R.rag.P, _k2));
+  }
+  for (let i = nr; i < ropes.length; i++) ropes[i].visible = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -1276,7 +1647,7 @@ function nameTag(name) {
 }
 function makeRemote(id, e) {
   const look = normalizeLook(e.look || {});
-  const rag = new Ragdoll(W.scene, look);
+  const rag = new Ragdoll(W.scene, look, { paint: false });
   patchObject(rag.group); patchObject(rag.board);
   const tag = nameTag(String(e.st.name || 'Surfer').slice(0, 14));
   W.scene.add(tag);
@@ -1284,13 +1655,15 @@ function makeRemote(id, e) {
   remotes.set(id, R);
   return R;
 }
+function dropObj(o) {
+  if (o.parent) o.parent.remove(o);
+  o.traverse((q) => { if (q.geometry) q.geometry.dispose(); if (q.material) (Array.isArray(q.material) ? q.material : [q.material]).forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); }); });
+}
 function dropRemote(id) {
   const R = remotes.get(id); if (!R) return;
   remotes.delete(id);
-  for (const o of [R.rag.group, R.rag.board, R.rag.leash, R.tag]) {
-    if (o.parent) o.parent.remove(o);
-    o.traverse((q) => { if (q.geometry) q.geometry.dispose(); if (q.material) (Array.isArray(q.material) ? q.material : [q.material]).forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); }); });
-  }
+  for (const o of [R.rag.group, R.rag.board, R.rag.leash, R.tag, R.ski, R.npc]) if (o) dropObj(o);
+  if (S.towBy === id) releaseTow();
 }
 
 function netTick(dt) {
@@ -1313,8 +1686,9 @@ function netTick(dt) {
     const sdt = netAcc; netAcc = 0;
     const st = { name: look.name || 'Surfer', spot: surfing ? W.spot.id : '', look };
     if (surfing) {
-      const bp = _rp.setFromMatrixPosition(S.boardMat);
-      _rq.setFromRotationMatrix(_m.extractRotation(S.boardMat));
+      const M = S.vehicle === 'ski' ? S.skiMat : S.boardMat;
+      const bp = _rp.setFromMatrixPosition(M);
+      _rq.setFromRotationMatrix(_m.extractRotation(M));
       const r2 = (x) => Math.round(x * 100) / 100;
       st.p = [r2(bp.x), r2(bp.y), r2(bp.z)];
       st.q = [r2(_rq.x), r2(_rq.y), r2(_rq.z), r2(_rq.w)];
@@ -1325,6 +1699,9 @@ function netTick(dt) {
       for (const P of W.rag.P) st.j.push(Math.round((P.x - bp.x) * 100), Math.round((P.y - bp.y) * 100), Math.round((P.z - bp.z) * 100));
       st.lp = W.rag.limp ? 1 : 0;
       st.m = S.mode;
+      st.vh = S.vehicle;
+      if (S.mode === 'tow' && S.towBy) st.tw = S.towBy;
+      if (W.npc) { const np = W.npc.pos; st.np = [r2(np.x), r2(np.y), r2(np.z), r2(W.npc.psi)]; }
       if (myTrick) st.tr = myTrick;
       if (boss === net.id) st.wv = W.waves.exportState();
     }
@@ -1358,7 +1735,21 @@ function netTick(dt) {
     for (let i = 0; i < 16; i++) { R.J[i].lerp(R.TJ[i], k); R.rag.P[i].copy(R.pos).add(R.J[i]); }
     R.rag.limp = !!st.lp;
     R.rag.render(R.mat);
-    R.rag.leash.visible = !!st.lp;
+    const onSki = st.vh === 'ski';
+    R.rag.leash.visible = !!st.lp && !onSki;
+    R.rag.board.visible = !onSki;
+    if (onSki) {
+      const sk = e.look && e.look.ski ? JSON.stringify(e.look.ski) : '';
+      if (!R.ski || R.skiKey !== sk) { if (R.ski) dropObj(R.ski); R.skiKey = sk; R.ski = makeJetski(e.look && e.look.ski || {}, { paint: false }); patchObject(R.ski); R.ski.matrixAutoUpdate = false; W.scene.add(R.ski); }
+      R.ski.visible = true; R.ski.matrix.copy(R.mat); R.ski.matrixWorldNeedsUpdate = true;
+    } else if (R.ski) R.ski.visible = false;
+    if (Array.isArray(st.np) && st.np.length === 4) {
+      if (!R.npc) { R.npc = new THREE.Group(); R.npc.add(makeJetski(NPC_SKI, { paint: false }), makeLineupSurfer(NPC_LOOK, 'ride')); patchObject(R.npc); W.scene.add(R.npc); }
+      R.npc.visible = true;
+      R.npc.position.lerp(_rs.set(+st.np[0] || 0, +st.np[1] || 0, +st.np[2] || 0), R.npc.position.lengthSq() ? k : 1);
+      R.npc.rotation.set(0, +st.np[3] || 0, 0);
+      R.npc.updateMatrix();
+    } else if (R.npc) R.npc.visible = false;
     R.tag.position.copy(R.rag.P[J.head]).add(_rs.set(0, 0.75, 0));
   }
   for (const id of [...remotes.keys()]) if (!seen.has(id)) dropRemote(id);
@@ -1465,7 +1856,11 @@ function frame(now) {
   if (W.rag) W.rag.render(S.boardMat);
   const showSurfer = playing || game.state === 'pause' || game.state === 'results' || game.state === 'custom';
   W.rag.group.visible = showSurfer && game.state !== 'paint'; W.rag.head.visible = !firstPerson();
-  for (const i of [0, 1, 3, 4]) W.rag.caps[i].m.visible = !firstPerson(); // (your own shoulders would block the view) W.rag.board.visible = showSurfer || game.state === 'paint'; W.rag.leash.visible = showSurfer && (S.mode === 'wipe' || S.mode === 'ended');
+  for (const i of [0, 1, 3, 4]) W.rag.caps[i].m.visible = !firstPerson(); // (your own shoulders would block the view)
+  const onSki = S.vehicle === 'ski' && game.state !== 'custom';
+  W.rag.board.visible = (showSurfer && !onSki) || (game.state === 'paint' && paintWhat === 'board');
+  W.rag.leash.visible = showSurfer && !onSki && (S.mode === 'wipe' || S.mode === 'ended');
+  renderSkis();
   renderLocals();
   W.amb.update(t, W.waves);
   emitWaveSpray(sdt);
@@ -1583,10 +1978,17 @@ const creator = initCreator({
   look,
   save: (l) => store.set('look3', l),
   savePaint: (url) => store.set('paint', url),
-  applyLook: () => { if (W) { W.rag.setLook(look); patchObject(W.rag.group); patchObject(W.rag.board); W.rag.render(S.boardMat); } },
+  applyLook: () => {
+    if (!W) return;
+    W.rag.setLook(look); patchObject(W.rag.group); patchObject(W.rag.board); W.rag.render(S.boardMat);
+    const key = JSON.stringify(look.ski);
+    if (key !== W.skiKey) { W.skiKey = key; const old = W.myski; const n = makeJetski(look.ski); patchObject(n); n.visible = old.visible; W.scene.remove(old); W.scene.add(n); W.myski = n; }
+  },
+  saveSkiPaint: (url) => store.set('skipaint', url),
+  redrawSki: () => { if (W && W.myski.userData.redraw) W.myski.userData.redraw(); },
   redrawBoard: () => { if (W && W.rag.board.userData.redraw) W.rag.board.userData.redraw(); },
   click: () => audio.click(),
-  onPaintMode: (on) => { game.state = on ? 'paint' : 'custom'; for (let i = 0; i < 4; i++) updateCamera(5); },
+  onPaintMode: (on, what) => { game.state = on ? 'paint' : 'custom'; paintWhat = what || 'board'; for (let i = 0; i < 4; i++) updateCamera(5); },
 });
 function openCustom(first) {
   game.state = 'custom';
@@ -1622,6 +2024,8 @@ $('btnNextSpot').onclick = () => { const i = SPOTS.indexOf(W.spot); startSession
 $('btnResMenu').onclick = () => { game.state = 'title'; showScreen('title'); $('hud').classList.add('hidden'); };
 $('btnPause').onclick = () => togglePause();
 $('btnView').onclick = (e) => { e.stopPropagation(); if (game.state === 'play') toggleView(); };
+$('btnSki').onclick = (e) => { e.stopPropagation(); if (game.state === 'play') toggleVehicle(); };
+$('btnTow').onclick = (e) => { e.stopPropagation(); if (game.state === 'play') towKey(); };
 
 
 // customise preview: the surfer sits in the line-up right in front of the camera
