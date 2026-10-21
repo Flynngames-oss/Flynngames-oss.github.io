@@ -1,17 +1,18 @@
 // Wobble Surf: Lanzarote — main game: spots, surfing physics, tricks, scoring, camera, UI.
 import * as THREE from 'three';
-import { Sky } from './sky.js?v=8';
-import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js?v=8';
-import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js?v=8';
-import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, J, setEnvMap } from './surfer.js?v=8';
-import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js?v=8';
-import { initCreator } from './creator.js?v=8';
-import { Reef, UW, patchObject } from './water.js?v=8';
+import { Sky } from './sky.js?v=9';
+import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js?v=9';
+import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js?v=9';
+import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, J, setEnvMap } from './surfer.js?v=9';
+import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js?v=9';
+import { initCreator } from './creator.js?v=9';
+import { Reef, UW, patchObject } from './water.js?v=9';
+import { Net, randomCode } from './net.js?v=9';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Audio } from './audio.js?v=8';
+import { Audio } from './audio.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 $('bootText').textContent = 'Starting…';
@@ -121,6 +122,7 @@ const KEYMAP = {
 const held = (k) => KEYMAP[k].some((c) => keys[c]);
 const hit = (k) => KEYMAP[k].some((c) => pressed[c]);
 addEventListener('keydown', (e) => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return; // typing a name or a code
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
   if (!keys[e.code]) pressed[e.code] = true;
   keys[e.code] = true;
@@ -195,6 +197,9 @@ async function boot() {
     if (sp) startSession(sp, 'free');
     else if (firstTime) openCustom(true);
     else showScreen('title');
+    // back in the room you were in before the page reloaded
+    let room = null; try { room = sessionStorage.getItem('wobblesurf.room'); } catch (e) { /* ignore */ }
+    if (room) goOnline(room).then((ok) => { if (ok) toast(`🌐 Back in room ${room}`); });
   }, 350);
 }
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -213,6 +218,7 @@ function disposeWorld() {
 }
 
 function setupSpot(spot) {
+  for (const id of [...remotes.keys()]) dropRemote(id);
   disposeWorld();
   const scene = new THREE.Scene();
   // reflections for the glossy surfer and board, baked from the sky
@@ -338,6 +344,7 @@ function togglePause() {
 // scoring
 // ---------------------------------------------------------------------------
 function addTrick(name, pts, big) {
+  myTrick = [name, Math.round(pts), (myTrick ? myTrick[2] : 0) + 1];
   score.chain.push(name);
   score.chainPts += pts;
   score.mult = Math.min(5, 1 + (score.chain.length - 1) * 0.5);
@@ -848,6 +855,7 @@ function stepEnded(h, inp) {
 // --- locals / rivals ---------------------------------------------------------------
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 function stepLocals(h) {
+  if (net.on) { for (const L of W.locals) { L.sit.visible = L.stand.visible = false; L.riding = null; } return; } // (your friends are the locals now)
   const wv = W.waves, sp = W.spot;
   for (const L of W.locals) {
     L.cool -= h;
@@ -888,8 +896,10 @@ function stepLocals(h) {
   }
 }
 function renderLocals() {
+  if (net.on) return;
   const wv = W.waves, sp = W.spot;
   for (const L of W.locals) {
+    if (!L.sit.visible && !L.stand.visible) L.sit.visible = true;
     if (L.riding) {
       const w = L.riding;
       const p = toXZ(L.rs, L.ru);
@@ -936,7 +946,7 @@ function updateCamera(dt) {
     tp.set(p.x + f.x * 4.2 - rx * 1.4, 1.5, p.z + f.z * 4.2 - rz * 1.4);
     tl.set(p.x - rx * 1.6, p.y + 0.6, p.z - rz * 1.6);
     k = 3;
-  } else if (game.state === 'title' || game.state === 'select' || game.state === 'boot') {
+  } else if (game.state === 'title' || game.state === 'online' || game.state === 'select' || game.state === 'boot') {
     // slow cinematic drift on the beach side of the peak, looking along the coast
     const t = performance.now() / 1000;
     const cs = sp.peakS + 50 + Math.sin(t * 0.05) * 30, cu = sp.uBreak + 24 + Math.sin(t * 0.037) * 8;
@@ -1244,6 +1254,178 @@ function updateHUD(dt) {
 }
 
 // ---------------------------------------------------------------------------
+// multiplayer: friends in the same room surf the same waves
+// ---------------------------------------------------------------------------
+const net = new Net();
+const remotes = new Map(); // player id -> their surfer in our scene
+let myTrick = null, netAcc = 0, lastSent = new V3(), uiT = 0;
+addEventListener('pagehide', () => net.stop());
+const _rq = new THREE.Quaternion(), _rs = new V3(), _rp = new V3(), ONE = new V3(1, 1, 1);
+
+function nameTag(name) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const x = c.getContext('2d');
+  x.font = '900 34px Nunito, system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const w = Math.min(250, x.measureText(name).width + 28);
+  x.fillStyle = 'rgba(8,28,40,.7)'; x.beginPath(); x.roundRect(128 - w / 2, 8, w, 48, 24); x.fill();
+  x.fillStyle = '#fffaf0'; x.fillText(name, 128, 33);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+  s.scale.set(1.6, 0.4, 1); s.renderOrder = 6;
+  return s;
+}
+function makeRemote(id, e) {
+  const look = normalizeLook(e.look || {});
+  const rag = new Ragdoll(W.scene, look);
+  patchObject(rag.group); patchObject(rag.board);
+  const tag = nameTag(String(e.st.name || 'Surfer').slice(0, 14));
+  W.scene.add(tag);
+  const R = { rag, tag, lookKey: JSON.stringify(e.look || {}), name: e.st.name, st: null, at: 0, pos: new V3(), quat: new THREE.Quaternion(), tp: new V3(), tq: new THREE.Quaternion(), tv: new V3(), J: Array.from({ length: 16 }, () => new V3()), TJ: Array.from({ length: 16 }, () => new V3()), mat: new THREE.Matrix4(), first: true, trick: 0 };
+  remotes.set(id, R);
+  return R;
+}
+function dropRemote(id) {
+  const R = remotes.get(id); if (!R) return;
+  remotes.delete(id);
+  for (const o of [R.rag.group, R.rag.board, R.rag.leash, R.tag]) {
+    if (o.parent) o.parent.remove(o);
+    o.traverse((q) => { if (q.geometry) q.geometry.dispose(); if (q.material) (Array.isArray(q.material) ? q.material : [q.material]).forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); }); });
+  }
+}
+
+function netTick(dt) {
+  if (!net.on) { $('hud').classList.remove('net'); if (remotes.size) for (const id of [...remotes.keys()]) dropRemote(id); if (W) W.waves.setFollower(false); return; }
+  if (!W) return;
+  const now = performance.now();
+  const surfing = game.state === 'play' || game.state === 'pause' || game.state === 'results';
+  const here = surfing ? net.list().filter((p) => p.st.spot === W.spot.id) : [];
+  // one player at each spot makes the waves (the one with the lowest id); everyone else copies them
+  let boss = surfing ? net.id : null;
+  for (const p of here) if (p.st.id < boss) boss = p.st.id;
+  W.waves.setFollower(!!boss && boss !== net.id);
+  if (boss && boss !== net.id) {
+    const b = here.find((p) => p.st.id === boss);
+    if (b && b.st.wv && b.st.n !== W.lastWaveN) { W.lastWaveN = b.st.n; W.waves.importState(b.st.wv); }
+  }
+  // send my surfer ten times a second
+  netAcc += dt;
+  if (netAcc >= 0.1) {
+    const sdt = netAcc; netAcc = 0;
+    const st = { name: look.name || 'Surfer', spot: surfing ? W.spot.id : '', look };
+    if (surfing) {
+      const bp = _rp.setFromMatrixPosition(S.boardMat);
+      _rq.setFromRotationMatrix(_m.extractRotation(S.boardMat));
+      const r2 = (x) => Math.round(x * 100) / 100;
+      st.p = [r2(bp.x), r2(bp.y), r2(bp.z)];
+      st.q = [r2(_rq.x), r2(_rq.y), r2(_rq.z), r2(_rq.w)];
+      st.v = [r2((bp.x - lastSent.x) / sdt), r2((bp.z - lastSent.z) / sdt)];
+      if (Math.abs(st.v[0]) > 60 || Math.abs(st.v[1]) > 60) st.v = [0, 0];
+      lastSent.copy(bp);
+      st.j = [];
+      for (const P of W.rag.P) st.j.push(Math.round((P.x - bp.x) * 100), Math.round((P.y - bp.y) * 100), Math.round((P.z - bp.z) * 100));
+      st.lp = W.rag.limp ? 1 : 0;
+      st.m = S.mode;
+      if (myTrick) st.tr = myTrick;
+      if (boss === net.id) st.wv = W.waves.exportState();
+    }
+    net.send(st);
+  }
+  // draw everyone else at this spot
+  const seen = new Set();
+  for (const e of here) {
+    const st = e.st;
+    if (!Array.isArray(st.p) || !Array.isArray(st.q) || !Array.isArray(st.j) || st.j.length < 48) continue;
+    seen.add(st.id);
+    let R = remotes.get(st.id) || makeRemote(st.id, e);
+    const key = JSON.stringify(e.look || {});
+    if (e.look && key !== R.lookKey) { R.lookKey = key; R.rag.setLook(normalizeLook(e.look)); patchObject(R.rag.group); patchObject(R.rag.board); }
+    if (st.name !== R.name) { R.name = st.name; R.tag.parent.remove(R.tag); R.tag.material.map.dispose(); R.tag = nameTag(String(st.name || 'Surfer').slice(0, 14)); W.scene.add(R.tag); }
+    if (R.st !== st) {
+      R.st = st; R.at = now;
+      R.tp.set(+st.p[0] || 0, +st.p[1] || 0, +st.p[2] || 0);
+      R.tq.set(+st.q[0] || 0, +st.q[1] || 0, +st.q[2] || 0, +st.q[3] || 1).normalize();
+      R.tv.set(Array.isArray(st.v) ? +st.v[0] || 0 : 0, 0, Array.isArray(st.v) ? +st.v[1] || 0 : 0);
+      for (let i = 0; i < 16; i++) R.TJ[i].set(+st.j[i * 3] / 100 || 0, +st.j[i * 3 + 1] / 100 || 0, +st.j[i * 3 + 2] / 100 || 0);
+      if (Array.isArray(st.tr) && st.tr[2] !== R.trick) { if (R.trick && typeof st.tr[0] === 'string') toast(`🤙 ${String(st.name || 'Surfer').slice(0, 14)}: ${String(st.tr[0]).slice(0, 30)}`); R.trick = st.tr[2]; }
+    }
+    // smooth toward where they are now (moving them on a little, since the message is a moment old)
+    const ahead = Math.min(0.35, (now - R.at) / 1000);
+    _rs.copy(R.tp).addScaledVector(R.tv, ahead);
+    if (R.first || R.pos.distanceTo(_rs) > 12) { R.pos.copy(_rs); R.quat.copy(R.tq); for (let i = 0; i < 16; i++) R.J[i].copy(R.TJ[i]); R.first = false; }
+    const k = 1 - Math.exp(-dt * 12);
+    R.pos.lerp(_rs, k); R.quat.slerp(R.tq, k);
+    R.mat.compose(R.pos, R.quat, ONE);
+    for (let i = 0; i < 16; i++) { R.J[i].lerp(R.TJ[i], k); R.rag.P[i].copy(R.pos).add(R.J[i]); }
+    R.rag.limp = !!st.lp;
+    R.rag.render(R.mat);
+    R.rag.leash.visible = !!st.lp;
+    R.tag.position.copy(R.rag.P[J.head]).add(_rs.set(0, 0.75, 0));
+  }
+  for (const id of [...remotes.keys()]) if (!seen.has(id)) dropRemote(id);
+  // room info
+  uiT -= dt;
+  if (uiT <= 0) {
+    uiT = 0.5;
+    const all = net.list();
+    const where = (p) => { const sp = SPOTS.find((q) => q.id === p.st.spot); return sp ? sp.short : 'on the menu'; };
+    $('hud').classList.toggle('net', net.on);
+    if (game.state === 'play') {
+      const others = all.filter((p) => p.st.spot !== W.spot.id);
+      $('hudNet').innerHTML = `🌐 Room <b>${net.code}</b> · ${here.length ? `${here.length} friend${here.length > 1 ? 's' : ''} here` : 'no friends here yet'}` + (others.length ? `<br><small>${others.slice(0, 4).map((p) => `${esc(p.st.name)} (${where(p)})`).join(', ')}</small>` : '');
+    }
+    if (game.state === 'online') renderOnline();
+  }
+}
+const esc = (s) => String(s || 'Surfer').slice(0, 14).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// the "Surf with friends" screen
+function openOnline() { game.state = 'online'; showScreen('online'); renderOnline(); }
+function renderOnline() {
+  $('onIdle').classList.toggle('hidden', net.on);
+  $('onRoom').classList.toggle('hidden', !net.on);
+  if (!net.on) return;
+  $('roomCode').textContent = net.code;
+  const all = net.list();
+  $('roomList').innerHTML = `<div class="rrow you"><span>${esc(look.name)} (you)</span></div>` + (all.length
+    ? all.map((p) => { const sp = SPOTS.find((q) => q.id === p.st.spot); return `<div class="rrow"><span>${esc(p.st.name)}</span><small>${sp ? 'surfing at ' + sp.name : 'on the menu'}</small></div>`; }).join('')
+    : '<div class="rrow"><small>Waiting for friends… tell them the code!</small></div>');
+}
+async function goOnline(code) {
+  $('onStatus').textContent = 'Connecting…';
+  $('btnHost').disabled = $('btnJoin').disabled = true;
+  const ok = await net.start(code, (t) => { $('onStatus').textContent = t; });
+  $('btnHost').disabled = $('btnJoin').disabled = false;
+  $('onStatus').textContent = ok ? '' : "Couldn't connect. Check your internet and try again. (Some school networks block multiplayer.)";
+  if (ok) { try { sessionStorage.setItem('wobblesurf.room', net.code); } catch (e) { /* ignore */ } audio.chime(2); }
+  renderOnline();
+  return ok;
+}
+$('btnHost').onclick = () => { audio.click(); goOnline(randomCode()); };
+$('btnJoin').onclick = async () => {
+  audio.click();
+  const code = $('joinCode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 4) { $('onStatus').textContent = 'Type the code your friend got (5 letters/numbers)'; return; }
+  if (await goOnline(code)) {
+    // hop straight into the water with them if they're already surfing
+    $('onStatus').textContent = 'Looking for your friends…';
+    for (let i = 0; i < 12 && !net.list().some((p) => p.st.spot); i++) await new Promise((r) => setTimeout(r, 250));
+    $('onStatus').textContent = '';
+    goSurfOnline();
+  }
+};
+$('joinCode').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('btnJoin').click(); });
+function goSurfOnline() {
+  const counts = {};
+  for (const p of net.list()) if (p.st.spot) counts[p.st.spot] = (counts[p.st.spot] || 0) + 1;
+  const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  const sp = SPOTS.find((q) => q.id === best);
+  if (sp) { $('loadingSpot').classList.remove('hidden'); setTimeout(() => { startSession(sp, 'free'); $('loadingSpot').classList.add('hidden'); }, 30); }
+  else openSelect('free');
+}
+$('btnOnSurf').onclick = () => { audio.click(); goSurfOnline(); };
+$('btnLeave').onclick = () => { audio.click(); net.stop(); try { sessionStorage.removeItem('wobblesurf.room'); } catch (e) { /* ignore */ } $('hudNet').innerHTML = ''; renderOnline(); };
+
+// ---------------------------------------------------------------------------
 // main loop
 // ---------------------------------------------------------------------------
 let last = performance.now();
@@ -1265,7 +1447,7 @@ function frame(now) {
   acc += sdt;
   let steps = 0;
   while (acc >= H && steps < 10) {
-    if (playing || game.state === 'title' || game.state === 'select' || game.state === 'custom' || game.state === 'paint') {
+    if (playing || game.state === 'title' || game.state === 'online' || game.state === 'select' || game.state === 'custom' || game.state === 'paint') {
       if (playing) fixedStep(H, inp);
       else { W.waves.update(H); game.time += H; stepLocals(H); if (game.state === 'custom' || game.state === 'paint') stepLineup(H, inp); }
     }
@@ -1295,7 +1477,7 @@ function frame(now) {
   updateCamera(dt);
   W.reef.update(sdt, W.waves.t, S.mode === 'wipe' ? W.rag.P[J.pelvis] : S.pos, W.waves);
   updateUnderwater();
-  W.ocean.update(t, (game.state === 'title' || game.state === 'select' || game.state === 'custom' || game.state === 'paint') ? cam.look : S.pos);
+  W.ocean.update(t, (game.state === 'title' || game.state === 'online' || game.state === 'select' || game.state === 'custom' || game.state === 'paint') ? cam.look : S.pos);
   W.sky.update(camera, t);
   // audio layers
   if (audio.ok) {
@@ -1308,6 +1490,7 @@ function frame(now) {
     }
     audio.update({ roar: Math.min(1, roar), hiss: (S.mode === 'ride' || S.mode === 'popup') ? S.V / 18 : 0, wind: S.mode === 'air' ? 1 : (S.mode === 'ride' ? S.V / 40 : 0) });
   }
+  netTick(dt);
   if (playing) updateHUD(dt);
   // fade to black between rides
   if (game.fade > 0) { game.fade = Math.max(0, game.fade - dt * 1.6); }
@@ -1326,7 +1509,7 @@ function bankTick(dt) {
 // screens / menus
 // ---------------------------------------------------------------------------
 function showScreen(id) {
-  for (const s of ['title', 'select', 'pause', 'results', 'howto', 'custom', 'paint']) $(s).classList.toggle('hidden', s !== id);
+  for (const s of ['title', 'select', 'pause', 'results', 'howto', 'custom', 'paint', 'online']) $(s).classList.toggle('hidden', s !== id);
   if (id) { $('hud').classList.add('hidden'); $('touch').classList.add('hidden'); }
   else if (game.state === 'play') { $('hud').classList.remove('hidden'); $('touch').classList.toggle('hidden', !isTouch); }
 }
@@ -1345,6 +1528,7 @@ function openSelect(mode) {
       <div class="ty">${s.type} · ${s.size}</div>
       <div class="ds">${s.desc}</div>
       <div class="co">${s.lat.toFixed(3)}°N ${Math.abs(s.lon).toFixed(3)}°W${best ? ` · best heat ${best.toFixed(2)}` : ''}</div>
+      ${net.on && net.list().some((p) => p.st.spot === s.id) ? `<div class="lock" style="background:#ff5a5f">🌐 ${net.list().filter((p) => p.st.spot === s.id).length} friend(s) here</div>` : ''}
       ${locked ? `<div class="lock">🔒 Win at ${SPOTS[i - 1].short} to unlock</div>` : ''}
     </button>`;
   }).join('');
@@ -1425,7 +1609,8 @@ document.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click
 }));
 
 $('btnFree').onclick = () => { audio.start(); audio.click(); openSelect('free'); };
-$('btnContest').onclick = () => { audio.start(); audio.click(); openSelect('contest'); };
+$('btnContest').onclick = () => { audio.start(); audio.click(); if (net.on) { toast('Contests are single player · leave the room first'); return; } openSelect('contest'); };
+$('btnOnline').onclick = () => { audio.start(); audio.click(); openOnline(); };
 $('btnHow').onclick = () => { audio.start(); audio.click(); showScreen('howto'); };
 $('btnCustom').onclick = () => { audio.start(); audio.click(); openCustom(false); };
 document.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { audio.click(); game.state = 'title'; previewSurfer(false); showScreen('title'); });
@@ -1453,7 +1638,7 @@ boot().catch((e) => {
 
 // for debugging in the console
 window.__surf = {
-  game, S, score, get W() { return W; }, SPOTS, startSession, keys, setupSpot, cam,
+  game, S, score, get W() { return W; }, net, remotes, SPOTS, startSession, keys, setupSpot, cam,
   snap(cp, cl) { for (let i = 0; i < 5; i++) updateCamera(5); if (cp) { window.__camOv = [cp, cl]; updateCamera(0.01); } W.ocean.update(W.waves.t, game.state === 'play' ? S.pos : cam.look); W.sky.update(camera, W.waves.t); W.rag.render(S.boardMat); renderLocals(); draw(); },
   // advance the simulation quickly (testing)
   sim(sec, inp = {}) {

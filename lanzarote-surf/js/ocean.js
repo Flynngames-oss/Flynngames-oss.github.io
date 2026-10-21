@@ -1,8 +1,8 @@
 // Ocean: the wave model (shared by physics in JS and rendering in GLSL), the water meshes,
 // the curling lip, spray particles and the surfer's foam trail.
 import * as THREE from 'three';
-import { SKY_GLSL } from './sky.js?v=8';
-import { UW } from './water.js?v=8';
+import { SKY_GLSL } from './sky.js?v=9';
+import { UW } from './water.js?v=9';
 
 export const MAXW = 4;
 // waves up to 5 m use the normal proportions; bigger ones (the mega waves) are scaled up as a whole
@@ -72,7 +72,8 @@ export class WaveSystem {
   update(dt) {
     this.t += dt;
     const sp = this.spot;
-    // sets of waves
+    // sets of waves (in multiplayer only one player decides when waves come; the others copy them)
+    if (this.follower) { this.nextSet = this.nextInSet = this.nextMega = Infinity; }
     if (this.setLeft > 0 && this.t >= this.nextInSet) {
       if (this.spawn()) { this.setLeft--; this.nextInSet = this.t + rand(11, 15); }
       else this.nextInSet = this.t + 2;
@@ -111,6 +112,51 @@ export class WaveSystem {
       if (w.dying) w.fade -= dt / 5;
     }
     this.waves = this.waves.filter((w) => w.fade > 0 || !w.dying);
+  }
+
+  // Multiplayer: follow another player's waves, or (when they leave) start making our own again
+  setFollower(on) {
+    if (on === !!this.follower) return;
+    this.follower = on;
+    if (!on) { this.setLeft = 0; this.nextSet = this.t + rand(4, 10); this.nextInSet = this.t + 2; this.nextMega = this.t + rand(40, 70); }
+  }
+  // Multiplayer: the waves as one player sees them, so everyone else can copy them
+  exportState() {
+    const r = (x) => Math.round(x * 100) / 100;
+    return { t: r(this.t), w: this.waves.map((w) => [w.id, r(w.uc), r(w.sb), r(w.Hmax), r(w.s0), w.peel, r(w.P), Math.round(w.len), r(w.ph), r(w.bk), r(w.fade), r(w.t), (w.broke ? 1 : 0) | (w.mega ? 2 : 0) | (w.dying ? 4 : 0) | (w.closeout ? 8 : 0), Math.round(w.uBreak)]) };
+  }
+  importState(st) {
+    if (!st || !Array.isArray(st.w)) return;
+    if (Math.abs(st.t - this.t) > 1.5) this.t = st.t;
+    const seen = new Set();
+    for (const a of st.w) {
+      if (!Array.isArray(a) || a.length < 14) continue;
+      const [id, uc, sb, Hmax, s0, peel, P, len, ph, bk, fade, wt, fl, uBreak] = a;
+      seen.add(id);
+      let w = this.waves.find((q) => q.id === id);
+      const fresh = !w;
+      if (fresh) {
+        w = { id, uc, H: Hmax * 0.3, Hmax, s0, peel, P, sb, bk: 0, broke: false, fade, stNow: 0, c: 9, len, t: wt, ph, dying: false, ridden: false, mega: !!(fl & 2), uBreak };
+        this.waves.push(w);
+        if (w.mega && this.onMega && !(fl & 1)) this.onMega(w);
+      }
+      // nudge toward their copy (it is a moment old) instead of jumping
+      const d = uc - w.uc;
+      w.uc += Math.abs(d) > 4 ? d : d * 0.3;
+      const ds = sb - w.sb;
+      w.sb += Math.abs(ds) > 4 ? ds : ds * 0.3;
+      Object.assign(w, { Hmax, s0, peel, P, len, ph, uBreak, mega: !!(fl & 2) });
+      if (fresh || Math.abs(bk - w.bk) > 0.2) w.bk = bk;
+      if (Math.abs(wt - w.t) > 0.5) w.t = wt;
+      if (fl & 1) w.broke = true;
+      if (fl & 4) w.dying = true;
+      if (fl & 8) w.closeout = true;
+      if (!(fl & 4) && Math.abs(fade - w.fade) > 0.25) w.fade = fade;
+    }
+    for (const w of this.waves) if (!seen.has(w.id)) w.dying = true;
+    this.ids = Math.max(this.ids, ...this.waves.map((w) => w.id + 1));
+    this.waves.sort((a, b) => a.id - b.id);
+    while (this.waves.length > MAXW) this.waves.shift();
   }
 
   // Local shape parameters of one wave at (s,u).
