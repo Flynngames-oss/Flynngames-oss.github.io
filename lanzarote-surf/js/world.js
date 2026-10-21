@@ -2,6 +2,7 @@
 // colour map, white villages, palms, kites and birds.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { patchUnderwater } from './water.js';
 
 export const GEO = { LAT0: 29.06, LON0: -13.64, N: 1536, S: 56000, XMIN: -29000, ZMIN: -29500 };
 const MLAT = 111320, MLON = 111320 * Math.cos(GEO.LAT0 * Math.PI / 180);
@@ -81,7 +82,7 @@ export class Island {
 }
 
 // ---------------------------------------------------------------------------
-export function buildTerrain(island, origin, albedo, quality) {
+export function buildTerrain(island, origin, albedo, quality, rocky = 0.6) {
   const NG = quality === 'low' ? 240 : quality === 'high' ? 420 : 340;
   const half = NG / 2;
   const A = 11 * half, ext = 34000, B = ext - A;
@@ -141,10 +142,21 @@ export function buildTerrain(island, origin, albedo, quality) {
         float strata=0.5+0.5*sin(vWP.y*0.9+tn(vWP.xz*0.02)*6.);
         float steep=1.-normalize(vNormal).y;
         diffuseColor.rgb*=1.-0.18*strata*smoothstep(0.35,0.7,steep)*nf;
-        float wet=smoothstep(1.6,0.4,vWP.y);
+        float wet=smoothstep(1.6,0.4,vWP.y)*smoothstep(-0.6,0.2,vWP.y);
         diffuseColor.rgb*=1.-0.38*wet;
+        // the sea floor: golden sand with ripples, and black lava reef furred with algae
+        float sb=smoothstep(0.3,-0.7,vWP.y);
+        if(sb>0.){
+          float n1=tn(vWP.xz*0.045)*0.6+tn(vWP.xz*0.17)*0.3+tn(vWP.xz*0.9)*0.1;
+          float rip=0.5+0.5*sin(dot(vWP.xz,vec2(0.83,0.55))*3.1+tn(vWP.xz*0.3)*4.);
+          vec3 sand=vec3(0.6,0.5,0.32)*(0.84+0.2*rip)*(0.85+0.3*tn(vWP.xz*2.7));
+          vec3 rock=mix(vec3(0.03,0.028,0.026),vec3(0.06,0.075,0.035),tn(vWP.xz*1.3))*(0.8+0.4*tn(vWP.xz*6.));
+          float rk=smoothstep(0.66-0.3*${rocky.toFixed(2)},0.72-0.3*${rocky.toFixed(2)},n1);
+          diffuseColor.rgb=mix(diffuseColor.rgb,mix(sand,rock,rk),sb);
+        }
         `);
   };
+  patchUnderwater(mat);
   const mesh = new THREE.Mesh(g, mat);
   return mesh;
 }

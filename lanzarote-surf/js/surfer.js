@@ -1,6 +1,7 @@
 // The surfer: a wobbly verlet ragdoll that is pulled toward animated poses while riding,
 // and goes fully limp (and tumbles in the whitewater) when you wipe out. Plus the board.
 import * as THREE from 'three';
+import { makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js';
 
 const V3 = THREE.Vector3;
 // particle indices
@@ -9,113 +10,7 @@ const NP = 16;
 const LEN = { torso: 0.42, neck: 0.16, head: 0.2, sh: 0.19, ua: 0.29, fa: 0.27, hip: 0.1, th: 0.44, sn: 0.44 };
 const RAD = [0.14, 0.15, 0.06, 0.13, 0.07, 0.055, 0.05, 0.07, 0.055, 0.05, 0.08, 0.07, 0.06, 0.08, 0.07, 0.06];
 
-// skins = the rubbery body colour, vests = Hawaiian shirt, hair = bucket hat
-export const LOOKS = {
-  skins: ['#ff6a1c', '#ffb02e', '#3fb8ff', '#7bd64a', '#ff5fa2', '#b07cff', '#f1c7a0', '#8a5634'],
-  vests: ['#1aa7e0', '#ff3d6e', '#ffd23d', '#2ecc71', '#ff7a1f', '#b06bff', '#ffffff', '#16181d'],
-  shorts: ['#2b3150', '#c0392b', '#16181d', '#ffb21f', '#00a37a', '#1f3cff'],
-  hair: ['#8f9152', '#d9c48f', '#2b3150', '#ff3d6e', '#ffffff', '#16181d'],
-  boards: ['#ffd21f', '#ffffff', '#1ec8ff', '#ff3d6e', '#7dff5a', '#16181d'],
-};
-
-// canvas textures: Hawaiian shirt and patterned board shorts
-const texCache = new Map();
-function shirtTexture(base) {
-  const key = 'shirt' + base;
-  if (texCache.has(key)) return texCache.get(key);
-  const c = document.createElement('canvas'); c.width = c.height = 256;
-  const x = c.getContext('2d');
-  x.fillStyle = base; x.fillRect(0, 0, 256, 256);
-  const petals = ['#ffd23d', '#ff4f8b', '#ffffff', '#ff8a1f', '#ffd23d'];
-  let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 26; i++) {
-    const cx = r() * 256, cy = r() * 256, s = 10 + r() * 14;
-    // leaves
-    x.fillStyle = '#1e8f4e';
-    for (let k = 0; k < 3; k++) { const a = r() * 6.28; x.beginPath(); x.ellipse(cx + Math.cos(a) * s * 1.2, cy + Math.sin(a) * s * 1.2, s * 0.9, s * 0.35, a, 0, 6.28); x.fill(); }
-    // hibiscus
-    x.fillStyle = petals[i % petals.length];
-    for (let k = 0; k < 5; k++) { const a = k / 5 * 6.28 + r(); x.beginPath(); x.ellipse(cx + Math.cos(a) * s * 0.55, cy + Math.sin(a) * s * 0.55, s * 0.55, s * 0.38, a, 0, 6.28); x.fill(); }
-    x.fillStyle = '#c0392b'; x.beginPath(); x.arc(cx, cy, s * 0.22, 0, 6.28); x.fill();
-  }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1);
-  texCache.set(key, t); return t;
-}
-function shortsTexture(base) {
-  const key = 'shorts' + base;
-  if (texCache.has(key)) return texCache.get(key);
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const x = c.getContext('2d');
-  x.fillStyle = base; x.fillRect(0, 0, 128, 128);
-  const hi = new THREE.Color(base).offsetHSL(0.45, 0.1, 0.25).getStyle();
-  for (let i = 0; i < 6; i++) { x.fillStyle = i % 2 ? hi : '#ffd23d'; x.fillRect(i * 22, 0, 7, 128); }
-  x.fillStyle = 'rgba(0,0,0,0.18)';
-  for (let i = 0; i < 40; i++) { x.beginPath(); x.arc((i * 37) % 128, (i * 53) % 128, 4, 0, 6.28); x.fill(); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1);
-  texCache.set(key, t); return t;
-}
-export let ENV_MAP = null;
-export function setEnvMap(t) { ENV_MAP = t; }
-
-// ---------------------------------------------------------------------------
-export function makeBoard(color = '#ffffff', length = 1.95) {
-  const L = length, W = 0.52, TH = 0.07;
-  const NL = 28, NR = 14;
-  const pos = [], col = [], idx = [];
-  const base = new THREE.Color(color), stringer = new THREE.Color('#ff7a1f');
-  // nose and tail in a contrasting colour (yellow board -> cyan ends), orange pinstripes
-  const ends = base.getHSL({}).l > 0.85 || base.getHSL({}).s < 0.15 ? new THREE.Color('#1ec8ff') : new THREE.Color(color).offsetHSL(0.42, 0.1, 0.05);
-  const stripe = new THREE.Color('#ff7a1f'), bottom = ends.clone().multiplyScalar(0.8);
-  for (let i = 0; i <= NL; i++) {
-    const t = i / NL; // 0 nose .. 1 tail
-    const z = -L / 2 + t * L;
-    let w = Math.pow(Math.sin(Math.PI * Math.min(1, Math.pow(t, 0.75) * 0.93 + 0.04)), 0.62) * W / 2;
-    if (t > 0.9) w = Math.max(w, W * 0.17);
-    const rock = Math.pow(1 - t, 3.2) * 0.2 + Math.pow(t, 4) * 0.04;
-    const th = TH * (0.45 + 0.55 * Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.08)));
-    for (let r = 0; r < NR; r++) {
-      const a = r / NR * Math.PI * 2;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      const x = ca * w;
-      const y = rock + (sa > 0 ? sa * th * 0.75 : sa * th * 0.3);
-      pos.push(x, y, z);
-      let c = bottom;
-      if (sa > 0.05) {
-        const cut = t + x * 0.5; // diagonal colour split like a retro board
-        c = cut < 0.24 || cut > 0.8 ? ends : base;
-        if (Math.abs(cut - 0.24) < 0.018 || Math.abs(cut - 0.8) < 0.018) c = stripe;
-        if (sa > 0.92 && Math.abs(x) < 0.01 && cut > 0.26 && cut < 0.78) c = stringer;
-      }
-      col.push(c.r, c.g, c.b);
-    }
-  }
-  for (let i = 0; i < NL; i++) for (let r = 0; r < NR; r++) {
-    const a = i * NR + r, b = i * NR + (r + 1) % NR, c = (i + 1) * NR + r, d = (i + 1) * NR + (r + 1) % NR;
-    idx.push(a, b, c, b, d, c);
-  }
-  // caps
-  const capN = pos.length / 3; pos.push(0, 0.2, -L / 2 - 0.001); col.push(base.r, base.g, base.b);
-  const capT = pos.length / 3; pos.push(0, 0.04, L / 2 + 0.001); col.push(base.r, base.g, base.b);
-  for (let r = 0; r < NR; r++) { idx.push(capN, (r + 1) % NR, r); idx.push(capT, NL * NR + r, NL * NR + (r + 1) % NR); }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  const grp = new THREE.Group();
-  const m = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.0, clearcoat: 0.35, clearcoatRoughness: 0.25, envMap: ENV_MAP, envMapIntensity: 0.25 }));
-  grp.add(m);
-  // thruster fins
-  const fs = new THREE.Shape(); fs.moveTo(0, 0); fs.lineTo(0.11, 0); fs.quadraticCurveTo(0.02, -0.05, -0.03, -0.12); fs.lineTo(0, 0);
-  const fg = new THREE.ExtrudeGeometry(fs, { depth: 0.008, bevelEnabled: false });
-  fg.rotateY(Math.PI / 2);
-  const fm = new THREE.MeshStandardMaterial({ color: 0x223040, roughness: 0.4 });
-  for (const [x, z, ry] of [[0, L / 2 - 0.08, 0], [-0.17, L / 2 - 0.3, 0.07], [0.17, L / 2 - 0.3, -0.07]]) {
-    const f = new THREE.Mesh(fg, fm); f.position.set(x, 0.03, z); f.rotation.y = ry; grp.add(f);
-  }
-  grp.userData.length = L;
-  return grp;
-}
+export { setEnvMap, makeBoard, makeMaterials, makeHead, normalizeLook } from './looks.js';
 
 // ---------------------------------------------------------------------------
 // poses (board-local coordinates: x = right rail, y = up from deck, z = toward tail)
@@ -202,49 +97,6 @@ export function poseSit(o, p) {
   _c.set(0.27, 0.08, 0.0); ik(o[J.rEl], o[J.rSh], _c, LEN.ua, LEN.fa, _d.set(1, 0, 0.3), o[J.rHa]);
 }
 
-// ---------------------------------------------------------------------------
-// rubber-toy look: glossy skin, printed shirt and shorts, bucket hat
-export function makeMaterials(look) {
-  const env = { envMap: ENV_MAP, envMapIntensity: 0.3 };
-  return {
-    skin: new THREE.MeshPhysicalMaterial({ color: look.skin, roughness: 0.42, clearcoat: 0.55, clearcoatRoughness: 0.35, sheen: 0.4, sheenColor: new THREE.Color(look.skin).offsetHSL(0, 0, 0.2), ...env }),
-    shirt: new THREE.MeshStandardMaterial({ map: shirtTexture(look.vest), roughness: 0.7, ...env }),
-    shorts: new THREE.MeshStandardMaterial({ map: shortsTexture(look.shorts), roughness: 0.65, ...env }),
-    hat: new THREE.MeshStandardMaterial({ color: look.hair, roughness: 0.95, side: THREE.DoubleSide, ...env }),
-    band: new THREE.MeshStandardMaterial({ color: '#6b3fa0', roughness: 0.8 }),
-    dark: new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.3 }),
-  };
-}
-
-// head: a tall rubbery bean, two dot eyes, a straight little mouth and a bucket hat. Eyes look along -z.
-export function makeHead(M) {
-  const head = new THREE.Group();
-  const hd = new THREE.Mesh(new THREE.SphereGeometry(0.15, 22, 18), M.skin);
-  hd.scale.set(0.95, 1.18, 0.95);
-  head.add(hd);
-  for (const sx of [-1, 1]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.021, 10, 8), M.dark);
-    e.scale.set(1, 1.3, 0.6);
-    e.position.set(sx * 0.052, 0.035, -0.138); head.add(e);
-  }
-  const mouth = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 0.05, 3, 6), M.dark);
-  mouth.rotation.z = Math.PI / 2; mouth.position.set(0.004, -0.045, -0.142); head.add(mouth);
-  // bucket hat, tipped back a little
-  const hat = new THREE.Group();
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.155, 0.12, 24, 1, false), M.hat);
-  crown.position.y = 0.14;
-  const top = new THREE.Mesh(new THREE.SphereGeometry(0.13, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.hat);
-  top.scale.y = 0.35; top.position.y = 0.2;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.153, 0.157, 0.03, 24, 1, true), M.band);
-  band.position.y = 0.1;
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.26, 0.07, 28, 1, true), M.hat);
-  brim.position.y = 0.055;
-  hat.add(crown, top, band, brim);
-  hat.rotation.x = 0.22; hat.position.set(0, 0.02, 0.02);
-  head.add(hat);
-  return head;
-}
-
 const STICKS = [
   [J.pelvis, J.chest], [J.chest, J.neck], [J.neck, J.head], [J.chest, J.lSh], [J.chest, J.rSh], [J.lSh, J.rSh],
   [J.lSh, J.lEl], [J.lEl, J.lHa], [J.rSh, J.rEl], [J.rEl, J.rHa], [J.pelvis, J.lHip], [J.pelvis, J.rHip], [J.lHip, J.rHip],
@@ -262,7 +114,7 @@ export class Ragdoll {
     this.limp = false;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.board = makeBoard(look.board, look.boardLen || 1.95);
+    this.board = makeBoard(normalizeLook(look).board);
     scene.add(this.board);
     // board particles for ragdoll mode: nose, tail, right rail
     this.B = [new V3(), new V3(), new V3()]; this.BO = [new V3(), new V3(), new V3()];
@@ -279,6 +131,7 @@ export class Ragdoll {
   }
 
   build(look) {
+    look = normalizeLook(look);
     this.group.clear();
     const M = makeMaterials(look);
     const caps = [];
@@ -289,21 +142,15 @@ export class Ragdoll {
     const tmp = Array.from({ length: NP }, () => new V3());
     poseStand(tmp, { c: 0.3 });
     const d = (a, b) => tmp[a].distanceTo(tmp[b]);
-    // noodle body: shirt on the torso & shoulders, shorts on the hips & thighs, rubbery skin everywhere else
-    seg(J.pelvis, J.neck, 0.16, M.shirt, d(J.pelvis, J.neck) - 0.12);
-    seg(J.lSh, J.rSh, 0.105, M.shirt, d(J.lSh, J.rSh));
-    seg(J.lHip, J.rHip, 0.14, M.shorts, d(J.lHip, J.rHip) + 0.05);
-    seg(J.lSh, J.lEl, 0.072, M.skin, d(J.lSh, J.lEl)); seg(J.rSh, J.rEl, 0.072, M.skin, d(J.rSh, J.rEl));
-    seg(J.lEl, J.lHa, 0.066, M.skin, d(J.lEl, J.lHa)); seg(J.rEl, J.rHa, 0.066, M.skin, d(J.rEl, J.rHa));
-    seg(J.lHip, J.lKn, 0.098, M.shorts, d(J.lHip, J.lKn)); seg(J.rHip, J.rKn, 0.098, M.shorts, d(J.rHip, J.rKn));
-    seg(J.lKn, J.lFt, 0.078, M.skin, d(J.lKn, J.lFt) - 0.06); seg(J.rKn, J.rFt, 0.078, M.skin, d(J.rKn, J.rFt) - 0.06);
+    addBody(seg, d, M, look.build || 1);
     this.caps = caps;
-    const mitt = () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 12), M.skin); m.scale.set(1, 1.15, 0.8); this.group.add(m); return m; };
+    const k = look.build || 1;
+    const mitt = () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.085 * Math.sqrt(k), 16, 12), M.skin); m.scale.set(1, 1.15, 0.8); this.group.add(m); return m; };
     this.hands = [mitt(), mitt()];
-    const foot = () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 10), M.skin); m.scale.set(0.95, 0.55, 1.6); return m; };
+    const foot = () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 10), M.shins === M.skin ? M.skin : M.bottom); m.scale.set(0.95, 0.55, 1.6); return m; };
     this.feet = [foot(), foot()];
     this.group.add(...this.feet);
-    this.head = makeHead(M);
+    this.head = makeHead(M, look);
     this.group.add(this.head);
     this.group.traverse((o) => { o.frustumCulled = false; });
   }
@@ -312,7 +159,7 @@ export class Ragdoll {
     this.build(look);
     const parent = this.board.parent;
     parent.remove(this.board);
-    this.board = makeBoard(look.board, look.boardLen || 1.95);
+    this.board = makeBoard(normalizeLook(look).board);
     parent.add(this.board);
   }
 
@@ -505,25 +352,37 @@ function stick(a, b, len) {
 // Other surfers sitting in the line-up (cheap static figures)
 // ---------------------------------------------------------------------------
 export function makeLineupSurfer(look, kind = 'sit') {
+  look = normalizeLook(look);
   const g = new THREE.Group();
-  const b = makeBoard(look.board, 2.1);
+  const b = makeBoard(look.board, { paint: false });
   g.add(b);
   const P = Array.from({ length: NP }, () => new V3());
   if (kind === 'stand') poseStand(P, { c: 0.45, lean: 0.15 }); else poseSit(P, { t: 0 });
   const M = makeMaterials(look);
-  const seg = (a, bb, r, m) => {
-    const d = new V3().subVectors(P[bb], P[a]); const l = d.length();
-    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, l, 3, 10), m);
+  const seg = (a, bb, r, m, len) => {
+    const d = new V3().subVectors(P[bb], P[a]);
+    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, len), 3, 10), m);
     mesh.position.addVectors(P[a], P[bb]).multiplyScalar(0.5);
     mesh.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize());
     g.add(mesh);
   };
-  seg(J.pelvis, J.neck, 0.16, M.shirt); seg(J.lSh, J.rSh, 0.105, M.shirt); seg(J.lHip, J.rHip, 0.14, M.shorts);
-  seg(J.lSh, J.lEl, 0.072, M.skin); seg(J.rSh, J.rEl, 0.072, M.skin); seg(J.lEl, J.lHa, 0.066, M.skin); seg(J.rEl, J.rHa, 0.066, M.skin);
-  seg(J.lHip, J.lKn, 0.098, M.shorts); seg(J.rHip, J.rKn, 0.098, M.shorts); seg(J.lKn, J.lFt, 0.078, M.skin); seg(J.rKn, J.rFt, 0.078, M.skin);
-  const h = makeHead(M);
+  addBody(seg, (a, bb) => P[a].distanceTo(P[bb]), M, look.build || 1);
+  const h = makeHead(M, look);
   h.position.copy(P[J.head]);
   if (kind === 'stand') h.rotation.y = -Math.PI / 2; // faces +x like the stance
   g.add(h);
   return g;
+}
+
+// the noodle body: top on the torso & shoulders, bottoms on the hips & thighs, sleeves/legs by outfit.
+// k = build (0.8 skinny .. 1.3 chunky) scales how thick everything is.
+function addBody(seg, d, M, k) {
+  const t = k, l = Math.sqrt(k);
+  seg(J.pelvis, J.neck, 0.16 * t, M.top, d(J.pelvis, J.neck) - 0.12);
+  seg(J.lSh, J.rSh, 0.105 * t, M.top, d(J.lSh, J.rSh));
+  seg(J.lHip, J.rHip, 0.14 * t, M.bottom, d(J.lHip, J.rHip) + 0.05);
+  seg(J.lSh, J.lEl, 0.072 * l, M.upperArm, d(J.lSh, J.lEl)); seg(J.rSh, J.rEl, 0.072 * l, M.upperArm, d(J.rSh, J.rEl));
+  seg(J.lEl, J.lHa, 0.066 * l, M.arms, d(J.lEl, J.lHa)); seg(J.rEl, J.rHa, 0.066 * l, M.arms, d(J.rEl, J.rHa));
+  seg(J.lHip, J.lKn, 0.098 * l, M.thighs, d(J.lHip, J.lKn)); seg(J.rHip, J.rKn, 0.098 * l, M.thighs, d(J.rHip, J.rKn));
+  seg(J.lKn, J.lFt, 0.078 * l, M.shins, d(J.lKn, J.lFt) - 0.06); seg(J.rKn, J.rFt, 0.078 * l, M.shins, d(J.rKn, J.rFt) - 0.06);
 }

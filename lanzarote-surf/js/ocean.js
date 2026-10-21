@@ -2,6 +2,7 @@
 // the curling lip, spray particles and the surfer's foam trail.
 import * as THREE from 'three';
 import { SKY_GLSL } from './sky.js';
+import { UW } from './water.js';
 
 export const MAXW = 4;
 // waves up to 5 m use the normal proportions; bigger ones (the mega waves) are scaled up as a whole
@@ -238,6 +239,7 @@ float waveH(vec2 p){ float f,t,b; return waveField(p,f,t,b); }
 
 const WATER_FRAG_COMMON = /* glsl */`
 uniform sampler2D uDepth, uRip;
+uniform float uCamUnder; uniform vec3 uWaterCol, uSigma;
 uniform vec4 uDepthXf;
 uniform vec3 uDeep, uShallow, uSSS;
 uniform vec3 uFogCol;
@@ -246,7 +248,7 @@ float hash12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33)
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
   return mix(mix(hash12(i),hash12(i+vec2(1,0)),u.x),mix(hash12(i+vec2(0,1)),hash12(i+vec2(1,1)),u.x),u.y); }
 float fbm(vec2 p){ float a=.5, s=0.; for(int i=0;i<4;i++){ s+=a*vnoise(p); p=p*2.03+vec2(17.1,-3.7); a*=.5; } return s; }
-vec3 shadeWater(vec3 W, vec3 Ng, float foamIn, float thin, float lip, float tube){
+vec4 shadeWater(vec3 W, vec3 Ng, float foamIn, float thin, float lip, float tube, float opaque){
   vec3 V=normalize(cameraPosition-W);
   float dist=length(cameraPosition-W);
   // ripples from a tileable slope map at three scales
@@ -281,9 +283,22 @@ vec3 shadeWater(vec3 W, vec3 Ng, float foamIn, float thin, float lip, float tube
   // streaky foam lines being drawn up the face
   float streak=fbm(vec2(dot(W.xz,uA)*0.12,dot(W.xz,uD)*1.6-t*0.9));
   foamIn+=face*ss(0.55,0.8,streak)*0.55*(1.-lip)*(1.-tube);
-  vec3 col=mix(body,refl,fres*(1.-0.5*thin)*(1.-0.75*tube)*(1.-0.5*steepN));
+  // crystal clear: what's under the surface (already darkened by the water in its own shader) shows
+  // through. Only the water piled up above the still level (the waves) has a body colour of its own,
+  // and the more of it the light travels through, the more solid it looks.
+  float F=fres*(1.-0.5*thin)*(1.-0.75*tube)*(1.-0.5*steepN);
+  vec3 rr=refract(-V,N,0.75);
+  float vert=max(abs(rr.y),0.08);
+  float above=max(W.y+0.15,0.)+lip*1.5;
+  float opac=1.-exp(-0.45*above/vert);
+  opac=max(opac,face*0.6*ss(0.3,1.4,above));
+  opac=max(opac,0.06+0.25*ss(250.,1600.,dist));
+  opac=mix(opac,1.,opaque);
+  float A=F+(1.-F)*opac;
+  vec3 col=(refl*F+(1.-F)*opac*body)/max(A,1e-3);
   float rs=max(dot(R,uSunDir),0.);
-  col+=uSunCol*(pow(rs,600.)*3.5+pow(rs,60.)*0.15)*(1.-ss(0.3,1.,foamIn));
+  vec3 glint=uSunCol*(pow(rs,600.)*3.5+pow(rs,60.)*0.15)*(1.-ss(0.3,1.,foamIn));
+  col+=glint; A=max(A,min(1.,dot(glint,vec3(0.33))));
   // foam
   float fn=fbm(W.xz*0.5+vec2(t*0.12,-t*0.05)+Ng.xz*2.);
   float fn2=fbm(W.xz*2.1-vec2(t*0.3,0.));
@@ -297,10 +312,33 @@ vec3 shadeWater(vec3 W, vec3 Ng, float foamIn, float thin, float lip, float tube
   // lumpy, self-shadowed whitewater rather than flat paint
   float lump=fbm(W.xz*0.9+vec2(-t*0.25,t*0.1));
   vec3 foamCol=vec3(0.93,0.96,1.0)*(0.55+0.4*dif)*(0.78+0.3*lump)+uSunCol*0.07*(lump)+uSSS*0.05*thin;
-  col=mix(col,foamCol,clamp(fm,0.,1.));
+  fm=clamp(fm,0.,1.);
+  col=mix(col,foamCol,fm); A=mix(A,1.,fm);
   float fog=1.-exp(-sq(uFogDen*dist));
-  col=mix(col,uFogCol,fog);
-  return col;
+  col=mix(col,uFogCol,fog); A=mix(A,1.,fog);
+  return vec4(col,A);
+}
+// the surface seen from underneath: the bright window of sky straight up, a mirror of the deep water outside it
+vec4 shadeUnder(vec3 W, vec3 Ng, float foamIn){
+  vec3 V=normalize(cameraPosition-W);
+  float dist=length(cameraPosition-W);
+  vec2 q=W.xz; float t=uTime;
+  vec2 g=(texture2D(uRip,q/7.7+vec2(-t*0.019,t*0.014)).xy-0.5)*0.7+(texture2D(uRip,q/2.6+vec2(t*0.03,-t*0.035)).xy-0.5)*0.45;
+  vec3 N=normalize(-Ng+vec3(g.x,0.,g.y)*0.4);
+  vec3 up=-V;                                   // looking up through the surface
+  float c=max(dot(up,-N),0.);
+  float win=ss(0.6,0.72,c);                    // Snell's window (about 97 degrees wide)
+  vec3 rr=refract(up,-N,1.33);
+  vec3 skyc=skyColor(normalize(rr+vec3(0.,0.02,0.)))*1.1;
+  float sd=max(dot(normalize(rr),uSunDir),0.);
+  skyc+=uSunCol*(pow(sd,80.)*2.5+pow(sd,8.)*0.3);
+  vec3 mirror=uWaterCol*1.5;
+  vec3 col=mix(mirror,skyc,win);
+  float fm=ss(0.3,1.2,foamIn);
+  col=mix(col,vec3(0.8,0.9,0.95)*(0.5+0.5*win),fm*0.8);
+  vec3 Tv=exp(-uSigma*dist);
+  col=col*Tv+uWaterCol*(1.-Tv);
+  return vec4(col,1.);
 }
 `;
 
@@ -363,6 +401,8 @@ export class Ocean {
       uSunDir: opts.sky.u.uSunDir, uSunCol: opts.sky.u.uSunCol, uSkyTop: opts.sky.u.uSkyTop, uSkyHor: opts.sky.u.uSkyHor,
       uL0: { value: new THREE.Vector4() }, uL1: { value: new THREE.Vector4() },
       uRip: { value: rippleTex || (rippleTex = makeRippleTexture()) },
+      uExt: { value: 2600 },
+      uCamUnder: UW.uCamUnder, uWaterCol: UW.uWaterCol, uSigma: UW.uSigma,
     };
     this.u.uDeep.value.setRGB(0.0, 0.045, 0.14);
     this.u.uShallow.value.setRGB(0.02, 0.3, 0.42);
@@ -413,12 +453,14 @@ export class Ocean {
         ${WATER_FRAG_COMMON}
         varying vec3 vW; varying vec3 vN; varying float vFoam, vThin, vTube;
         void main(){
-          gl_FragColor=vec4(shadeWater(vW,normalize(vN),vFoam,vThin,0.,vTube),1.);
+          gl_FragColor=gl_FrontFacing ? shadeWater(vW,normalize(vN),vFoam,vThin,0.,vTube,0.) : shadeUnder(vW,normalize(vN),vFoam);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
+      transparent: true, side: THREE.DoubleSide,
     });
     this.near = new THREE.Mesh(g, nearMat);
+    this.near.renderOrder = 1;
     this.near.frustumCulled = false;
     scene.add(this.near);
 
@@ -436,9 +478,12 @@ export class Ocean {
         float sq(float x){return x*x;}
         ${SKY_GLSL}
         ${WATER_FRAG_COMMON}
+        uniform vec2 uCenter; uniform float uExt;
         varying vec3 vW;
         void main(){
-          gl_FragColor=vec4(shadeWater(vW,vec3(0.,1.,0.),0.,0.,0.,0.),1.);
+          vec2 o=vW.xz-uCenter;
+          if(abs(dot(o,uA))<uExt-30. && abs(dot(o,uD))<uExt-30.) discard;   // the near water covers this
+          gl_FragColor=vec4(shadeWater(vW,vec3(0.,1.,0.),0.,0.,0.,0.,1.).rgb,1.);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
@@ -465,7 +510,7 @@ export class Ocean {
     for (let n = 0; n < 2; n++) {
       const lu = { ...this.u, uL0: { value: new THREE.Vector4() }, uL1: { value: new THREE.Vector4() } };
       const lm = new THREE.ShaderMaterial({
-        uniforms: lu, side: THREE.DoubleSide,
+        uniforms: lu, side: THREE.DoubleSide, transparent: true,
         vertexShader: /* glsl */`
           ${WAVE_GLSL}
           uniform vec4 uL0, uL1;
@@ -517,8 +562,8 @@ export class Ocean {
           void main(){
             vec3 n=normalize(vN); if(!gl_FrontFacing) n=-n;
             float thin=0.9*(1.-vCol);
-            vec3 c=shadeWater(vW,n,vFoam,thin*(gl_FrontFacing?1.:0.6),1.,gl_FrontFacing?0.:0.45);
-            gl_FragColor=vec4(c,1.);
+            vec4 c=shadeWater(vW,n,vFoam,thin*(gl_FrontFacing?1.:0.6),1.,gl_FrontFacing?0.:0.45,0.);
+            gl_FragColor=vec4(c.rgb,1.);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>
           }`,
@@ -526,6 +571,7 @@ export class Ocean {
       const mesh = new THREE.Mesh(lg, lm);
       mesh.frustumCulled = false;
       mesh.visible = false;
+      mesh.renderOrder = 2;
       scene.add(mesh);
       this.lips.push({ mesh, u: lu });
     }
@@ -686,6 +732,7 @@ export class Trail {
     });
     this.mesh = new THREE.Mesh(g, this.mat);
     this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 3;
     scene.add(this.mesh);
     this.acc = 0;
   }

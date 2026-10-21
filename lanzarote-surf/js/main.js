@@ -3,7 +3,10 @@ import * as THREE from 'three';
 import { Sky } from './sky.js';
 import { WaveSystem, Ocean, Spray, Trail, waveScale } from './ocean.js';
 import { Island, GEO, ll2w, buildTerrain, buildVillages, buildBeach, Ambient } from './world.js';
-import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, LOOKS, J, setEnvMap } from './surfer.js';
+import { Ragdoll, poseStand, poseLie, poseSit, makeLineupSurfer, J, setEnvMap } from './surfer.js';
+import { normalizeLook, BOARD_FEEL, loadPaint, PAINT } from './looks.js';
+import { initCreator } from './creator.js';
+import { Reef, UW, patchObject } from './water.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -11,8 +14,6 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
-// inside the one-page game (surfing and the island in the same page)?
-if (!window.__SINGLE) try { if (window.parent !== window && window.parent.__LANZ_SHELL) window.__SINGLE = true; } catch (e) { /* not ours */ }
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const ss = (a, b, x) => { let t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
@@ -47,9 +48,9 @@ const SPOTS = [
   },
 ];
 const RIVALS = [
-  { name: 'Rayco', from: 'Caleta de Famara', look: { skin: '#3fb8ff', vest: '#ffd23d', shorts: '#16181d', hair: '#d9c48f', board: '#ffffff' } },
-  { name: 'Naira', from: 'La Santa', look: { skin: '#ff5fa2', vest: '#2ecc71', shorts: '#2b3150', hair: '#ffffff', board: '#1ec8ff' } },
-  { name: 'Yeray', from: 'Arrecife', look: { skin: '#7bd64a', vest: '#ff3d6e', shorts: '#1f3cff', hair: '#2b3150', board: '#ff3d6e' } },
+  { name: 'Rayco', from: 'Caleta de Famara', look: { skin: '#3fb8ff', eyes: 'happy', hair: 'short', hairColor: '#16181d', hat: 'cap', hatColor: '#ffffff', top: 'tee', topColor: '#ffd23d', topPattern: 'plain', bottomColor: '#16181d', board: { shape: 'shortboard', base: '#ffffff', accent: '#1ec8ff', design: 'stripes' } } },
+  { name: 'Naira', from: 'La Santa', look: { skin: '#ff5fa2', eyes: 'big', mouth: 'smile', hair: 'ponytail', hairColor: '#3b2a20', hat: 'none', glasses: 'sunnies', top: 'rash', topColor: '#2ecc71', topPattern: 'plain', bottom: 'short', bottomColor: '#2b3150', board: { shape: 'fish', base: '#1ec8ff', accent: '#ffffff', design: 'fade', fins: 'twin' } } },
+  { name: 'Yeray', from: 'Arrecife', look: { skin: '#7bd64a', eyes: 'dots', mouth: 'grin', beard: 'stubble', hair: 'spiky', hairColor: '#ffd23d', hat: 'none', top: 'wetsuit', topColor: '#16181d', bottom: 'wetsuit', bottomColor: '#16181d', board: { shape: 'shortboard', base: '#ff3d6e', accent: '#16181d', design: 'checker' } } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -61,7 +62,8 @@ const store = {
 };
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const settings = Object.assign({ time: 'morning', quality: isTouch ? 'low' : 'medium', music: true, sfx: true }, store.get('settings', {}));
-const look = Object.assign({ skin: LOOKS.skins[0], vest: LOOKS.vests[0], shorts: LOOKS.shorts[0], hair: LOOKS.hair[0], board: LOOKS.boards[0] }, store.get('look2', {}));
+const firstTime = !store.get('look3');
+const look = normalizeLook(store.get('look3') || store.get('look2') || {});
 const progress = Object.assign({ unlocked: 1, best: {} }, store.get('progress', {}));
 
 // ---------------------------------------------------------------------------
@@ -116,7 +118,8 @@ addEventListener('keydown', (e) => {
   if (!keys[e.code]) pressed[e.code] = true;
   keys[e.code] = true;
   if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
-  if (e.code === 'KeyC' && game.state === 'play') { camMode = (camMode + 1) % 3; toast(['Chase cam', 'Side cam', 'Drone cam'][camMode]); }
+  if (e.code === 'KeyC' && game.state === 'play') { fpv = false; camMode = (camMode + 1) % 3; toast(['Chase cam', 'Side cam', 'Drone cam'][camMode]); }
+  if (e.code === 'KeyV' && game.state === 'play') toggleView();
   if (e.code === 'KeyM') { settings.music = !settings.music; audio.setMusic(settings.music); store.set('settings', settings); syncSettingsUI(); }
   audio.start();
 });
@@ -138,6 +141,9 @@ let island, albedoTex, depthTex;
 let W = null; // current world
 let W_env = null;
 let camMode = 0;
+let fpv = false; // first person
+const firstPerson = () => fpv && (game.state === 'play' || game.state === 'pause');
+function toggleView() { fpv = !fpv; toast(fpv ? '👀 First person · V to switch back' : 'Third person'); }
 const game = {
   state: 'boot', mode: 'free', spot: null, time: 0, heatTime: 0, heatLen: 300, waves: [], best: 0, timeScale: 1, fade: 0,
   rivals: [], paused: false, msgT: 0,
@@ -166,6 +172,7 @@ async function boot() {
   albedoTex.needsUpdate = true;
   depthTex = island.depthTexture();
   setBoot(0.7, 'Building Famara…');
+  await loadPaint(store.get('paint', null));
   await nextFrame();
   setupSpot(SPOTS[0]);
   setBoot(0.9, 'Waxing boards…');
@@ -174,12 +181,13 @@ async function boot() {
   renderer.compile(W.scene, camera);
   setBoot(1, 'Surf’s up!');
   game.state = 'title';
-  const want = new URLSearchParams(window.__QUERY ?? location.search).get('spot') || (location.hash.match(/^#spot-(\w+)/) || [])[1];
+  const want = new URLSearchParams(location.search).get('spot') || (location.hash.match(/^#spot-(\w+)/) || [])[1];
   const sp = SPOTS.find((s) => s.id === want);
   setTimeout(() => {
     $('boot').classList.add('hidden');
-    if (sp) startSession(sp, 'free'); else showScreen('title');
-    if (window.__SINGLE) parent.postMessage({ ready: 'surf' }, '*');
+    if (sp) startSession(sp, 'free');
+    else if (firstTime) openCustom(true);
+    else showScreen('title');
   }, 350);
 }
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -238,24 +246,30 @@ function setupSpot(spot) {
   const q = settings.quality;
   const depthXf = new THREE.Vector4(GEO.XMIN - origin.x, GEO.ZMIN - origin.z, 1 / GEO.S, 1 / GEO.S);
   const ocean = new Ocean(scene, waves, { depthTex, depthXf, sky, gridA: q === 'low' ? 120 : q === 'high' ? 230 : 180, gridD: q === 'low' ? 220 : q === 'high' ? 420 : 320 });
-  const terrain = buildTerrain(island, origin, albedoTex, q);
+  const terrain = buildTerrain(island, origin, albedoTex, q, spot.id === 'famara' ? 0.25 : 1);
   scene.add(terrain);
+  UW.uUWSun.value = sky.u.uSunCol.value;
+  // the sea floor exactly as the terrain draws it (it deepens a little further out)
+  const seabed = (x, z) => { const h = island.h(x + origin.x, z + origin.z); return h < 0 ? Math.min(h, -0.8 - Math.hypot(x, z) * 0.0008) : h; };
+  const reef = new Reef(scene, spot, seabed, q);
   scene.add(buildVillages(island, origin, q));
   scene.add(buildBeach(island, origin, spot, q));
   const amb = new Ambient(scene, spot, island, origin);
   const spray = new Spray(scene, sky, q === 'low' ? 1400 : q === 'high' ? 5000 : 3200);
   const trail = new Trail(scene, sky);
   const rag = new Ragdoll(scene, look);
+  patchObject(rag.group); patchObject(rag.board);
   const floor = (x, z) => island.h(x + origin.x, z + origin.z);
   // locals sitting in the line-up (they are also your contest rivals)
   const locals = RIVALS.map((r, i) => {
     const sit = makeLineupSurfer(r.look, 'sit');
     const stand = makeLineupSurfer(r.look, 'stand');
     stand.visible = false;
+    patchObject(sit); patchObject(stand);
     scene.add(sit, stand);
     return { ...r, sit, stand, s: spot.peakS + (i - 1) * 16 + rand(-4, 4), u: spot.uBreak - 6 - i * 4, ph: rand(0, 6), riding: null, rideT: 0, cool: rand(5, 20), heat: [] };
   });
-  W = { scene, sky, waves, ocean, terrain, amb, spray, trail, rag, spot, origin, floor, locals };
+  W = { scene, sky, waves, ocean, terrain, amb, spray, trail, rag, spot, origin, floor, locals, reef, seabed, under: false };
   game.spot = spot;
   resetToLineup(true);
 }
@@ -298,7 +312,7 @@ function resetToLineup(instant) {
   S.s = sp.peakS + rand(-5, 5); S.u = sp.uBreak + 4;
   S.psi = psiOf(-sp.d.x, -sp.d.z); // facing out to sea
   S.V = 0; S.padSpeed = 0; S.padHeld = 0; S.wave = null; S.inTube = false; S.tubeT = 0; S.foamT = 0;
-  S.turn = 0; S.crouch = 0.3; S.vy = 0;
+  S.turn = 0; S.crouch = 0.3; S.vy = 0; S.diveT = 0; S.diveCD = 0;
   score.wave = 0; score.chain = []; score.chainPts = 0; score.mult = 1;
   W.trail.clear();
   const p = toXZ(S.s, S.u);
@@ -397,7 +411,7 @@ let acc = 0;
 
 function computeBoardMat() {
   const p = S.pos;
-  const nrm = surfNormal(p.x, p.z, _n);
+  const nrm = S.diveT > 0 && S.mode === 'lineup' ? _n.set(0, 1, 0) : surfNormal(p.x, p.z, _n);
   if (S.mode === 'air' || S.mode === 'airfail') {
     const e = new THREE.Euler(S.flip + clamp(S.vy * 0.03, -0.4, 0.4), S.launchPsi + S.spin, S.airRoll || 0, 'YXZ');
     S.boardMat.makeRotationFromEuler(e).setPosition(p);
@@ -465,24 +479,45 @@ function stepLineup(h, inp) {
   S.padPhase += h * (paddling ? 6.5 : Math.abs(turn) > 0.1 ? 4 : 0);
   // whitewater pushes you toward the beach
   const p = toXZ(S.s, S.u);
-  const foam = wv.foamAt(p.x, p.z);
-  if (foam > 0.35) { S.u += foam * 2.5 * h; S.washT = (S.washT || 0) + h; } else S.washT = 0;
+  const live = game.state === 'play';
+  const foam = live ? wv.foamAt(p.x, p.z) : 0;
+  // duck dive: push the nose under and let the wave roll over the top of you
+  S.diveCD = Math.max(0, (S.diveCD || 0) - h);
+  if (live && inp.jumpHit && !S.diveT && S.diveCD <= 0) startDive(p);
+  const diving = S.diveT > 0;
+  if (diving) {
+    S.diveT += h;
+    if (inp.jump) S.diveLen = Math.min(2.8, Math.max(S.diveLen, S.diveT + 0.6)); // hold to stay down longer
+    if (Math.random() < h * 40) W.spray.emit(S.pos.x + rand(-0.4, 0.4), S.pos.y + rand(0, 0.6), S.pos.z + rand(-0.4, 0.4), rand(-0.3, 0.3), rand(0.5, 1.5), rand(-0.3, 0.3), rand(0.04, 0.12), rand(0.6, 1.4), -0.15, 0.7);
+    if (S.diveT >= S.diveLen) endDive();
+  }
+  const push = diving ? 0.08 : 1;
+  if (foam > 0.35) {
+    S.u += foam * 4.5 * h * push;
+    S.washT = (S.washT || 0) + h;
+    if (!diving) { S.psi = wrapPi(S.psi + Math.sin(game.time * 3) * foam * 0.8 * h); if (S.washT > 0.25 && !S.washMsg) { S.washMsg = true; toast(`🌊 Washed in by the whitewater! ${isTouch ? 'DIVE' : 'SPACE'} to duck dive under it`); } }
+  } else { S.washT = 0; S.washMsg = false; }
   // after a mega wave has gone through, the jet-ski brings you back in to the normal peak
-  if (S.u < sp.uBreak - 60 && !wv.waves.some((w) => w.mega && !w.broke)) {
+  if (live && S.u < sp.uBreak - 60 && !wv.waves.some((w) => w.mega && !w.broke)) {
     S.towT = (S.towT || 0) + h;
     if (S.towT > 5) { S.towT = 0; game.fade = 1; S.u = sp.uBreak - 6; S.s = sp.peakS + rand(-8, 8); S.padSpeed = 0; toast('🚤 Back to the normal peak'); }
   } else S.towT = 0;
-  // after a mega wave has gone through, the jet-ski brings you back in to the normal peak
-  if (S.u < sp.uBreak - 60 && !wv.waves.some((w) => w.mega && !w.broke)) {
-    S.towT = (S.towT || 0) + h;
-    if (S.towT > 5) { S.towT = 0; game.fade = 1; S.u = sp.uBreak - 6; S.s = sp.peakS + rand(-8, 8); S.padSpeed = 0; toast('🚤 Back to the normal peak'); }
-  } else S.towT = 0;
-  if (foam > 1.1 && wv.waves.some((w) => w.mega && w.broke && Math.abs(w.uc - S.u) < 25)) { S.vel.set(sp.d.x * 9, 4, sp.d.z * 9); wipe('Caught inside by the MEGA WAVE!'); return; }
-  S.pos.set(p.x, wv.height(p.x, p.z), p.z);
+  if (!diving && foam > 1.1 && wv.waves.some((w) => w.mega && w.broke && Math.abs(w.uc - S.u) < 25)) { S.vel.set(sp.d.x * 9, 4, sp.d.z * 9); wipe('Caught inside by the MEGA WAVE!'); return; }
+  const hw = wv.height(p.x, p.z);
+  let pitch = 0;
+  if (diving) {
+    const ph = Math.min(1, S.diveT / S.diveLen);
+    const dep = 1.6 * Math.pow(Math.sin(Math.PI * ph), 0.55);
+    S.pos.set(p.x, (hw > 0 ? hw * 0.3 : hw) - dep, p.z);
+    pitch = -0.6 * Math.sin(Math.PI * clamp(ph / 0.45, 0, 1)) + 0.4 * Math.sin(Math.PI * clamp((ph - 0.55) / 0.45, 0, 1));
+  } else S.pos.set(p.x, hw, p.z);
   computeBoardMat();
-  const prone = paddling || Math.abs(S.padSpeed) > 0.4 || Math.abs(turn) > 0.1;
+  if (pitch) { pitchMat(S.boardMat, pitch); pitchMat(S.bodyMat, pitch); }
+  const prone = diving || paddling || Math.abs(S.padSpeed) > 0.4 || Math.abs(turn) > 0.1;
   S.prone = lerp(S.prone || 0, prone ? 1 : 0, 1 - Math.exp(-h * 5));
-  W.rag.active(h, S.bodyMat, poseSit, { t: game.time }, (o, q) => poseLie(o, { paddle: S.padPhase, paddleAmt: paddling || Math.abs(turn) > 0.1 ? 1 : 0 }), S.prone, 1);
+  W.rag.active(h, S.bodyMat, poseSit, { t: game.time }, (o, q) => poseLie(o, { paddle: S.padPhase, paddleAmt: !diving && (paddling || Math.abs(turn) > 0.1) ? 1 : 0 }), diving ? 1 : S.prone, 1);
+  if (diving) return; // can't catch a wave from under the water
+  if (!live) return;
   // catch a wave: paddling, roughly facing the beach, with the face under you
   const facing = f.x * sp.d.x + f.z * sp.d.z;
   for (const w of wv.waves) {
@@ -491,6 +526,34 @@ function stepLineup(h, inp) {
     if (L.Hh < 0.75 || L.br > 0.45) continue;
     if (L.du > 0.0 && L.du < 1.4 * L.Lf && paddling && facing > 0.2 && S.padSpeed > 0.9 && S.padHeld > 0.3) { catchWave(w, inp); return; }
   }
+}
+
+// tilt a board/body matrix nose-down (negative) or nose-up around its own right axis
+const _pm = new THREE.Matrix4(), _pv = new V3(), _pa = new V3();
+function pitchMat(m, a) {
+  _pv.setFromMatrixPosition(m);
+  _pa.setFromMatrixColumn(m, 0).normalize();
+  m.setPosition(0, 0, 0);
+  m.premultiply(_pm.makeRotationAxis(_pa, a));
+  m.setPosition(_pv);
+}
+function startDive(p) {
+  S.diveT = 1e-4; S.diveLen = 1.5;
+  S.diveWaves = W.waves.waves.filter((w) => w.uc < S.u && w.H > 0.7).map((w) => w.id);
+  audio.splash(0.35);
+  for (let i = 0; i < 14; i++) W.spray.emit(S.pos.x + rand(-0.5, 0.5), S.pos.y + 0.1, S.pos.z + rand(-0.5, 0.5), rand(-1.5, 1.5), rand(1, 3), rand(-1.5, 1.5), rand(0.2, 0.45), rand(0.4, 0.8), 1, 0.85);
+}
+function endDive() {
+  S.diveT = 0; S.diveCD = 0.35;
+  // did a wave roll over you while you were under?
+  const passed = W.waves.waves.filter((w) => S.diveWaves.includes(w.id) && w.uc > S.u - 1);
+  if (passed.length) {
+    const w = passed[0];
+    if (w.mega) popup('MEGA DUCK DIVE!', 1000, true);
+    else popup(w.broke ? 'DUCK DIVE!' : 'DUCK DIVE', w.broke ? 150 : 60, false);
+    audio.chime(1);
+  }
+  for (let i = 0; i < 10; i++) W.spray.emit(S.pos.x + rand(-0.4, 0.4), W.waves.height(S.pos.x, S.pos.z) + 0.1, S.pos.z + rand(-0.4, 0.4), rand(-1, 1), rand(1, 2.5), rand(-1, 1), rand(0.15, 0.35), rand(0.4, 0.7), 1, 0.8);
 }
 
 function catchWave(w, inp) {
@@ -524,7 +587,8 @@ function stepRide(h, inp) {
   // steering
   const ctrl = popping ? 0.4 : 1;
   const steer = inp.steer * ctrl;
-  const target = steer * (2.25 + 1.0 * S.crouch) * (S.V > 3 ? 1 : 0.55);
+  const feel = BOARD_FEEL[look.board.shape] || BOARD_FEEL.shortboard;
+  const target = steer * (2.25 + 1.0 * S.crouch) * (S.V > 3 ? 1 : 0.55) * feel.turn;
   S.turn = lerp(S.turn, target, 1 - Math.exp(-h * 10));
   S.psi -= S.turn * h;
   const f = fwdOf(S.psi);
@@ -539,14 +603,14 @@ function stepRide(h, inp) {
   const onFace = L.du > -0.6 && L.x < 1.3 && L.Hh > 0.5;
   const K = L.k;      // (1 for normal waves; bigger for the mega waves, so everything along the wave scales with it)
   const pocket = (1 - L.br) * L.st * ss(1.25, 0.05, L.x) * ss(-1.0, 0.0, L.du) * Math.exp(-Math.max(L.ds, 0) / (120 * K)) * (L.Hh > 0.6 ? 1 : 0);
-  S.V += (2.7 * pocket * Math.max(0, along) + 0.7 * Math.min(1, Math.max(0, -hu)) * (onFace ? 1 : 0)) * h;
+  S.V += feel.speed * (2.7 * pocket * Math.max(0, along) + 0.7 * Math.min(1, Math.max(0, -hu)) * (onFace ? 1 : 0)) * h;
   S.V -= (0.07 * S.V + 0.0045 * S.V * S.V) * h;
   S.V -= Math.abs(S.turn) * S.V * 0.085 * h;
   if (L.br > 0.4 && L.du > -1 && L.du < 2 * L.Lf) S.V -= 2.5 * h; // whitewater is slow
   S.pumpCD -= h;
   if (inp.up && !popping && S.pumpCD <= 0 && onFace && S.V < (w.mega ? 32 : 19)) { S.V += 1.3; S.pumpCD = 0.45; S.pumpA = 1; }
   S.pumpA = Math.max(0, S.pumpA - h * 3);
-  S.V = clamp(S.V, 0, w.mega ? 40 : 23);
+  S.V = clamp(S.V, 0, (w.mega ? 40 : 23) * feel.speed);
   // crouch: hold ↓, or automatically inside the tube
   const tubeAhead = L.T > 0.4 && L.x < L.T && L.ds > -3 * K && L.ds < 20 * K;
   const cT = inp.down ? 1 : tubeAhead ? 0.85 : 0.22 + 0.3 * Math.min(1, Math.abs(S.turn) / 2.5) + S.pumpA * 0.3;
@@ -848,7 +912,17 @@ function updateCamera(dt) {
   const sp = W.spot, wv = W.waves, a = sp.a, d = sp.d;
   const tp = new V3(), tl = new V3();
   let k = 4, minAbove = 0.8;
-  if (game.state === 'custom') {
+  camera.clearViewOffset();
+  if (game.state === 'paint') {
+    // looking down on the board from above, nose to the right like the paint canvas; the board sits in the top of the screen
+    const p = S.pos, f = fwdOf(S.psi);
+    const rx = -f.z, rz = f.x;
+    const sz = (W.rag.board.userData.length || 1.9) / 1.9;
+    tp.set(p.x + rx * 1.1 * sz, p.y + 2.9 * sz, p.z + rz * 1.1 * sz);
+    tl.set(p.x, p.y, p.z);
+    k = 4;
+    camera.setViewOffset(innerWidth, innerHeight, 0, innerHeight * 0.3, innerWidth, innerHeight);
+  } else if (game.state === 'custom') {
     // surfer on the left of the screen, the customise panel on the right
     const p = S.pos, f = fwdOf(S.psi);
     const rx = -f.z, rz = f.x;
@@ -863,6 +937,8 @@ function updateCamera(dt) {
     tp.set(c.x, 2.4 + Math.sin(t * 0.07) * 0.8, c.z);
     tl.set(l.x, 3.5, l.z);
     k = 1.2;
+  } else if (firstPerson()) {
+    return fpCamera(dt);
   } else {
     const pos = S.mode === 'wipe' || (S.mode === 'ended' && W.rag.limp) ? W.rag.P[J.pelvis] : S.pos;
     if (S.mode === 'lineup') {
@@ -936,7 +1012,75 @@ function updateCamera(dt) {
   const fovT = 62 + (S.mode === 'ride' || S.mode === 'air' ? clamp((S.V - 8) * 0.8, 0, 9) : 0) + cam.tube * 6;
   cam.fov = lerp(cam.fov, fovT, 1 - Math.exp(-dt * 2));
   camera.fov = cam.fov;
+  camera.near = 0.3; fp.ok = false;
   camera.updateProjectionMatrix();
+}
+
+// first person: your eyes are in the ragdoll's head, so you wobble, duck dive and tumble with it
+const fp = { fwd: new V3(0, 0, -1), pos: new V3(), ok: false };
+function fpCamera(dt) {
+  const P = W.rag.P, d = W.spot.d;
+  const head = P[J.head], neck = P[J.neck];
+  const fwd = new V3(), upv = new V3(0, 1, 0);
+  let k = 10;
+  if (W.rag.limp) {
+    upv.subVectors(head, neck).normalize();
+    const right = new V3().subVectors(P[J.rSh], P[J.lSh]).normalize();
+    fwd.crossVectors(upv, right).normalize();
+    k = 6;
+  } else if (S.mode === 'ride' || S.mode === 'popup' || S.mode === 'air') {
+    fwd.setFromMatrixColumn(S.boardMat, 2).negate();
+    if (S.mode !== 'air') { fwd.y *= 0.4; fwd.addScaledVector(new V3(-d.x, 0, -d.z), 0.35); }
+    fwd.y -= 0.12; fwd.normalize();
+    const bu = new V3().setFromMatrixColumn(S.boardMat, 1);
+    upv.lerp(bu, S.mode === 'air' ? 0.8 : 0.3).normalize();
+  } else {
+    const f = fwdOf(S.psi);
+    fwd.set(f.x, S.diveT > 0 ? -0.35 : 0.02, f.z).normalize();
+  }
+  const eye = head.clone().addScaledVector(upv, 0.06).addScaledVector(fwd, 0.1);
+  if (!fp.ok) { fp.pos.copy(eye); fp.fwd.copy(fwd); fp.ok = true; }
+  fp.pos.lerp(eye, 1 - Math.exp(-dt * 30));
+  fp.fwd.lerp(fwd, 1 - Math.exp(-dt * k)).normalize();
+  camera.position.copy(fp.pos);
+  if (cam.shake > 0) {
+    camera.position.x += (Math.random() - 0.5) * cam.shake * 0.25;
+    camera.position.y += (Math.random() - 0.5) * cam.shake * 0.25;
+    cam.shake = Math.max(0, cam.shake - dt * 1.5);
+  }
+  camera.up.copy(upv);
+  camera.lookAt(fp.pos.clone().add(fp.fwd));
+  camera.up.set(0, 1, 0);
+  cam.pos.copy(fp.pos); cam.look.copy(fp.pos).addScaledVector(fp.fwd, 6);
+  const fovT = 80 + (S.mode === 'ride' || S.mode === 'air' ? clamp((S.V - 8) * 0.8, 0, 10) : 0);
+  cam.fov = lerp(cam.fov, fovT, 1 - Math.exp(-dt * 3));
+  camera.fov = cam.fov;
+  camera.near = 0.06;
+  camera.updateProjectionMatrix();
+}
+
+// above or under the surface: under it, the sky goes, everything turns blue and you hear it muffled
+let savedFog = null;
+function updateUnderwater() {
+  const hw = W.waves.height(camera.position.x, camera.position.z);
+  const under = camera.position.y < hw - 0.03;
+  if (under === W.under) return;
+  W.under = under;
+  UW.uCamUnder.value = under ? 1 : 0;
+  const sky = W.sky;
+  if (under) {
+    savedFog = { col: sky.u.uFogCol.value.clone(), den: sky.u.uFogDen.value, sden: W.scene.fog.density };
+    sky.u.uFogCol.value.copy(UW.uWaterCol.value).multiplyScalar(1.4); sky.u.uFogDen.value = 0.06;
+    W.scene.fog.density = 0;
+    W.scene.background = UW.uWaterCol.value;
+    sky.mesh.visible = false;
+  } else if (savedFog) {
+    sky.u.uFogCol.value.copy(savedFog.col); sky.u.uFogDen.value = savedFog.den; W.scene.fog.density = savedFog.sden;
+    W.scene.background = null;
+    sky.mesh.visible = true;
+  }
+  $('underwater').classList.toggle('on', under);
+  if (audio.setUnder) audio.setUnder(under);
 }
 
 // ---------------------------------------------------------------------------
@@ -1070,6 +1214,9 @@ function updateHUD(dt) {
       const tt = Math.max(0, (S.u - mega.uc) / mega.c);
       hint = tt < 4 ? `🌊 MEGA WAVE! PADDLE ${isTouch ? '▲' : '↑'} NOW!  (${Math.round(mega.Hmax * 3.28)} ft)` : `🌊 MEGA WAVE coming in ${Math.ceil(tt)}s · ${Math.round(mega.Hmax * 3.28)} ft · face the beach and get ready`;
       $('hint').classList.toggle('urgent', tt < 6);
+    } else if (next && next.broke && best < 3 && !(S.diveT > 0)) {
+      hint = `Whitewater! ${isTouch ? 'Tap DIVE' : 'SPACE'} to duck dive under it (hold to stay down)`;
+      $('hint').classList.toggle('urgent', best < 1.6);
     } else if (next && best < 9) {
       const ft = Math.round(next.Hmax * 3.28);
       const L = wv.local(next, S.s, next.uc);
@@ -1079,7 +1226,7 @@ function updateHUD(dt) {
     } else {
       const away = Math.abs(S.s - W.spot.peakS) > 60 || Math.abs(S.u - W.spot.uBreak) > 50;
       hint = away ? 'Paddle back out to the other surfers to catch waves'
-        : isTouch ? 'Waiting for a set…  ◀ ▶ turn  ·  ▲ paddle' : 'Waiting for a set…  ← → turn  ·  ↑ paddle';
+        : isTouch ? 'Waiting for a set…  ◀ ▶ turn  ·  ▲ paddle  ·  DIVE duck dive' : 'Waiting for a set…  ← → turn  ·  ↑ paddle  ·  SPACE duck dive  ·  V first person';
       $('hint').classList.remove('urgent');
     }
   } else if (S.mode === 'popup' || S.mode === 'ride') {
@@ -1096,7 +1243,6 @@ let last = performance.now();
 let lastMode = '';
 function frame(now) {
   requestAnimationFrame(frame);
-  if (game.paused) { last = now; return; }        // (exploring the island)
   let dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!W) return;
@@ -1112,9 +1258,9 @@ function frame(now) {
   acc += sdt;
   let steps = 0;
   while (acc >= H && steps < 10) {
-    if (playing || game.state === 'title' || game.state === 'select' || game.state === 'custom') {
+    if (playing || game.state === 'title' || game.state === 'select' || game.state === 'custom' || game.state === 'paint') {
       if (playing) fixedStep(H, inp);
-      else { W.waves.update(H); game.time += H; stepLocals(H); if (game.state === 'custom') stepLineup(H, inp); }
+      else { W.waves.update(H); game.time += H; stepLocals(H); if (game.state === 'custom' || game.state === 'paint') stepLineup(H, inp); }
     }
     acc -= H; steps++;
     if (steps === 1) { inp.jumpHit = false; }
@@ -1129,7 +1275,8 @@ function frame(now) {
   const t = W.waves.t;
   if (W.rag) W.rag.render(S.boardMat);
   const showSurfer = playing || game.state === 'pause' || game.state === 'results' || game.state === 'custom';
-  W.rag.group.visible = showSurfer; W.rag.board.visible = showSurfer; W.rag.leash.visible = showSurfer && (S.mode === 'wipe' || S.mode === 'ended');
+  W.rag.group.visible = showSurfer && game.state !== 'paint'; W.rag.head.visible = !firstPerson();
+  for (const i of [0, 1, 3, 4]) W.rag.caps[i].m.visible = !firstPerson(); // (your own shoulders would block the view) W.rag.board.visible = showSurfer || game.state === 'paint'; W.rag.leash.visible = showSurfer && (S.mode === 'wipe' || S.mode === 'ended');
   renderLocals();
   W.amb.update(t, W.waves);
   emitWaveSpray(sdt);
@@ -1139,7 +1286,9 @@ function frame(now) {
   const f = fwdOf(S.psi);
   W.trail.update(sdt, W.waves, { on: tailOn, x: S.pos.x - f.x * 0.9, z: S.pos.z - f.z * 0.9, dirx: f.x, dirz: f.z, width: 0.25 });
   updateCamera(dt);
-  W.ocean.update(t, (game.state === 'title' || game.state === 'select' || game.state === 'custom') ? cam.look : S.pos);
+  W.reef.update(sdt, W.waves.t, S.mode === 'wipe' ? W.rag.P[J.pelvis] : S.pos, W.waves);
+  updateUnderwater();
+  W.ocean.update(t, (game.state === 'title' || game.state === 'select' || game.state === 'custom' || game.state === 'paint') ? cam.look : S.pos);
   W.sky.update(camera, t);
   // audio layers
   if (audio.ok) {
@@ -1170,7 +1319,7 @@ function bankTick(dt) {
 // screens / menus
 // ---------------------------------------------------------------------------
 function showScreen(id) {
-  for (const s of ['title', 'select', 'pause', 'results', 'howto', 'custom']) $(s).classList.toggle('hidden', s !== id);
+  for (const s of ['title', 'select', 'pause', 'results', 'howto', 'custom', 'paint']) $(s).classList.toggle('hidden', s !== id);
   if (id) { $('hud').classList.add('hidden'); $('touch').classList.add('hidden'); }
   else if (game.state === 'play') { $('hud').classList.remove('hidden'); $('touch').classList.toggle('hidden', !isTouch); }
 }
@@ -1238,14 +1387,21 @@ function drawIslandMap() {
 }
 function highlightPin(i) { document.querySelectorAll('.pin').forEach((p) => p.classList.toggle('on', +p.dataset.i === i)); }
 
-// customise
-function buildCustom() {
-  const rows = [['Body', 'skins', 'skin'], ['Hawaiian shirt', 'vests', 'vest'], ['Board shorts', 'shorts', 'shorts'], ['Bucket hat', 'hair', 'hair'], ['Board', 'boards', 'board']];
-  $('customRows').innerHTML = rows.map(([label, list, key]) => `<div class="crow"><span>${label}</span><div class="sw">${LOOKS[list].map((c) => `<button data-k="${key}" data-c="${c}" style="background:${c}" class="${look[key] === c ? 'on' : ''}"></button>`).join('')}</div></div>`).join('');
-  $('customRows').querySelectorAll('button').forEach((b) => b.onclick = () => {
-    look[b.dataset.k] = b.dataset.c; store.set('look2', look); audio.click();
-    W.rag.setLook(look); buildCustom();
-  });
+// customise: the surfer creator and the spray paint workshop
+const creator = initCreator({
+  look,
+  save: (l) => store.set('look3', l),
+  savePaint: (url) => store.set('paint', url),
+  applyLook: () => { if (W) { W.rag.setLook(look); patchObject(W.rag.group); patchObject(W.rag.board); W.rag.render(S.boardMat); } },
+  redrawBoard: () => { if (W && W.rag.board.userData.redraw) W.rag.board.userData.redraw(); },
+  click: () => audio.click(),
+  onPaintMode: (on) => { game.state = on ? 'paint' : 'custom'; for (let i = 0; i < 4; i++) updateCamera(5); },
+});
+function openCustom(first) {
+  game.state = 'custom';
+  creator.open(first);
+  showScreen('custom');
+  previewSurfer(true);
 }
 
 function syncSettingsUI() {
@@ -1264,7 +1420,7 @@ document.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click
 $('btnFree').onclick = () => { audio.start(); audio.click(); openSelect('free'); };
 $('btnContest').onclick = () => { audio.start(); audio.click(); openSelect('contest'); };
 $('btnHow').onclick = () => { audio.start(); audio.click(); showScreen('howto'); };
-$('btnCustom').onclick = () => { audio.start(); audio.click(); game.state = 'custom'; buildCustom(); showScreen('custom'); previewSurfer(true); };
+$('btnCustom').onclick = () => { audio.start(); audio.click(); openCustom(false); };
 document.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { audio.click(); game.state = 'title'; previewSurfer(false); showScreen('title'); });
 $('btnResume').onclick = () => togglePause();
 $('btnQuit').onclick = () => { game.state = 'title'; showScreen('title'); $('hud').classList.add('hidden'); };
@@ -1273,22 +1429,12 @@ $('btnAgain').onclick = () => startSession(W.spot, game.mode);
 $('btnNextSpot').onclick = () => { const i = SPOTS.indexOf(W.spot); startSession(SPOTS[i + 1], 'contest'); };
 $('btnResMenu').onclick = () => { game.state = 'title'; showScreen('title'); $('hud').classList.add('hidden'); };
 $('btnPause').onclick = () => togglePause();
-// the open-world island game (Lanzarote Life) lives in life/: leave the water at this spot's surf shack
-const toIsland = () => {
-  audio.click(); $('fader').style.opacity = 1;
-  const q = W && game.state !== 'title' ? '?at=' + W.spot.id : '';
-  // (in the one-file version both games live in the same page: ask it to switch)
-  if (window.__LANZ_GO) window.__LANZ_GO('life', q);              // (the same page swaps to the island)
-  else if (window.__SINGLE) parent.postMessage({ go: 'life', q }, '*');
-  else if (window.__NAV) location.href = window.__NAV.life + (q ? '#at-' + W.spot.id : '');
-  else location.href = 'life/' + q;
-};
-$('btnIsland').onclick = toIsland;
-$('btnIsland2').onclick = toIsland;
+$('btnView').onclick = (e) => { e.stopPropagation(); if (game.state === 'play') toggleView(); };
+
 
 // customise preview: the surfer sits in the line-up right in front of the camera
 function previewSurfer(on) {
-  if (on) { resetToLineup(true); cam.pos.copy(S.pos).add(new V3(0, 3, 0)); }
+  if (on) { resetToLineup(true); for (let i = 0; i < 4; i++) updateCamera(5); }
 }
 
 syncSettingsUI();
@@ -1313,17 +1459,3 @@ window.__surf = {
     return { mode: S.mode, s: S.s, u: S.u, V: S.V, wave: score.wave };
   },
 };
-
-// one-page game: the page pauses us while you explore the island, and tells us which spot to paddle out at
-if (window.__SINGLE) addEventListener('message', (e) => {
-  const m = e.data || {};
-  if (m.pause !== undefined) {
-    game.paused = !!m.pause;
-    try { if (audio.ctx) (game.paused ? audio.ctx.suspend() : audio.ctx.resume()).catch(() => {}); } catch (err) { /* ignore */ }
-    if (!game.paused) last = performance.now();
-  }
-  if (m.arrive !== undefined) {
-    const sp = SPOTS.find((s) => s.id === new URLSearchParams(m.arrive).get('spot'));
-    if (sp && W) { game.fade = 1; startSession(sp, 'free'); }
-  }
-});
