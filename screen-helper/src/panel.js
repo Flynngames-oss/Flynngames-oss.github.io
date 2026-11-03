@@ -24,22 +24,34 @@ async function loadSettings() {
   state.model = s.model || state.model;
   state.mode = s.mode || state.mode;
   $('apiKey').value = state.apiKey;
-  $('model').value = state.model;
+  setModel(state.model);
   setMode(state.mode);
   if (!state.apiKey) $('settings').classList.remove('hidden');
 }
 $('openSettings').onclick = () => $('settings').classList.toggle('hidden');
 $('saveSettings').onclick = async () => {
   state.apiKey = $('apiKey').value.trim();
-  state.model = $('model').value;
   await chrome.storage.local.set({ apiKey: state.apiKey, model: state.model });
   $('settings').classList.add('hidden');
 };
+const MODEL_NAMES = { 'claude-opus-5-5': 'Claude Opus 5.5', 'claude-sonnet-5-5': 'Claude Sonnet 5.5', 'claude-haiku-5-5': 'Claude Haiku 5.5' };
+function setModel(m) {
+  state.model = MODEL_NAMES[m] ? m : 'claude-opus-5-5';
+  $('model').value = state.model;
+  for (const b of document.querySelectorAll('#models button')) b.classList.toggle('on', b.dataset.model === state.model);
+  $('modelLabel').textContent = MODEL_NAMES[state.model];
+}
+for (const b of document.querySelectorAll('#models button')) b.onclick = () => setModel(b.dataset.model);
+$('showKey').onclick = () => { const i = $('apiKey'); i.type = i.type === 'password' ? 'text' : 'password'; };
 function setMode(m) {
   state.mode = m;
-  for (const b of document.querySelectorAll('.mode button')) b.classList.toggle('on', b.dataset.mode === m);
+  let on = null;
+  for (const b of document.querySelectorAll('.mode button')) { b.classList.toggle('on', b.dataset.mode === m); if (b.dataset.mode === m) on = b; }
+  const pill = document.querySelector('.mode .pill');
+  if (on && pill) { pill.style.width = on.offsetWidth + 'px'; pill.style.transform = `translateX(${on.offsetLeft - 2}px)`; }
   chrome.storage.local.set({ mode: m });
 }
+addEventListener('resize', () => setMode(state.mode));
 for (const b of document.querySelectorAll('.mode button')) b.onclick = () => setMode(b.dataset.mode);
 
 // ------------------------------------------------------------------ screenshots
@@ -73,13 +85,24 @@ async function snap(kind) {
   }
   state.shot = Object.assign(await prepare(res.dataUrl, res.rect), { title: res.title });
   $('attachImg').src = state.shot.url;
-  $('attachTxt').textContent = (res.rect ? 'Area of ' : 'Screen: ') + (res.title || 'this tab');
+  $('attachTxt').textContent = (res.rect ? 'Area of ' : '') + (res.title || 'This tab');
+  $('attachSize').textContent = `${res.rect ? 'Selected area' : 'Whole screen'} · ${state.shot.w}×${state.shot.h}`;
   $('attach').classList.remove('hidden');
   $('q').focus();
+  return true;
 }
 $('snapFull').onclick = () => snap('capture');
 $('snapArea').onclick = () => snap('select');
 $('attachX').onclick = () => { state.shot = null; $('attach').classList.add('hidden'); };
+// suggestion chips: snap the screen and ask straight away
+for (const b of document.querySelectorAll('#suggest button')) b.onclick = async () => {
+  $('q').value = b.dataset.q;
+  if (!state.shot && !(await snap('capture'))) return;
+  send();
+};
+// grow the text box as you type
+const grow = () => { const q = $('q'); q.style.height = 'auto'; q.style.height = Math.min(140, q.scrollHeight) + 'px'; };
+$('q').addEventListener('input', grow);
 
 // ------------------------------------------------------------------ chat rendering
 function esc(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -106,23 +129,36 @@ function md(src) {
   });
   return out.join('');
 }
+const SVG = (id) => `<svg><use href="#${id}"/></svg>`;
 function addMsg(kind, text, img) {
   $('empty').classList.add('hidden');
+  const row = document.createElement('div');
+  row.className = 'row ' + (kind === 'user' ? 'user' : 'bot');
+  if (kind !== 'user') { const av = document.createElement('div'); av.className = 'av'; av.innerHTML = SVG('i-spark'); row.appendChild(av); }
+  const col = document.createElement('div'); col.style.cssText = 'display:flex;flex-direction:column;min-width:0;' + (kind === 'user' ? 'align-items:flex-end;max-width:86%' : 'flex:1');
   const d = document.createElement('div');
   d.className = 'msg ' + kind;
   if (img) { const i = document.createElement('img'); i.src = img; d.appendChild(i); }
   const body = document.createElement('div');
   if (kind === 'user') body.textContent = text; else body.innerHTML = md(text);
   d.appendChild(body);
-  $('chat').appendChild(d);
+  col.appendChild(d); row.appendChild(col);
+  $('chat').appendChild(row);
   $('chat').scrollTop = $('chat').scrollHeight;
   return body;
+}
+function addCopy(body, text) {
+  const col = body.parentElement.parentElement;
+  const t = document.createElement('div'); t.className = 'tools';
+  const b = document.createElement('button'); b.innerHTML = SVG('i-copy') + 'Copy';
+  b.onclick = async () => { try { await navigator.clipboard.writeText(text); b.innerHTML = SVG('i-check') + 'Copied'; setTimeout(() => { b.innerHTML = SVG('i-copy') + 'Copy'; }, 1500); } catch (e) { /* ignore */ } };
+  t.appendChild(b); col.appendChild(t);
 }
 $('newChat').onclick = () => {
   if (state.busy) return;
   state.history = []; state.shot = null;
   $('attach').classList.add('hidden');
-  for (const m of [...document.querySelectorAll('.msg')]) m.remove();
+  for (const m of [...document.querySelectorAll('.row')]) m.remove();
   $('empty').classList.remove('hidden');
 };
 
@@ -131,17 +167,17 @@ async function send() {
   if (state.busy) return;
   const text = $('q').value.trim();
   if (!text && !state.shot) return;
-  if (!state.apiKey) { $('settings').classList.remove('hidden'); $('apiKey').focus(); return; }
+  if (!state.apiKey) { $('settings').classList.remove('hidden'); $('apiKey').focus(); $('settings').querySelector('.keyrow').classList.add('flash'); return; }
   const content = [];
   if (state.shot) content.push({ type: 'image', source: { type: 'base64', media_type: state.shot.type, data: state.shot.data } });
   content.push({ type: 'text', text: text || 'Can you help me with what is on my screen?' });
   addMsg('user', text || '(screenshot)', state.shot && state.shot.url);
   state.history.push({ role: 'user', content });
-  state.shot = null; $('attach').classList.add('hidden'); $('q').value = '';
+  state.shot = null; $('attach').classList.add('hidden'); $('q').value = ''; grow();
   state.busy = true; $('send').disabled = true;
 
   const out = addMsg('bot', '');
-  out.classList.add('typing');
+  out.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
   let txt = '';
   try {
     const client = new Anthropic({ apiKey: state.apiKey, dangerouslyAllowBrowser: true });
@@ -158,6 +194,7 @@ async function send() {
     for await (const ev of stream) {
       if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
         txt += ev.delta.text;
+        out.classList.add('typing');
         out.innerHTML = md(txt);
         $('chat').scrollTop = $('chat').scrollHeight;
       }
@@ -171,6 +208,7 @@ async function send() {
       state.history.push({ role: 'assistant', content: final.content });
     }
     out.innerHTML = md(txt || '(no answer)');
+    if (txt) addCopy(out, txt);
   } catch (e) {
     state.history.pop();
     out.parentElement.classList.replace('bot', 'err');
@@ -193,4 +231,4 @@ function explainError(e) {
 $('send').onclick = send;
 $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 
-loadSettings();
+loadSettings().then(() => requestAnimationFrame(() => setMode(state.mode)));

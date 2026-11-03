@@ -6,52 +6,97 @@
 <link rel="stylesheet" href="panel.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l1.2-1.6A1.5 1.5 0 0 1 10.5 4h3a1.5 1.5 0 0 1 1.2.6L15.9 6h1.6A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-crop" viewBox="0 0 24 24"><path d="M7 3v12a2 2 0 0 0 2 2h12M3 7h12a2 2 0 0 1 2 2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.3 1a7.5 7.5 0 0 0-2.6-1.5L14.2 2.6h-4l-.4 2.5a7.5 7.5 0 0 0-2.6 1.5l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.3-1a7.5 7.5 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2.6-1.5l2.3 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9.5 4A3 3 0 0 0 6.6 6.3 3 3 0 0 0 4.5 11a3 3 0 0 0 1 5.3A3 3 0 0 0 9.5 20h.5V4zM14.5 4a3 3 0 0 1 2.9 2.3 3 3 0 0 1 2.1 4.7 3 3 0 0 1-1 5.3A3 3 0 0 1 14.5 20H14V4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.7L12 17l-1.9-5.3L4.5 10l5.6-1.6zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="currentColor"/></symbol>
+</svg>
+
+<div class="glow" aria-hidden="true"></div>
+
 <header>
-  <div class="brand"><img src="icons/32.png" alt=""><b>Screen Helper</b></div>
+  <div class="brand">
+    <div class="logo"><svg><use href="#i-spark"/></svg></div>
+    <div><b>Screen Helper</b><small id="modelLabel">Claude Opus 5.5</small></div>
+  </div>
   <div class="hbtns">
-    <button id="newChat" title="New chat">＋ New</button>
-    <button id="openSettings" title="Settings">⚙️</button>
+    <button id="newChat" class="icon" title="New chat"><svg><use href="#i-plus"/></svg></button>
+    <button id="openSettings" class="icon" title="Settings"><svg><use href="#i-gear"/></svg></button>
   </div>
 </header>
 
-<section id="settings" class="hidden">
-  <h3>Settings</h3>
-  <label>Anthropic API key
-    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
-  </label>
-  <p class="small">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>. It's saved only in this browser. Each question costs a tiny bit (about 1 cent with a screenshot).</p>
-  <label>Model
-    <select id="model">
-      <option value="claude-opus-5-5">Claude Opus 5.5 (smartest)</option>
-      <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (fast)</option>
-      <option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest, cheapest)</option>
+<section id="settings" class="sheet hidden">
+  <div class="sheet-card">
+    <h3>Settings</h3>
+    <label class="lbl" for="apiKey">Anthropic API key</label>
+    <div class="keyrow">
+      <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+      <button id="showKey" class="icon ghost" title="Show / hide"><svg><use href="#i-eye"/></svg></button>
+    </div>
+    <p class="hint">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>. It's saved only in this browser. A question with a screenshot costs about 1 cent.</p>
+    <span class="lbl">Model</span>
+    <div class="models" id="models">
+      <button data-model="claude-opus-5-5"><b>Opus 5.5</b><small>Smartest</small></button>
+      <button data-model="claude-sonnet-5-5"><b>Sonnet 5.5</b><small>Fast</small></button>
+      <button data-model="claude-haiku-5-5"><b>Haiku 5.5</b><small>Fastest</small></button>
+    </div>
+    <select id="model" class="hidden">
+      <option value="claude-opus-5-5">Claude Opus 5.5</option>
+      <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+      <option value="claude-haiku-5-5">Claude Haiku 5.5</option>
     </select>
-  </label>
-  <button id="saveSettings" class="primary">Save</button>
+    <button id="saveSettings" class="primary wide">Save</button>
+  </div>
 </section>
 
 <main id="chat">
   <div id="empty" class="empty">
-    <div class="big">📸</div>
-    <p><b>Snap your screen, then ask anything.</b></p>
-    <p class="small">“How do I solve this?” · “What does this word mean?” · “Why is my code broken?” · “Summarise this page”</p>
+    <div class="orb"><svg><use href="#i-spark"/></svg></div>
+    <h1>Hey! What's on your screen?</h1>
+    <p>Snap your screen, ask anything, and I'll explain it.</p>
+    <div class="steps">
+      <div><span>1</span>Snap the screen or an area</div>
+      <div><span>2</span>Ask your question</div>
+      <div><span>3</span>Get it explained</div>
+    </div>
+    <div class="suggest" id="suggest">
+      <button data-q="How do I solve this? Walk me through it.">🧮 How do I solve this?</button>
+      <button data-q="What does this mean? Explain it simply.">📖 What does this mean?</button>
+      <button data-q="Why isn't my code working, and how do I fix it?">🐛 Why is my code broken?</button>
+      <button data-q="Summarise this page in a few bullet points.">📝 Summarise this page</button>
+    </div>
   </div>
 </main>
 
 <footer>
-  <div id="attach" class="attach hidden"><img id="attachImg" alt="screenshot"><span id="attachTxt"></span><button id="attachX" title="Remove">✕</button></div>
-  <div class="snaps">
-    <button id="snapFull">📸 Whole screen</button>
-    <button id="snapArea">✂️ Select area</button>
-    <div class="mode" role="radiogroup">
-      <button data-mode="explain" class="on" title="Explains step by step so you learn it">🧠 Explain</button>
-      <button data-mode="quick" title="Short, direct answer">⚡ Quick</button>
+  <div class="composer">
+    <div id="attach" class="attach hidden">
+      <img id="attachImg" alt="screenshot">
+      <div class="meta"><b id="attachTxt"></b><small id="attachSize"></small></div>
+      <button id="attachX" class="icon ghost small" title="Remove"><svg><use href="#i-x"/></svg></button>
+    </div>
+    <textarea id="q" rows="1" placeholder="Ask about your screen…"></textarea>
+    <div class="bar">
+      <button id="snapFull" class="tool" title="Screenshot the whole tab"><svg><use href="#i-camera"/></svg><span>Screen</span></button>
+      <button id="snapArea" class="tool" title="Drag a box around part of the page"><svg><use href="#i-crop"/></svg><span>Area</span></button>
+      <div class="mode" role="radiogroup" id="modeSeg">
+        <i class="pill" aria-hidden="true"></i>
+        <button data-mode="explain" class="on" title="Explains step by step so you learn it"><svg><use href="#i-brain"/></svg>Explain</button>
+        <button data-mode="quick" title="Short, direct answer"><svg><use href="#i-bolt"/></svg>Quick</button>
+      </div>
+      <button id="send" class="send" title="Send (Enter)"><svg><use href="#i-send"/></svg></button>
     </div>
   </div>
-  <div class="ask">
-    <textarea id="q" rows="2" placeholder="Ask a question about your screen…"></textarea>
-    <button id="send" class="primary" title="Send (Enter)">➤</button>
-  </div>
+  <div class="foot">Enter to send · Shift+Enter for a new line · Alt+Shift+S to open</div>
 </footer>
 <script src="panel.js"></script>
 </body>
