@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Screen Helper</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header>
+  <div class="brand"><img src="icons/32.png" alt=""><b>Screen Helper</b></div>
+  <div class="hbtns">
+    <button id="newChat" title="New chat">＋ New</button>
+    <button id="openSettings" title="Settings">⚙️</button>
+  </div>
+</header>
+
+<section id="settings" class="hidden">
+  <h3>Settings</h3>
+  <label>Anthropic API key
+    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
+  </label>
+  <p class="small">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>. It's saved only in this browser. Each question costs a tiny bit (about 1 cent with a screenshot).</p>
+  <label>Model
+    <select id="model">
+      <option value="claude-opus-5-5">Claude Opus 5.5 (smartest)</option>
+      <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (fast)</option>
+      <option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest, cheapest)</option>
+    </select>
+  </label>
+  <button id="saveSettings" class="primary">Save</button>
+</section>
+
+<main id="chat">
+  <div id="empty" class="empty">
+    <div class="big">📸</div>
+    <p><b>Snap your screen, then ask anything.</b></p>
+    <p class="small">“How do I solve this?” · “What does this word mean?” · “Why is my code broken?” · “Summarise this page”</p>
+  </div>
+</main>
+
+<footer>
+  <div id="attach" class="attach hidden"><img id="attachImg" alt="screenshot"><span id="attachTxt"></span><button id="attachX" title="Remove">✕</button></div>
+  <div class="snaps">
+    <button id="snapFull">📸 Whole screen</button>
+    <button id="snapArea">✂️ Select area</button>
+    <div class="mode" role="radiogroup">
+      <button data-mode="explain" class="on" title="Explains step by step so you learn it">🧠 Explain</button>
+      <button data-mode="quick" title="Short, direct answer">⚡ Quick</button>
+    </div>
+  </div>
+  <div class="ask">
+    <textarea id="q" rows="2" placeholder="Ask a question about your screen…"></textarea>
+    <button id="send" class="primary" title="Send (Enter)">➤</button>
+  </div>
+</footer>
+<script src="panel.js"></script>
+</body>
+</html>

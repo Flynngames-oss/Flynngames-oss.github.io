@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Screen Helper",
+  "version": "1.0.0",
+  "description": "Snap your screen and ask questions about it. Explains things step by step.",
+  "action": { "default_title": "Open Screen Helper", "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" } },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "side_panel": { "default_path": "panel.html" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "commands": {
+    "_execute_action": { "suggested_key": { "default": "Alt+Shift+S" }, "description": "Open Screen Helper" }
+  }
+}
