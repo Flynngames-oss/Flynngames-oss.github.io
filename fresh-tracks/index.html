@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Fresh Tracks</title>
+<meta name="description" content="A realistic 3D snowboarding game: trails, jump lines, superpipe, big air, Winter Games events, chairlifts, a full gear design studio with your own images, and multiplayer with friends.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@500;600;700;800&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script async src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="boot">
+  <div class="boot-inner">
+    <div class="logo"><span class="l1">FRESH</span><span class="l2">TRACKS</span></div>
+    <div class="bar"><div id="bootFill"></div></div>
+    <div id="bootText">Loading…</div>
+  </div>
+</div>
+
+<!-- title -->
+<div id="title" class="screen hidden">
+  <div class="title-col">
+    <div class="logo big"><span class="l1">FRESH</span><span class="l2">TRACKS</span></div>
+    <div class="tag">Snowboard the whole mountain. Design your own gear. Ride with friends.</div>
+    <div class="menu">
+      <button class="mbtn primary" data-go="freeride"><b>Free Ride</b><small>Trails, trees, jump lines, park and pipe</small></button>
+      <button class="mbtn" data-go="games"><b>Winter Games</b><small>Olympic events: halfpipe, slopestyle, big air, slalom</small></button>
+      <button class="mbtn" data-go="studio"><b>Design Studio</b><small>Make your own jackets, pants, helmets and boards</small></button>
+      <button class="mbtn" data-go="friends"><b>Ride With Friends</b><small>Multiplayer with a room code</small></button>
+      <div class="row2">
+        <button class="mbtn small" data-go="settings"><b>Settings</b></button>
+        <button class="mbtn small" data-go="help"><b>How to Ride</b></button>
+      </div>
+    </div>
+    <div class="credit">Made for Flynn Games. Original game; gear brands are your own designs.</div>
+  </div>
+</div>
+
+<!-- design studio -->
+<div id="studio" class="screen hidden">
+  <div class="studio-left">
+    <div class="studio-top">
+      <div class="logo mini"><span class="l1">DESIGN</span><span class="l2">STUDIO</span></div>
+      <div class="hint">Drag to spin your rider · scroll to zoom</div>
+    </div>
+    <div class="studio-bottom">
+      <button class="pill" id="stRandom">🎲 Random</button>
+      <button class="pill" id="stPose">🤙 Pose</button>
+      <button class="pill primary" id="stDone">Done ✓</button>
+    </div>
+  </div>
+  <div class="studio-panel">
+    <div class="tabs" id="stTabs"></div>
+    <div class="tab-body" id="stBody"></div>
+  </div>
+</div>
+
+<!-- winter games -->
+<div id="games" class="screen hidden">
+  <div class="panel">
+    <button class="back" data-go="title">✕</button>
+    <h2>Winter Games</h2>
+    <div class="sub">Olympic-style events. Three runs, judges score your tricks, beat the field for gold.</div>
+    <div class="cards" id="evCards"></div>
+    <div class="lvl"><span>Level</span><div id="lvlChips" class="chips"></div></div>
+    <button class="big-go" id="evGo">Compete →</button>
+  </div>
+</div>
+
+<!-- friends -->
+<div id="friends" class="screen hidden">
+  <div class="panel narrow">
+    <button class="back" data-go="title">✕</button>
+    <h2>Ride With Friends</h2>
+    <div class="sub">Everyone types the same room code and you'll all be on the mountain together, in your own gear.</div>
+    <label class="fld"><span>Your name</span><input id="mpName" maxlength="16" placeholder="Rider"></label>
+    <label class="fld"><span>Room code</span><input id="mpCode" maxlength="8" placeholder="ABC12" style="text-transform:uppercase"></label>
+    <div class="btns"><button class="pill" id="mpMake">New code</button><button class="pill primary" id="mpJoin">Join &amp; ride</button></div>
+    <div id="mpStatus" class="status"></div>
+    <div id="mpList" class="plist"></div>
+  </div>
+</div>
+
+<!-- settings -->
+<div id="settings" class="screen hidden">
+  <div class="panel narrow">
+    <button class="back" data-go="back">✕</button>
+    <h2>Settings</h2>
+    <div class="set"><span>Graphics</span><div class="chips" id="setQuality"></div></div>
+    <div class="set"><span>Weather</span><div class="chips" id="setWeather"></div></div>
+    <div class="set"><span>Camera</span><div class="chips" id="setCam"></div></div>
+    <div class="set"><span>Sound</span><input type="range" id="setVol" min="0" max="1" step="0.05"></div>
+    <div class="set"><span>Touch buttons</span><div class="chips" id="setTouch"></div></div>
+    <div class="sub small">Graphics changes reload the mountain.</div>
+  </div>
+</div>
+
+<!-- help -->
+<div id="help" class="screen hidden">
+  <div class="panel narrow">
+    <button class="back" data-go="back">✕</button>
+    <h2>How to Ride</h2>
+    <div class="keys">
+      <div><kbd>←</kbd><kbd>→</kbd><span>Carve / steer. In the air: <b>spin</b></span></div>
+      <div><kbd>↑</kbd><span>Tuck for speed / skate. In the air: <b>front flip</b></span></div>
+      <div><kbd>↓</kbd><span>Brake (hockey stop). In the air: <b>back flip</b></span></div>
+      <div><kbd>Space</kbd><span>Hold to crouch, let go to <b>ollie</b>. Pop right at the lip to go higher</span></div>
+      <div><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><span>Grabs: Indy · Melon · Nose · Tail</span></div>
+      <div><kbd>Q</kbd><kbd>W</kbd><kbd>R</kbd><span>Grabs: Mute · Method · Stalefish (hold longer = more points)</span></div>
+      <div><kbd>E</kbd><span>Ride the chairlift (at the bottom station). Hold Space to speed up</span></div>
+      <div><kbd>M</kbd><span>Trail map &amp; teleport</span></div>
+      <div><kbd>C</kbd><span>Change camera</span></div>
+      <div><kbd>T</kbd><span>Wave to friends</span></div>
+      <div><kbd>Esc</kbd><span>Pause</span></div>
+    </div>
+    <div class="sub small">Hit a rail or box and you lock on automatically. Hold ← or → as you get on for a boardslide, ↑/↓ to press. In the superpipe you ride wall to wall on your own: just do tricks! Land with your board pointing down the hill or you'll bail.</div>
+  </div>
+</div>
+
+<!-- trail map -->
+<div id="map" class="screen hidden">
+  <div class="panel wide">
+    <button class="back" data-go="ride">✕</button>
+    <h2>Trail Map</h2>
+    <div class="sub">Click a spot to drop in there.</div>
+    <div class="mapwrap"><canvas id="mapCanvas" width="900" height="560"></canvas><div id="mapPins"></div></div>
+  </div>
+</div>
+
+<!-- pause -->
+<div id="pause" class="screen hidden">
+  <div class="pause-col">
+    <div class="logo mini"><span class="l1">PAUSED</span></div>
+    <div class="menu">
+      <button class="mbtn primary" data-go="ride"><b>Keep Riding</b></button>
+      <button class="mbtn" data-go="map"><b>Trail Map</b><small>Teleport anywhere</small></button>
+      <button class="mbtn" data-go="studio"><b>Design Studio</b></button>
+      <button class="mbtn" data-go="settings"><b>Settings</b></button>
+      <button class="mbtn" id="quitEvent" data-go="quitevent"><b>Leave Event</b></button>
+      <button class="mbtn" data-go="title"><b>Main Menu</b></button>
+    </div>
+  </div>
+</div>
+
+<!-- event results -->
+<div id="results" class="screen hidden">
+  <div class="panel narrow">
+    <h2 id="resTitle">Run 1</h2>
+    <div class="btns" style="margin:6px 0 10px"><button class="pill primary" id="resNext">Next run →</button><button class="pill" id="resQuit">Leave</button></div>
+    <div id="resBody"></div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="where"><span id="hudDiff" class="diff"></span><div><b id="hudPlace">Summit</b><small id="hudAlt">3180 m</small></div></div>
+  <div class="speed"><b id="hudSpeed">0</b><small>km/h</small><div id="hudScore" class="score">0</div></div>
+  <div id="evBar" class="evbar hidden"><b id="evName">Halfpipe</b><span id="evRun">Run 1/3</span><span id="evTime">0.0</span><span id="evPts"></span></div>
+  <div id="trick" class="trick"></div>
+  <div id="feed" class="feed"></div>
+  <div id="prompt" class="prompt hidden"></div>
+  <div id="count" class="count hidden"></div>
+  <div id="players" class="players hidden"></div>
+  <div id="keysHint" class="keyshint">←→ carve/spin · ↑↓ tuck/brake/flip · Space ollie · A S D F grabs · E lift · M map · C cam · Esc menu</div>
+  <div id="liftBar" class="liftbar hidden"><b id="liftName">Summit Express</b><div class="lbar"><div id="liftFill"></div></div><small>Hold Space to speed up · you hop off at the top automatically</small></div>
+</div>
+<div id="touch" class="hidden">
+  <div class="tpad left"><button data-k="ArrowLeft">◀</button><button data-k="ArrowRight">▶</button></div>
+  <div class="tpad mid"><button data-k="ArrowUp">▲</button><button data-k="ArrowDown">▼</button></div>
+  <div class="tpad right"><button data-k="KeyA">Indy</button><button data-k="KeyS">Melon</button><button data-k="Space" class="jump">JUMP</button><button data-k="KeyE">Lift</button><button data-k="Escape">II</button></div>
+</div>
+<div id="err" class="hidden"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
