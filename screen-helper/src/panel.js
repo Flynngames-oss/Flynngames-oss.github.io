@@ -1,10 +1,20 @@
 // Screen Helper side panel: snap the current tab (whole or a dragged area), ask a question, and stream
 // Claude's answer. Follow-up questions keep the conversation. Bundled with esbuild into ../panel.js.
 import Anthropic from '@anthropic-ai/sdk';
+import { createMascot } from './mascot.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_EDGE = 1568; // longest side we send; plenty for reading text on screen
 
+// Snappy lives in the header and on the welcome screen, and reacts to what's going on
+const head = createMascot({ size: 38 }), hero = createMascot({ size: 132 });
+$('headMascot').appendChild(head.el); $('heroMascot').appendChild(hero.el);
+let moodTimer = 0, liveAvatar = null;
+function mood(m, ms) {
+  clearTimeout(moodTimer);
+  for (const x of [head, hero, liveAvatar]) if (x) x.set(m);
+  if (ms) moodTimer = setTimeout(() => mood('idle'), ms);
+}
 const state = { apiKey: '', model: 'claude-opus-5-5', mode: 'explain', history: [], shot: null, busy: false };
 
 const SYSTEM = {
@@ -78,12 +88,14 @@ async function snap(kind) {
   if (!res || !res.ok) {
     if (res && res.cancelled) return;
     const why = (res && res.error) || 'unknown error';
+    mood('sad', 2500);
     addMsg('err', /cannot be scripted|Cannot access|chrome:\/\/|edge:\/\/|webstore/i.test(why)
       ? "Chrome doesn't let extensions see this kind of page (like settings or the Web Store). Try it on a normal website."
       : 'Could not take a screenshot: ' + why);
     return;
   }
   state.shot = Object.assign(await prepare(res.dataUrl, res.rect), { title: res.title });
+  mood('wow', 900);
   $('attachImg').src = state.shot.url;
   $('attachTxt').textContent = (res.rect ? 'Area of ' : '') + (res.title || 'This tab');
   $('attachSize').textContent = `${res.rect ? 'Selected area' : 'Whole screen'} · ${state.shot.w}×${state.shot.h}`;
@@ -134,7 +146,11 @@ function addMsg(kind, text, img) {
   $('empty').classList.add('hidden');
   const row = document.createElement('div');
   row.className = 'row ' + (kind === 'user' ? 'user' : 'bot');
-  if (kind !== 'user') { const av = document.createElement('div'); av.className = 'av'; av.innerHTML = SVG('i-spark'); row.appendChild(av); }
+  if (kind !== 'user') {
+    const av = document.createElement('div'); av.className = 'av';
+    const m = createMascot({ size: 30, animated: false, mood: kind === 'err' ? 'sad' : 'idle' });
+    av.appendChild(m.el); row.appendChild(av); row._mascot = m;
+  }
   const col = document.createElement('div'); col.style.cssText = 'display:flex;flex-direction:column;min-width:0;' + (kind === 'user' ? 'align-items:flex-end;max-width:86%' : 'flex:1');
   const d = document.createElement('div');
   d.className = 'msg ' + kind;
@@ -177,6 +193,8 @@ async function send() {
   state.busy = true; $('send').disabled = true;
 
   const out = addMsg('bot', '');
+  liveAvatar = out.closest('.row')._mascot;
+  mood('think');
   out.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
   let txt = '';
   try {
@@ -209,11 +227,14 @@ async function send() {
     }
     out.innerHTML = md(txt || '(no answer)');
     if (txt) addCopy(out, txt);
+    mood(final.stop_reason === 'refusal' ? 'sad' : 'happy', 2600);
   } catch (e) {
+    mood('sad', 3000);
     state.history.pop();
     out.parentElement.classList.replace('bot', 'err');
     out.innerHTML = md(explainError(e));
   } finally {
+    setTimeout(() => { liveAvatar = null; }, 2700);
     out.classList.remove('typing');
     state.busy = false; $('send').disabled = false;
     $('chat').scrollTop = $('chat').scrollHeight;

@@ -1,6 +1,7 @@
 # Screen Helper (Chrome extension)
 
 Snap your screen (or drag a box around part of it), ask a question, and Claude explains it.
+Your helper is **Snappy**, a little pixel screen-bot who blinks, thinks, smiles and gasps along with you.
 
 - **📸 Whole screen** or **✂️ Select area** to show it what you're looking at
 - **🧠 Explain** mode walks through things step by step; **⚡ Quick** gives a short answer

@@ -26,8 +26,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand b { display: block; font-size: 15px; letter-spacing: -.01em; }
 .brand small { display: block; color: var(--muted); font-size: 11.5px; margin-top: -2px; }
-.logo { width: 34px; height: 34px; border-radius: 11px; background: var(--grad); display: grid; place-items: center; color: #fff; box-shadow: 0 6px 18px rgba(79,125,255,.45); }
-.logo svg { width: 18px; height: 18px; }
+.logo { width: 38px; height: 34px; display: grid; place-items: center; filter: drop-shadow(0 4px 10px rgba(79,125,255,.45)); }
 .hbtns { display: flex; gap: 6px; }
 .icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); color: var(--ink); transition: background .15s, border-color .15s, transform .1s; }
 .icon:hover { background: var(--card2); border-color: var(--line2); }
@@ -70,8 +69,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 
 .row { display: flex; gap: 9px; animation: rise .25s ease-out; }
 .row.user { justify-content: flex-end; }
-.av { width: 28px; height: 28px; border-radius: 9px; background: var(--grad); display: grid; place-items: center; color: #fff; flex: none; margin-top: 2px; }
-.av svg { width: 15px; height: 15px; }
+.av { width: 30px; flex: none; margin-top: 2px; filter: drop-shadow(0 3px 6px rgba(79,125,255,.35)); }
 .msg { padding: 10px 13px; border-radius: var(--r); max-width: 100%; min-width: 0; word-wrap: break-word; position: relative; }
 .msg.user { background: var(--me); color: #fff; max-width: 86%; border-bottom-right-radius: 6px; box-shadow: 0 6px 18px rgba(59,108,246,.3); }
 .msg.user img { display: block; max-width: 100%; max-height: 150px; border-radius: 10px; margin-bottom: 7px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
@@ -121,6 +119,30 @@ footer { padding: 8px 12px 10px; }
 .foot { text-align: center; color: var(--muted); font-size: 11px; margin-top: 7px; opacity: .8; }
 @media (max-width: 340px) { .tool span { display: none; } .foot { display: none; } }
 
+/* Snappy */
+.snappy svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.snappy .body { transform-box: fill-box; transform-origin: 50% 100%; }
+.snappy.anim .body { animation: bob 2.6s ease-in-out infinite; }
+.snappy.anim .leg { transform-box: fill-box; }
+.snappy[data-mood=think] .body { animation: bob .9s ease-in-out infinite; }
+.snappy[data-mood=think] .leg.l { animation: tap .36s steps(1) infinite; }
+.snappy[data-mood=think] .leg.r { animation: tap .36s steps(1) infinite .18s; }
+.snappy[data-mood=think] .bulb { animation: bulb .7s ease-in-out infinite; }
+.snappy[data-mood=happy] .body { animation: hop .5s ease-out 2; }
+.snappy[data-mood=happy] .bulb { fill: #7dffb2; }
+.snappy[data-mood=wow] .body { animation: jolt .25s ease-out; }
+.snappy[data-mood=sad] .body { transform: translateY(.6px) rotate(-4deg); animation: none; }
+.snappy[data-mood=sad] .bulb { fill: #ff6b81; }
+.hero { position: relative; width: 132px; margin: 0 auto 6px; }
+.hero .shadow { width: 70%; height: 10px; margin: 2px auto 0; border-radius: 50%; background: radial-gradient(closest-side, rgba(79,125,255,.45), transparent); animation: shadow 2.6s ease-in-out infinite; }
+.bubble { display: inline-block; position: relative; background: var(--card2); border: 1px solid var(--line); padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.bubble::before { content: ''; position: absolute; top: -6px; left: 50%; width: 10px; height: 10px; background: inherit; border-left: 1px solid var(--line); border-top: 1px solid var(--line); transform: translateX(-50%) rotate(45deg); }
+@keyframes bob { 50% { transform: translateY(-.5px); } }
+@keyframes tap { 50% { transform: translateY(-.6px); } }
+@keyframes bulb { 50% { fill: #fff6c2; } }
+@keyframes hop { 40% { transform: translateY(-1.6px) scaleY(1.04); } 70% { transform: translateY(0) scaleY(.94); } }
+@keyframes jolt { 30% { transform: scale(1.08); } }
+@keyframes shadow { 50% { transform: scaleX(.85); opacity: .7; } }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes drop { from { opacity: 0; transform: translateY(-8px); } }
 @keyframes float { 50% { transform: translateY(-6px) rotate(-3deg); } }
