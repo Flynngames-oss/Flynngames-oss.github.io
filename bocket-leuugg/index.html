@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bocket Leuugg</title>
+<meta name="description" content="Car soccer with boost! Flip, fly, drive up the walls and smash the ball into the goal. Play bots, split-screen with a friend, or online with a room code.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Barlow:wght@500;600;700;800&display=swap" rel="stylesheet">
+<script async src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="inmenu">
+<canvas id="game"></canvas>
+
+<div id="boot"><div class="logo"><span class="l1">BOCKET</span><span class="l2">LEUUGG</span></div><div class="bootTxt">Pumping up the ball…</div></div>
+
+<!-- title -->
+<div id="title" class="screen hidden">
+  <div class="col">
+    <div class="logo big"><span class="l1">BOCKET</span><span class="l2">LEUUGG</span></div>
+    <div class="tag">Cars. Boost. One giant ball. 🚗💨⚽</div>
+    <div class="menu">
+      <button class="mbtn primary" data-go="bots"><b>Play vs Bots</b><small>1v1 up to 4v4 against bots</small></button>
+      <button class="mbtn" data-go="online"><b>Play Online</b><small>With friends using a room code</small></button>
+      <button class="mbtn" data-go="split"><b>Split-Screen</b><small>Two players on one computer</small></button>
+      <button class="mbtn" id="freeStart"><b>Free Play</b><small>Just you and the ball. Practice flips and aerials</small></button>
+      <div class="row2">
+        <button class="mbtn small" data-go="garage"><b>Garage</b></button>
+        <button class="mbtn small" data-go="controls"><b>Controls</b></button>
+      </div>
+    </div>
+  </div>
+  <button id="muteBtn" class="iconBtn">🔊</button>
+</div>
+
+<!-- vs bots -->
+<div id="bots" class="screen hidden">
+  <div class="panel">
+    <h2>Play vs Bots</h2>
+    <div class="opt"><label>Team size</label><div class="seg" id="botSize"><button data-v="1">1v1</button><button data-v="2" class="on">2v2</button><button data-v="3">3v3</button><button data-v="4">4v4</button></div></div>
+    <div class="opt"><label>Bots</label><div class="seg" id="botSkill"><button data-v="0">Rookie</button><button data-v="1" class="on">Pro</button><button data-v="2">All-Star</button></div></div>
+    <div class="opt"><label>Match length</label><div class="seg" id="botTime"><button data-v="3">3 min</button><button data-v="5" class="on">5 min</button><button data-v="10">10 min</button></div></div>
+    <div class="actions"><button class="btn ghost" data-go="title">Back</button><button class="btn go" id="botStart">Kick off!</button></div>
+  </div>
+</div>
+
+<!-- split screen -->
+<div id="split" class="screen hidden">
+  <div class="panel">
+    <h2>Split-Screen</h2>
+    <div class="opt"><label>Mode</label><div class="seg" id="spMode"><button data-v="vs" class="on">Versus</button><button data-v="coop">Same team</button></div></div>
+    <div class="opt"><label>Team size</label><div class="seg" id="spSize"><button data-v="1" class="on">1v1</button><button data-v="2">2v2</button><button data-v="3">3v3</button></div></div>
+    <div class="opt"><label>Bots</label><div class="seg" id="spSkill"><button data-v="0">Rookie</button><button data-v="1" class="on">Pro</button><button data-v="2">All-Star</button></div></div>
+    <div class="opt"><label>Match length</label><div class="seg" id="spTime"><button data-v="3">3 min</button><button data-v="5" class="on">5 min</button></div></div>
+    <div class="note"><b>Player 1 (top):</b> WASD · Space jump · Left Shift boost · C drift · Q/E air roll · F ball cam · or gamepad 1<br>
+      <b>Player 2 (bottom):</b> Arrows · Enter jump · Right Shift boost · / drift · , and ' air roll · . ball cam · or gamepad 2</div>
+    <div class="actions"><button class="btn ghost" data-go="title">Back</button><button class="btn go" id="spStart">Kick off!</button></div>
+  </div>
+</div>
+
+<!-- online -->
+<div id="online" class="screen hidden">
+  <div class="panel">
+    <h2>Play Online</h2>
+    <div class="opt"><label>Your name</label><input id="onName" maxlength="16" placeholder="Your name"></div>
+    <div class="twoCol">
+      <div class="card">
+        <h3>Host a room</h3>
+        <p>Get a code and share it with your friends.</p>
+        <button class="btn go" id="onHost">Host</button>
+      </div>
+      <div class="card">
+        <h3>Join a room</h3>
+        <input id="onCode" maxlength="8" placeholder="CODE" class="codeIn">
+        <button class="btn go" id="onJoin">Join</button>
+      </div>
+    </div>
+    <div id="onStatus" class="status"></div>
+    <div class="actions"><button class="btn ghost" data-go="title">Back</button></div>
+  </div>
+</div>
+
+<!-- lobby -->
+<div id="lobby" class="screen hidden">
+  <div class="panel wide">
+    <h2>Room <span id="lbCode" class="code"></span></h2>
+    <div id="lbInfo" class="note"></div>
+    <div class="teams">
+      <div class="team blue"><div class="th">BLUE</div><div id="lbT0"></div><button class="btn small" id="lbBlue">Join Blue</button></div>
+      <div class="team red"><div class="th">RED</div><div id="lbT1"></div><button class="btn small" id="lbRed">Join Red</button></div>
+    </div>
+    <div class="hostOnly">
+      <div class="opt"><label>Team size</label><div class="seg" id="lbSize"><button data-v="1">1v1</button><button data-v="2" class="on">2v2</button><button data-v="3">3v3</button><button data-v="4">4v4</button></div></div>
+      <div class="opt"><label>Bots</label><div class="seg" id="lbSkill"><button data-v="0">Rookie</button><button data-v="1" class="on">Pro</button><button data-v="2">All-Star</button></div></div>
+      <div class="opt"><label>Match length</label><div class="seg" id="lbTime"><button data-v="3">3 min</button><button data-v="5" class="on">5 min</button><button data-v="10">10 min</button></div></div>
+      <label class="check"><input type="checkbox" id="lbFill" checked> Fill empty spots with bots</label>
+      <div id="lbNote" class="status"></div>
+    </div>
+    <div id="lbGuest" class="status"></div>
+    <div class="actions"><button class="btn ghost" id="lbLeave">Leave</button><button class="btn go hostOnly" id="lbStart">Start match</button></div>
+  </div>
+</div>
+
+<!-- garage -->
+<div id="garage" class="screen hidden">
+  <div class="gPanel">
+    <h2>Garage</h2>
+    <div class="opt"><label>Name</label><input id="gName" maxlength="16"></div>
+    <div id="gOpts"></div>
+    <div class="actions"><button class="btn ghost" id="gTeam">Preview: Blue</button><button class="btn ghost" id="gRandom">🎲 Random</button><button class="btn go" id="gDone">Done</button></div>
+    <div class="note">Your car is always painted your team’s colour in matches, so everyone can tell the teams apart. Pick the shade and everything else!</div>
+  </div>
+</div>
+
+<!-- controls -->
+<div id="controls" class="screen hidden">
+  <div class="panel wide">
+    <h2>Controls</h2>
+    <div class="twoCol">
+      <table class="keys">
+        <tr><th colspan="2">Keyboard</th></tr>
+        <tr><td>W / ↑</td><td>Drive · tilt nose down in the air</td></tr>
+        <tr><td>S / ↓</td><td>Brake / reverse · tilt nose up</td></tr>
+        <tr><td>A D / ← →</td><td>Steer · spin in the air</td></tr>
+        <tr><td>Space · right click</td><td>Jump (tap again in the air to double jump)</td></tr>
+        <tr><td>Space + direction</td><td>Flip in that direction (2nd jump)</td></tr>
+        <tr><td>Shift · left click</td><td>Boost</td></tr>
+        <tr><td>C</td><td>Drift (powerslide) · air roll in the air</td></tr>
+        <tr><td>Q / E</td><td>Air roll left / right</td></tr>
+        <tr><td>F</td><td>Ball cam on/off</td></tr>
+        <tr><td>1 – 6</td><td>Quick chat</td></tr>
+        <tr><td>Esc / P</td><td>Pause menu</td></tr>
+      </table>
+      <table class="keys">
+        <tr><th colspan="2">Gamepad</th></tr>
+        <tr><td>RT / LT</td><td>Drive / reverse</td></tr>
+        <tr><td>Left stick</td><td>Steer · tilt and spin in the air</td></tr>
+        <tr><td>A</td><td>Jump · flip</td></tr>
+        <tr><td>B</td><td>Boost</td></tr>
+        <tr><td>X</td><td>Drift · air roll</td></tr>
+        <tr><td>LB / RB</td><td>Air roll left / right</td></tr>
+        <tr><td>Y</td><td>Ball cam</td></tr>
+        <tr><td>D-pad</td><td>Quick chat</td></tr>
+        <tr><th colspan="2">Tips</th></tr>
+        <tr><td colspan="2" class="tip">Drive up the curved walls! Boost pads on the floor fill your boost. Hit a car from the other team at full speed (supersonic) to demolish it 💥. Jump, then boost while pointing up to fly.</td></tr>
+      </table>
+    </div>
+    <div class="actions"><button class="btn go" id="ctrlBack">Got it</button></div>
+  </div>
+</div>
+
+<!-- pause -->
+<div id="pause" class="screen hidden">
+  <div class="panel small">
+    <h2>Paused</h2>
+    <div id="pNote" class="note"></div>
+    <div class="stack"><button class="btn go" id="pResume">Resume</button><button class="btn ghost" id="pControls">Controls</button><button class="btn ghost" id="pQuit">Quit to menu</button></div>
+  </div>
+</div>
+
+<!-- results -->
+<div id="results" class="screen hidden">
+  <div class="panel wide">
+    <div id="resTitle" class="resTitle"></div>
+    <div id="resScore" class="resScore"></div>
+    <table id="resTable" class="resTable"></table>
+    <div id="resWait" class="status">Waiting for the host…</div>
+    <div class="actions"><button class="btn ghost" id="resMenu">Menu</button><button class="btn go" id="resAgain">Play Again</button></div>
+  </div>
+</div>
+
+<!-- in-game HUD -->
+<div id="hud" class="hidden">
+  <div id="scoreboard"><div class="sb blue" id="sB">0</div><div id="clock">5:00</div><div class="sb red" id="sR">0</div></div>
+  <div id="ballCamTag"></div>
+  <div id="banner" class="hidden"></div>
+  <div id="feed"></div>
+  <div id="boost0" class="boost"><b>33</b><span>BOOST</span></div>
+  <div id="boost1" class="boost hidden"><b>33</b><span>BOOST</span></div>
+  <div id="splitLine" class="hidden"></div>
+  <div id="demoMsg" class="hidden">💥 DEMOLISHED! Back in a moment…</div>
+  <div id="freeHelp" class="hidden">R reset ball · T get a pass · F ball cam · Esc menu</div>
+  <button id="pauseBtn" class="iconBtn">⏸</button>
+  <div id="touchUI">
+    <div id="tStick"><div id="tKnob"></div></div>
+    <button id="tBoost" class="tb">BOOST</button>
+    <button id="tJump" class="tb big">JUMP</button>
+    <button id="tSlide" class="tb">DRIFT</button>
+    <button id="tCam" class="tb small">CAM</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
