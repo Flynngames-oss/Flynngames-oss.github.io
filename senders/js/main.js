@@ -618,6 +618,7 @@ tricks.on((e) => {
   if (!r || !G.kind) return;
   if (e.type === 'jump') {
     const cls = e.perfect ? 'perfect' : '';
+    if (e.score >= 1000) window.VoltEarn?.add('senders', Math.min(5, Math.max(1, Math.floor(e.score / 1500))), 'Jump');
     UI.popup(`${e.name} <b>+${fmtNum(e.score)}</b>${e.perfect ? '<br><small>PERFECT</small>' : e.sketchy ? '<br><small>SKETCHY</small>' : ''}`, cls);
     sfx.trick();
   } else if (e.type === 'trick') {
