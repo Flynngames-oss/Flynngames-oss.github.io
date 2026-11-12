@@ -345,6 +345,7 @@ function goalFx(m, g) {
   const scorer = g.by >= 0 ? m.cars[g.by] : null;
   const assist = g.as >= 0 ? m.cars[g.as] : null;
   const who = scorer ? `${esc(scorer.name)} scored!` : 'Own goal! 🙈';
+  if (scorer && m.humans.some((h) => h.car === scorer)) window.VoltEarn?.add('bocket', 5, 'Goal');
   banner('GOAL!', who + (assist ? ` · assist ${esc(assist.name)}` : ''), 2800, TEAM_CSS[g.team]);
   feed(scorer ? `⚽ ${carName(scorer)} scored for ${TEAM_NAMES[g.team]}` : `⚽ Goal for ${TEAM_NAMES[g.team]}`);
 }
@@ -694,6 +695,7 @@ function showResults(m) {
   const mine = m.humans[0] ? m.humans[0].car.team : -1;
   let title = win < 0 ? 'DRAW' : `${TEAM_NAMES[win].toUpperCase()} WINS!`;
   if (mine >= 0 && win >= 0 && m.humans.length === 1) title = win === mine ? 'YOU WIN! 🏆' : 'YOU LOST 😭';
+  if (mine >= 0 && win === mine && m.humans.length === 1) window.VoltEarn?.add('bocket', 10, 'Win');
   $('resTitle').textContent = title;
   $('resTitle').style.color = win >= 0 ? TEAM_CSS[win] : '#fff';
   $('resScore').innerHTML = `<span style="color:${TEAM_CSS[0]}">${b}</span> – <span style="color:${TEAM_CSS[1]}">${r}</span>`;

@@ -234,6 +234,7 @@ function bankCombo() {
   if (!combo) return;
   const total = combo.pts * combo.n;
   score += total;
+  if (total >= 500) window.VoltEarn?.add('fresh-tracks', Math.min(10, Math.max(1, Math.floor(total / 2000))), 'Tricks');
   if (combo.n > 1) feed(`Combo x${combo.n}: <b>+${total.toLocaleString()}</b>`);
   combo = null;
 }

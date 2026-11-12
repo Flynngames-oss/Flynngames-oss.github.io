@@ -688,6 +688,7 @@ function stepRide(h, inp) {
     if (S.tubeT > 0.35) {
       const nm = w.mega ? (S.tubeT > 2 ? 'MEGA BARREL OF THE YEAR' : 'MEGA BARREL') : S.tubeT > 2.5 ? 'MASSIVE BARREL' : S.tubeT > 1.2 ? 'DEEP BARREL' : 'BARREL';
       addTrick(nm, (400 + 750 * S.tubeT) * (w.mega ? 3 : 1), S.tubeT > 1.2 || w.mega);
+      window.VoltEarn?.add('wobble-surf', w.mega ? 5 : 2, 'Barrel');
     }
     S.tubeT = 0;
   }

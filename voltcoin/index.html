@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voltcoin</title>
+<meta name="description" content="Voltcoin (VLT): mine it, trade it on the VLT/USDF exchange and climb the rich list.">
+<meta name="theme-color" content="#0a0d13">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23ffd43b'/%3E%3Cpath d='M36 8 16 36h13l-4 20 22-29H34z' fill='%23140f00'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"></script>
+<script src="vendor/nacl-fast.min.js"></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2 4 14h6.5L9 22l11-13h-7z" fill="currentColor"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H18v3M4 6.5V17a3 3 0 0 0 3 3h13V8H6.5A2.5 2.5 0 0 1 4 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="14" r="1.4" fill="currentColor"/></symbol>
+    <symbol id="i-mine" viewBox="0 0 24 24"><path d="M5 9c3.5-4 10.5-4 14 0M12 6.5 6 20.5M14.5 14l-3 1.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15 4.5c2.6.6 4.6 2.3 5.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-trade" viewBox="0 0 24 24"><path d="M7 4v16M7 8H5v7h4V8zM17 4v16M15 6h4v8h-4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ledger" viewBox="0 0 24 24"><path d="M4 5h3v3H4zM10.5 6.5H20M4 10.5h3v3H4zM10.5 12H20M4 16h3v3H4zM10.5 17.5H20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-recv" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gift" viewBox="0 0 24 24"><path d="M4 10h16v4H4zM5.5 14H18.5v6H5.5zM12 10v10M12 10c-1.5-3-5-4-5-1.5S10 10 12 10c2 0 5 .5 5-1.5S13.5 7 12 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h1" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-game" viewBox="0 0 24 24"><path d="M7 8h10a4 4 0 0 1 4 4v1.5a3.5 3.5 0 0 1-6.3 2.1L14 14.5h-4l-.7 1.1A3.5 3.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM8 10.5v3M6.5 12h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><circle cx="15.5" cy="11" r="1" fill="currentColor"/><circle cx="17.5" cy="13" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="#wallet" aria-label="Voltcoin home">
+      <span class="logo"><svg><use href="#i-bolt"/></svg></span>
+      <span class="brand-name">Voltcoin</span>
+    </a>
+    <div class="ticker" id="ticker" title="Last traded price">
+      <span class="pair">VLT/USDF</span>
+      <b id="tkPrice" class="num">--</b>
+      <span id="tkChg" class="chg num"></span>
+    </div>
+    <div class="net" id="net"><span class="dot" id="netDot"></span><span id="netText">Connecting</span></div>
+    <button class="me" id="meChip" type="button"><span class="avatar" id="meAvatar"></span><span id="meName">Wallet</span></button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" aria-label="Sections">
+  <a href="#wallet" data-v="wallet"><svg><use href="#i-wallet"/></svg><span>Wallet</span></a>
+  <a href="#mine" data-v="mine"><svg><use href="#i-mine"/></svg><span>Mine</span></a>
+  <a href="#trade" data-v="trade"><svg><use href="#i-trade"/></svg><span>Trade</span></a>
+  <a href="#leaders" data-v="leaders"><svg><use href="#i-trophy"/></svg><span>Leaderboard</span></a>
+  <a href="#ledger" data-v="ledger"><svg><use href="#i-ledger"/></svg><span>Ledger</span></a>
+</nav>
+
+<main id="main">
+
+  <!-- ================================================================ WALLET -->
+  <section class="view" id="v-wallet">
+    <div class="grid-wallet">
+      <div class="card hero-card">
+        <div class="label">Total balance</div>
+        <div class="big num" id="wTotal">0.00 <small>USDF</small></div>
+        <div class="sub" id="wTotalSub">Valued at the last VLT/USDF price</div>
+        <div class="assets">
+          <div class="asset">
+            <span class="coin vlt"><svg><use href="#i-bolt"/></svg></span>
+            <div class="asset-txt"><b>Voltcoin</b><span>VLT</span></div>
+            <div class="asset-amt"><b class="num" id="wVlt">0.00000000</b><span class="num" id="wVltLock"></span></div>
+          </div>
+          <div class="asset">
+            <span class="coin usdf">$</span>
+            <div class="asset-txt"><b>USD Flynn</b><span>USDF</span></div>
+            <div class="asset-amt"><b class="num" id="wUsdf">0.00</b><span class="num" id="wUsdfLock"></span></div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btnSend" type="button"><svg><use href="#i-send"/></svg>Send</button>
+          <button class="btn" id="btnRecv" type="button"><svg><use href="#i-recv"/></svg>Receive</button>
+          <a class="btn" href="#trade"><svg><use href="#i-trade"/></svg>Trade</a>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card earn-card">
+          <div class="row-head"><h3><svg><use href="#i-gift"/></svg>Daily reward</h3><span class="pill" id="dailyPill">25.00 USDF</span></div>
+          <p class="muted small" id="dailyText">Claim 25 USDF every day.</p>
+          <button class="btn primary wide" id="btnDaily" type="button">Claim 25.00 USDF</button>
+        </div>
+        <div class="card earn-card">
+          <div class="row-head"><h3><svg><use href="#i-game"/></svg>Game earnings</h3><span class="pill" id="gamePill">0.00 USDF</span></div>
+          <p class="muted small" id="gameText">Score goals, land tricks and get barreled in Flynngames to earn USDF (up to 100 a day).</p>
+          <div class="game-list" id="gameList"></div>
+          <button class="btn wide" id="btnGames" type="button" disabled>Nothing to claim yet</button>
+        </div>
+      </div>
+
+      <div class="card activity-card">
+        <div class="row-head"><h3>Activity</h3><a class="link" href="#ledger">Full ledger</a></div>
+        <div class="list" id="wActivity"></div>
+      </div>
+
+      <div class="card sec-card">
+        <div class="row-head"><h3><svg><use href="#i-shield"/></svg>Security</h3></div>
+        <p class="muted small">Your wallet lives in this browser. Save your recovery code somewhere safe. Anyone with it can spend your coins, and without it a lost browser means lost coins.</p>
+        <div class="code-box" id="codeBox"><span id="codeText">VLT-•••••••• •••••••• •••••••• •••••••• •••••••• •••••••• •••••••• ••••••••</span></div>
+        <div class="actions">
+          <button class="btn" id="btnShowCode" type="button">Show recovery code</button>
+          <button class="btn" id="btnCopyCode" type="button"><svg><use href="#i-copy"/></svg>Copy</button>
+          <button class="btn ghost" id="btnSwitch" type="button">Use a different wallet</button>
+        </div>
+        <div class="addr-line small muted">Address <span class="mono" id="wAddr"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ MINE -->
+  <section class="view" id="v-mine" hidden>
+    <div class="grid-mine">
+      <div class="card rig">
+        <div class="rig-head">
+          <div>
+            <div class="label">Mining rig</div>
+            <div class="rig-state" id="rigState">Idle</div>
+          </div>
+          <button class="btn mine-btn" id="btnMine" type="button"><svg><use href="#i-bolt"/></svg><span>Start mining</span></button>
+        </div>
+        <div class="rig-stats">
+          <div><span class="label">Hash rate</span><b class="num" id="mRate">0 H/s</b></div>
+          <div><span class="label">Est. time per reward</span><b class="num" id="mEta">--</b></div>
+          <div><span class="label">Rewards found</span><b class="num" id="mFound">0</b></div>
+          <div><span class="label">Mined this session</span><b class="num" id="mEarned">0 VLT</b></div>
+        </div>
+        <div class="threads">
+          <label for="mThreads" class="label">CPU threads <b id="mThreadsVal">2</b></label>
+          <input type="range" id="mThreads" min="1" max="4" value="2">
+          <span class="muted small">More threads mine faster but make your device work harder.</span>
+        </div>
+        <div class="hashfeed-wrap">
+          <div class="hashfeed-head small"><span>Live hashes</span><span class="muted">a hash wins when it is below <span class="mono" id="mTarget">--</span></span></div>
+          <ol class="hashfeed mono" id="hashFeed"></ol>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="label">Reward right now</div>
+          <div class="big num" id="mReward">0.01000000 <small>VLT</small></div>
+          <div class="sub" id="mHalving">Halves in 250 rewards</div>
+          <div class="bar"><span id="mSupplyBar"></span></div>
+          <div class="bar-legend small"><span id="mSupply">0 VLT mined</span><span class="muted" id="mCap">of 5 VLT that can ever be mined</span></div>
+        </div>
+        <div class="card">
+          <div class="label">Why it gets harder</div>
+          <div class="formula">
+            <div><span class="num" id="fBase">25.0M</span><small>base hashes</small></div>
+            <span class="op">×</span>
+            <div><span class="num" id="fSupply">1.00</span><small>supply factor</small></div>
+            <span class="op">×</span>
+            <div><span class="num" id="fPrice">1.00</span><small>price factor</small></div>
+            <span class="op">=</span>
+            <div class="res"><span class="num" id="fTotal">25.0M</span><small>hashes per reward</small></div>
+          </div>
+          <p class="muted small">Difficulty doubles for every 0.5 VLT that exists, minted coins included, and climbs as the price goes up. The higher the price, the harder Voltcoin is to get.</p>
+          <canvas id="diffChart" class="diff-chart" height="150"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ TRADE -->
+  <section class="view" id="v-trade" hidden>
+    <div class="stats-strip card">
+      <div class="pair-big"><span class="coin vlt sm"><svg><use href="#i-bolt"/></svg></span><b>VLT</b><span class="muted">/USDF</span></div>
+      <div><span class="label">Last price</span><b class="num" id="tPrice">--</b></div>
+      <div><span class="label">24h change</span><b class="num" id="tChg">--</b></div>
+      <div><span class="label">24h high</span><b class="num" id="tHigh">--</b></div>
+      <div><span class="label">24h low</span><b class="num" id="tLow">--</b></div>
+      <div><span class="label">24h volume</span><b class="num" id="tVol">--</b></div>
+    </div>
+    <div class="grid-trade">
+      <div class="card chart-card">
+        <div class="row-head">
+          <h3>Price</h3>
+          <div class="seg" id="rangeSeg" role="tablist">
+            <button type="button" data-r="1h">1H</button><button type="button" data-r="1d" class="on">1D</button><button type="button" data-r="1w">1W</button><button type="button" data-r="all">All</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="priceChart"></canvas><div class="chart-empty" id="chartEmpty" hidden>No trades yet. Place the first order to set the price.</div></div>
+      </div>
+
+      <div class="card book-card">
+        <div class="row-head"><h3>Order book</h3></div>
+        <div class="book-cols small muted"><span>Price (USDF)</span><span>Amount (VLT)</span><span>Total</span></div>
+        <div class="book asks" id="bookAsks"></div>
+        <div class="spread" id="spread"><b class="num" id="bookMid">--</b><span class="muted small" id="bookSpread"></span></div>
+        <div class="book bids" id="bookBids"></div>
+      </div>
+
+      <div class="card form-card">
+        <div class="seg side-seg" id="sideSeg">
+          <button type="button" data-s="b" class="on buy">Buy</button><button type="button" data-s="s" class="sell">Sell</button>
+        </div>
+        <div class="seg type-seg" id="typeSeg">
+          <button type="button" data-t="limit" class="on">Limit</button><button type="button" data-t="market">Market</button>
+        </div>
+        <form id="orderForm" autocomplete="off">
+          <label class="field" id="fPriceWrap"><span>Price</span><input id="oPrice" inputmode="decimal" placeholder="0.00"><em>USDF</em></label>
+          <label class="field"><span>Amount</span><input id="oAmt" inputmode="decimal" placeholder="0.00000000"><em>VLT</em></label>
+          <div class="pcts" id="pcts"><button type="button" data-p="25">25%</button><button type="button" data-p="50">50%</button><button type="button" data-p="75">75%</button><button type="button" data-p="100">Max</button></div>
+          <div class="kv small"><span class="muted">Total</span><b class="num" id="oTotal">0.00 USDF</b></div>
+          <div class="kv small"><span class="muted">Available</span><b class="num" id="oAvail">--</b></div>
+          <button class="btn buy wide big-btn" id="oSubmit" type="submit">Buy VLT</button>
+          <p class="form-err small" id="oErr" role="alert"></p>
+        </form>
+      </div>
+
+      <div class="card orders-card">
+        <div class="row-head"><h3>Your open orders</h3></div>
+        <div class="table-wrap"><table class="tbl" id="myOrders"><thead><tr><th>Side</th><th>Price</th><th>Amount</th><th>Filled</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div class="empty small" id="myOrdersEmpty">No open orders.</div>
+      </div>
+
+      <div class="card trades-card">
+        <div class="row-head"><h3>Recent trades</h3></div>
+        <div class="book-cols small muted"><span>Price</span><span>Amount</span><span>Time</span></div>
+        <div class="trades" id="recentTrades"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ LEADERBOARD -->
+  <section class="view" id="v-leaders" hidden>
+    <div class="net-stats">
+      <div class="card stat"><span class="label">Holders</span><b class="num" id="sHolders">0</b></div>
+      <div class="card stat"><span class="label">VLT in existence</span><b class="num" id="sSupply">0</b></div>
+      <div class="card stat"><span class="label">Mined</span><b class="num" id="sMined">0</b></div>
+      <div class="card stat"><span class="label">Minted by the mint</span><b class="num" id="sMinted">0</b></div>
+    </div>
+    <div class="card">
+      <div class="row-head wrap">
+        <h3 id="lbTitle">Rich list</h3>
+        <div class="seg" id="lbSeg">
+          <button type="button" data-l="rich" class="on">Rich list</button><button type="button" data-l="worth">Net worth</button><button type="button" data-l="miners">Top miners</button><button type="button" data-l="traders">Top traders</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="tbl lb" id="lbTable"><thead><tr><th>#</th><th>Holder</th><th class="r" id="lbCol">VLT</th><th class="r hide-sm" id="lbCol2">Share</th></tr></thead><tbody></tbody></table></div>
+      <div class="empty" id="lbEmpty" hidden>Nobody here yet. Open a wallet and start mining.</div>
+    </div>
+  </section>
+
+  <!-- ================================================================ LEDGER -->
+  <section class="view" id="v-ledger" hidden>
+    <div class="card">
+      <div class="row-head wrap">
+        <h3>Public ledger</h3>
+        <div class="seg" id="lgSeg">
+          <button type="button" data-g="all" class="on">All</button><button type="button" data-g="mint">Mints</button><button type="button" data-g="trade">Trades</button><button type="button" data-g="mine">Mining</button><button type="button" data-g="send">Transfers</button><button type="button" data-g="me">Mine only</button>
+        </div>
+      </div>
+      <p class="muted small">Every transaction ever made. Each block is checked by every copy of the app. Mints by the Voltcoin mint are always shown here so everyone can see when new coins are made.</p>
+      <div class="chain-line small" id="chainLine"></div>
+      <div class="list ledger" id="ledgerList"></div>
+      <button class="btn wide" id="btnMoreLedger" type="button" hidden>Show older</button>
+    </div>
+  </section>
+
+  <!-- ================================================================ ADMIN -->
+  <section class="view" id="v-admin" hidden>
+    <div class="grid-admin">
+      <div class="card">
+        <div class="row-head"><h3><svg><use href="#i-shield"/></svg>Voltcoin mint</h3><span class="pill" id="adminPill">Locked</span></div>
+        <form id="adminLock" autocomplete="off">
+          <p class="muted small">Only the mint key can make new coins. Enter the mint passphrase to unlock it on this device. It is not saved.</p>
+          <label class="field"><span>Passphrase</span><input id="adminPass" type="password" autocomplete="off"></label>
+          <button class="btn primary wide" type="submit">Unlock</button>
+          <p class="form-err small" id="adminLockErr" role="alert"></p>
+        </form>
+        <form id="adminMint" autocomplete="off" hidden>
+          <p class="notice small">Every mint is public. It appears on the ledger for everyone, and new VLT makes mining harder for everyone.</p>
+          <label class="field"><span>Send to</span><input id="mintTo" placeholder="username" list="nameList"></label>
+          <div class="seg" id="mintAsset"><button type="button" data-a="V" class="on">VLT</button><button type="button" data-a="U">USDF</button></div>
+          <label class="field"><span>Amount</span><input id="mintAmt" inputmode="decimal" placeholder="0.001"><em id="mintUnit">VLT</em></label>
+          <label class="field"><span>Reason</span><input id="mintMemo" maxlength="60" placeholder="Tournament prize"></label>
+          <div class="kv small"><span class="muted">Difficulty after this mint</span><b class="num" id="mintDiff">--</b></div>
+          <button class="btn primary wide" type="submit">Mint</button>
+          <p class="form-err small" id="mintErr" role="alert"></p>
+        </form>
+      </div>
+      <div class="card">
+        <div class="row-head"><h3>Mint history</h3></div>
+        <div class="list" id="mintHistory"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Voltcoin is a game currency for Flynngames. It has no real-money value and can't be bought or sold for real money.</span>
+  <span><a href="../">Flynngames</a> · <a href="#admin">Mint</a></span>
+</footer>
+
+<datalist id="nameList"></datalist>
+
+<!-- ================================================================ MODALS -->
+<div class="modal" id="onboard" hidden>
+  <div class="modal-card onboard-card">
+    <div class="onboard-art"><span class="logo xl"><svg><use href="#i-bolt"/></svg></span></div>
+    <div id="obStart">
+      <h2>Open your Voltcoin wallet</h2>
+      <p class="muted">Pick a username. It shows on the leaderboard and is how friends send you coins. You get 50 USDF to start.</p>
+      <form id="obForm" autocomplete="off">
+        <label class="field"><span>Username</span><input id="obName" maxlength="16" placeholder="3 to 16 letters or numbers" autocomplete="off"></label>
+        <button class="btn primary wide big-btn" type="submit">Create wallet</button>
+        <p class="form-err small" id="obErr" role="alert"></p>
+      </form>
+      <button class="link-btn" id="obRestoreBtn" type="button">I have a recovery code</button>
+    </div>
+    <div id="obRestore" hidden>
+      <h2>Restore a wallet</h2>
+      <p class="muted">Paste the recovery code you saved. It starts with VLT-.</p>
+      <form id="obRestoreForm" autocomplete="off">
+        <label class="field tall"><span>Recovery code</span><textarea id="obCode" rows="3" spellcheck="false"></textarea></label>
+        <button class="btn primary wide big-btn" type="submit">Restore wallet</button>
+        <p class="form-err small" id="obRestoreErr" role="alert"></p>
+      </form>
+      <button class="link-btn" id="obBackBtn" type="button">Create a new wallet instead</button>
+    </div>
+    <div id="obWork" hidden>
+      <h2>Securing your wallet</h2>
+      <p class="muted">Your device is doing a little proof of work so nobody can spam fake accounts.</p>
+      <div class="work-num num" id="obHashes">0 hashes</div>
+      <div class="bar"><span id="obBar"></span></div>
+      <p class="muted small" id="obStep">Generating your keys</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="sendModal" hidden>
+  <div class="modal-card">
+    <div class="row-head"><h2>Send</h2><button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+    <form id="sendForm" autocomplete="off">
+      <label class="field"><span>To</span><input id="sTo" placeholder="username" list="nameList"></label>
+      <div class="seg" id="sAsset"><button type="button" data-a="V" class="on">VLT</button><button type="button" data-a="U">USDF</button></div>
+      <label class="field"><span>Amount</span><input id="sAmt" inputmode="decimal" placeholder="0.00000000"><em id="sUnit">VLT</em></label>
+      <div class="kv small"><span class="muted">Available</span><b class="num" id="sAvail">--</b></div>
+      <label class="field"><span>Note</span><input id="sMemo" maxlength="60" placeholder="Optional"></label>
+      <button class="btn primary wide big-btn" type="submit">Send</button>
+      <p class="form-err small" id="sErr" role="alert"></p>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="recvModal" hidden>
+  <div class="modal-card">
+    <div class="row-head"><h2>Receive</h2><button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+    <p class="muted">Friends can send you VLT or USDF using your username.</p>
+    <div class="recv-name" id="recvName"></div>
+    <div class="label">Wallet address</div>
+    <div class="code-box mono small" id="recvAddr"></div>
+    <button class="btn wide" id="btnCopyAddr" type="button"><svg><use href="#i-copy"/></svg>Copy username</button>
+  </div>
+</div>
+
+<div class="modal" id="switchModal" hidden>
+  <div class="modal-card">
+    <div class="row-head"><h2>Use a different wallet?</h2><button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+    <p class="muted">This removes the current wallet from this browser. Make sure you saved its recovery code first, or its coins are gone for good.</p>
+    <div class="actions"><button class="btn danger" id="btnSwitchYes" type="button">Remove this wallet</button><button class="btn" data-close type="button">Keep it</button></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/sha256.js"></script>
+<script src="js/chain.js"></script>
+<script src="js/peer.js"></script>
+<script src="js/wallet.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
